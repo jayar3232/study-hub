@@ -1,0 +1,23 @@
+const mongoose = require('mongoose');
+
+const TaskSchema = new mongoose.Schema({
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
+  description: { type: String, required: true },
+  dueDate: { type: Date },
+  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
+  status: { type: String, enum: ['not_started', 'in_progress', 'done'], default: 'not_started' },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  comments: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    text: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  activity: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    action: { type: String },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  createdAt: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('Task', TaskSchema);
