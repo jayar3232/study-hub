@@ -1,22 +1,24 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api'   // ✅ Use relative URL – works locally and via ngrok
+  baseURL: 'https://study-hub-tq9w.onrender.com/api'
 });
 
-// Request interceptor to add token
+// Add token automatically
 api.interceptors.request.use(
   config => {
     const token = localStorage.getItem('token');
+
     if (token) {
       config.headers['x-auth-token'] = token;
     }
+
     return config;
   },
   error => Promise.reject(error)
 );
 
-// Response interceptor to handle 401
+// Handle unauthorized access
 api.interceptors.response.use(
   response => response,
   error => {
@@ -24,6 +26,7 @@ api.interceptors.response.use(
       localStorage.removeItem('token');
       window.location.href = '/login';
     }
+
     return Promise.reject(error);
   }
 );
