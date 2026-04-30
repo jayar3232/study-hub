@@ -20,9 +20,7 @@ export default function FileList({ groupId }) {
     if (!selectedFile) return;
     const formData = new FormData();
     formData.append('file', selectedFile);
-    await api.post(`/files/upload/${groupId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    await api.post(`/files/upload/${groupId}`, formData);
     toast.success('File uploaded');
     setSelectedFile(null);
     fetchFiles();

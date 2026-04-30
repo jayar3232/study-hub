@@ -526,7 +526,6 @@ export default function Messages() {
     formData.append('file', file);
 
     const res = await api.post('/messages/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (progressEvent) => {
         if (!progressEvent.total) return;
         setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));

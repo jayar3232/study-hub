@@ -122,9 +122,7 @@ export default function Profile() {
     formData.append('avatar', file);
     setUploading(true);
     try {
-      const res = await api.post('/users/avatar', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const res = await api.post('/users/avatar', formData);
       setAvatar(res.data.avatar);
       login(localStorage.getItem('token'), res.data.user || { ...user, avatar: res.data.avatar });
       toast.success('Avatar updated');

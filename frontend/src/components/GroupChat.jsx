@@ -85,9 +85,7 @@ export default function GroupChat({ groupId }) {
     formData.append('file', file);
 
     try {
-      const uploadRes = await api.post(`/files/upload/${groupId}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const uploadRes = await api.post(`/files/upload/${groupId}`, formData);
       const fileUrl = uploadRes.data.url || uploadRes.data.fileUrl || `/uploads/${uploadRes.data.filename}`;
       const text = type === 'image' ? 'Sent an image' : 'Sent a video';
       const res = await api.post('/group-chat', { groupId, text, fileUrl, fileType: type });

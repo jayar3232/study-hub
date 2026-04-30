@@ -1306,7 +1306,6 @@ export default function GroupPage() {
         const formData = new FormData();
         formData.append('file', newPostMedia);
         const uploadRes = await api.post(`/files/upload/${id}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) return;
             setPostUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
@@ -1538,7 +1537,6 @@ export default function GroupPage() {
 
     try {
       const res = await api.post(`/files/upload/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (!progressEvent.total) return;
           setFileUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
@@ -1584,9 +1582,7 @@ export default function GroupPage() {
     setUploadingGroupPhoto(true);
 
     try {
-      const res = await api.post(`/groups/${id}/photo`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const res = await api.post(`/groups/${id}/photo`, formData);
       setGroup(res.data);
       window.dispatchEvent(new Event('groupsUpdated'));
       fetchActivity();
@@ -1639,7 +1635,6 @@ export default function GroupPage() {
 
     try {
       const res = await api.post(`/memories/group/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (!progressEvent.total) return;
           setMemoryUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
