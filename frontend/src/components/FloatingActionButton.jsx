@@ -8,7 +8,7 @@ export default function FloatingActionButton({ onGroupCreate, onNewChat }) {
   const navigate = useNavigate();
 
   const actions = [
-    { icon: Users, label: 'Create Group', onClick: () => { onGroupCreate(); setOpen(false); } },
+    { icon: Users, label: 'Create Workspace', onClick: () => { onGroupCreate(); setOpen(false); } },
     { icon: MessageCircle, label: 'New Chat', onClick: () => { navigate('/messages'); setOpen(false); } },
   ];
 

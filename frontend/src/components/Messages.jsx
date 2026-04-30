@@ -17,6 +17,7 @@ import {
   Search,
   Send,
   Smile,
+  StickyNote,
   Square,
   Trash2,
   User,
@@ -27,12 +28,12 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmojiPicker from 'emoji-picker-react';
-import useSound from 'use-sound';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import NewChatModal from './NewChatModal';
 import { resolveMediaUrl } from '../utils/media';
+import { playUiSound } from '../utils/sound';
 
 let socket;
 
@@ -103,7 +104,14 @@ export default function Messages() {
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [actionMenuMessageId, setActionMenuMessageId] = useState(null);
-  const [playNotification] = useSound('/sounds/ding.mp3', { soundEnabled, volume: 0.5 });
+  const [showPinnedPanel, setShowPinnedPanel] = useState(false);
+  const [focusedMessageId, setFocusedMessageId] = useState(null);
+  const [lastSeenByUser, setLastSeenByUser] = useState({});
+  const [myNote, setMyNote] = useState(null);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [userNotes, setUserNotes] = useState({});
+  const [, setPresenceClock] = useState(0);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -116,6 +124,7 @@ export default function Messages() {
   const typingTimeoutRef = useRef(null);
   const typingUsersTimeoutRef = useRef({});
   const selectedUserRef = useRef(null);
+  const messageRefs = useRef({});
 
   const currentUserId = getEntityId(user);
 
@@ -143,15 +152,47 @@ export default function Messages() {
     window.dispatchEvent(new CustomEvent('unreadMessages', { detail: { count: unreadTotal } }));
   };
 
+  const rememberLastSeen = (items = []) => {
+    setLastSeenByUser(prev => {
+      const next = { ...prev };
+      items.forEach(item => {
+        const person = item?.user || item;
+        const personId = getEntityId(person);
+        if (personId && person?.lastSeen) next[personId] = person.lastSeen;
+      });
+      return next;
+    });
+  };
+
   const fetchConversations = useCallback(async () => {
     try {
       const res = await api.get('/messages/conversations');
       setConversations(res.data);
+      rememberLastSeen(res.data);
       updateUnreadBadge(res.data);
       return res.data;
     } catch (err) {
       console.error(err);
       return [];
+    }
+  }, []);
+
+  const fetchUserNotes = useCallback(async () => {
+    try {
+      const [myNoteRes, activeNotesRes] = await Promise.all([
+        api.get('/notes/me'),
+        api.get('/notes/active')
+      ]);
+
+      setMyNote(myNoteRes.data || null);
+      setNoteText(myNoteRes.data?.text || '');
+      setUserNotes((activeNotesRes.data || []).reduce((map, note) => {
+        const noteUserId = getEntityId(note.userId);
+        if (noteUserId) map[noteUserId] = note;
+        return map;
+      }, {}));
+    } catch (err) {
+      console.error('User notes failed', err);
     }
   }, []);
 
@@ -189,6 +230,7 @@ export default function Messages() {
     try {
       const res = await api.get(`/messages/${id}`);
       setMessages(res.data);
+      rememberLastSeen(res.data.flatMap(message => [message.from, message.to]));
       await markChatAsRead(id);
       scrollToBottom('auto');
     } catch (err) {
@@ -201,12 +243,12 @@ export default function Messages() {
   useEffect(() => {
     const load = async () => {
       setInitialLoading(true);
-      await fetchConversations();
+      await Promise.all([fetchConversations(), fetchUserNotes()]);
       setInitialLoading(false);
     };
 
     load();
-  }, [fetchConversations]);
+  }, [fetchConversations, fetchUserNotes]);
 
   useEffect(() => {
     if (!currentUserId) return undefined;
@@ -247,17 +289,25 @@ export default function Messages() {
     };
 
     const onUserOnline = (userId) => {
+      const normalizedUserId = getEntityId(userId);
+      if (!normalizedUserId) return;
       setOnlineUsers(prev => {
         const next = new Set(prev);
-        next.add(String(userId));
+        next.add(normalizedUserId);
         return next;
       });
     };
 
-    const onUserOffline = (userId) => {
+    const onUserOffline = (payload) => {
+      const userId = getEntityId(payload?.userId || payload);
+      if (!userId) return;
+      if (payload?.lastSeen) {
+        setLastSeenByUser(prev => ({ ...prev, [userId]: payload.lastSeen }));
+      }
+
       setOnlineUsers(prev => {
         const next = new Set(prev);
-        next.delete(String(userId));
+        next.delete(userId);
         return next;
       });
     };
@@ -328,11 +378,11 @@ export default function Messages() {
         scrollToBottom();
 
         if (fromId !== currentUserId) {
-          if (soundEnabled) playNotification();
+          if (soundEnabled) playUiSound('message', 0.5);
           markChatAsRead(fromId);
         }
       } else if (toId === currentUserId && fromId !== currentUserId) {
-        if (soundEnabled) playNotification();
+        if (soundEnabled) playUiSound('message', 0.5);
         toast.success(`New message from ${getDisplayName(message.from, 'someone')}`);
       }
     };
@@ -429,7 +479,6 @@ export default function Messages() {
     currentUserId,
     fetchConversations,
     markChatAsRead,
-    playNotification,
     scrollToBottom,
     soundEnabled
   ]);
@@ -445,6 +494,8 @@ export default function Messages() {
     setReplyingTo(null);
     setEmojiPickerMessageId(null);
     setActionMenuMessageId(null);
+    setShowPinnedPanel(false);
+    setFocusedMessageId(null);
     clearAttachment();
     setOtherUserTyping(false);
   }, [clearAttachment, fetchMessages, selectedUser]);
@@ -463,6 +514,11 @@ export default function Messages() {
       }
       Object.values(typingUsersTimeoutRef.current).forEach(clearTimeout);
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setPresenceClock(value => value + 1), 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const uploadMessageAttachment = async (file) => {
@@ -507,6 +563,7 @@ export default function Messages() {
       fetchConversations();
       setReplyingTo(null);
       clearAttachment();
+      if (soundEnabled) playUiSound('send', 0.35);
       scrollToBottom();
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to send');
@@ -514,6 +571,44 @@ export default function Messages() {
     } finally {
       setSending(false);
       setUploadProgress(0);
+    }
+  };
+
+  const handleSaveNote = async (event) => {
+    event.preventDefault();
+    const text = noteText.trim();
+    if (!text) return;
+
+    setSavingNote(true);
+    try {
+      const res = await api.post('/notes/me', { text });
+      setMyNote(res.data);
+      setUserNotes(prev => ({ ...prev, [currentUserId]: res.data }));
+      playUiSound('success');
+      toast.success('Note posted for 2 days');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to post note');
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleClearNote = async () => {
+    setSavingNote(true);
+    try {
+      await api.delete('/notes/me');
+      setMyNote(null);
+      setNoteText('');
+      setUserNotes(prev => {
+        const next = { ...prev };
+        delete next[currentUserId];
+        return next;
+      });
+      toast.success('Note removed');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to remove note');
+    } finally {
+      setSavingNote(false);
     }
   };
 
@@ -657,6 +752,7 @@ export default function Messages() {
     try {
       const res = await api.put(`/messages/${messageId}/pin`);
       setMessages(prev => prev.map(message => getEntityId(message) === messageId ? res.data : message));
+      setShowPinnedPanel(res.data.pinned);
       toast.success(res.data.pinned ? 'Pinned' : 'Unpinned');
     } catch (err) {
       toast.error('Failed to pin');
@@ -710,7 +806,15 @@ export default function Messages() {
   }, [currentUserId, messages]);
 
   const pinnedMessages = useMemo(() => messages.filter(message => message.pinned), [messages]);
-  const normalMessages = useMemo(() => messages.filter(message => !message.pinned), [messages]);
+
+  const scrollToPinnedMessage = (messageId) => {
+    setShowPinnedPanel(false);
+    setFocusedMessageId(messageId);
+    requestAnimationFrame(() => {
+      messageRefs.current[messageId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    setTimeout(() => setFocusedMessageId(null), 1800);
+  };
 
   const filteredConversations = useMemo(() => {
     const query = conversationSearch.trim().toLowerCase();
@@ -727,25 +831,34 @@ export default function Messages() {
 
   const selectedUserId = getEntityId(selectedUser);
   const selectedIsOnline = selectedUserId ? onlineUsers.has(selectedUserId) : false;
+  const selectedLastSeen = selectedUserId ? lastSeenByUser[selectedUserId] || selectedUser?.lastSeen : null;
+  const offlineText = selectedLastSeen
+    ? `Offline ${formatDistanceToNow(new Date(selectedLastSeen), { addSuffix: true })}`
+    : 'Offline';
   const presenceText = !socketConnected
     ? 'Reconnecting...'
     : !presenceReady
       ? 'Checking status...'
       : selectedIsOnline
         ? 'Online now'
-        : 'Offline';
+        : offlineText;
 
   useEffect(() => {
     if (!selectedUserId || !socket) return undefined;
 
     let cancelled = false;
-    const updateStatus = (isOnline) => {
+    const updateStatus = (payload) => {
+      const isOnline = typeof payload === 'object' ? payload.online : payload;
+      const lastSeen = typeof payload === 'object' ? payload.lastSeen : null;
       setOnlineUsers(prev => {
         const next = new Set(prev);
         if (isOnline) next.add(selectedUserId);
         else next.delete(selectedUserId);
         return next;
       });
+      if (lastSeen) {
+        setLastSeenByUser(prev => ({ ...prev, [selectedUserId]: lastSeen }));
+      }
       setPresenceReady(true);
     };
 
@@ -756,7 +869,7 @@ export default function Messages() {
 
     api.get(`/presence/online/${selectedUserId}`)
       .then(res => {
-        if (!cancelled) updateStatus(!!res.data?.online);
+        if (!cancelled) updateStatus({ online: !!res.data?.online, lastSeen: res.data?.lastSeen });
       })
       .catch(err => console.error('Presence status fallback failed', err));
 
@@ -874,7 +987,7 @@ export default function Messages() {
   }
 
   return (
-    <div className="h-[calc(100vh-2rem)] overflow-hidden rounded-2xl border border-white/60 bg-white/85 shadow-2xl shadow-pink-500/10 backdrop-blur-xl dark:border-gray-700/70 dark:bg-gray-900/85 md:h-[calc(100vh-3rem)]">
+    <div className="h-[calc(100svh-8rem)] overflow-hidden rounded-2xl border border-white/60 bg-white/85 shadow-2xl shadow-pink-500/10 backdrop-blur-xl dark:border-gray-700/70 dark:bg-gray-900/85 md:h-[calc(100vh-3rem)]">
       <div className="flex h-full flex-col">
         <div className="relative overflow-hidden border-b border-white/60 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-500 px-5 py-4 text-white dark:border-gray-800">
           <motion.div
@@ -926,6 +1039,39 @@ export default function Messages() {
                 </div>
               </div>
 
+              <form onSubmit={handleSaveNote} className="mb-3 rounded-2xl border border-pink-100 bg-pink-50/70 p-3 dark:border-pink-900/50 dark:bg-pink-950/20">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                    <StickyNote size={16} className="text-pink-500" />
+                    Your note
+                  </span>
+                  <span className="text-[11px] font-semibold text-pink-600 dark:text-pink-300">2 days</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={noteText}
+                    onChange={event => setNoteText(event.target.value.slice(0, 140))}
+                    placeholder="Feeling focused today..."
+                    className="min-w-0 flex-1 rounded-full border border-white bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingNote || !noteText.trim()}
+                    className="rounded-full bg-gray-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:opacity-45 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-200"
+                  >
+                    Post
+                  </button>
+                </div>
+                {myNote && (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-300">
+                    <span className="line-clamp-1">Live: {myNote.text}</span>
+                    <button type="button" onClick={handleClearNote} disabled={savingNote} className="font-semibold text-rose-500 hover:text-rose-600">
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </form>
+
               <div className="relative">
                 <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -958,6 +1104,7 @@ export default function Messages() {
                     const isOnline = onlineUsers.has(otherUserId);
                     const isTyping = typingUsers.has(otherUserId);
                     const isActive = selectedUserId === otherUserId;
+                    const activeNote = userNotes[otherUserId];
 
                     return (
                       <motion.button
@@ -1002,6 +1149,11 @@ export default function Messages() {
                               </span>
                             )}
                           </div>
+                          {activeNote && (
+                            <p className="mt-1 line-clamp-1 rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-pink-600 dark:bg-gray-950/70 dark:text-pink-300">
+                              Note: {activeNote.text}
+                            </p>
+                          )}
                         </div>
                       </motion.button>
                     );
@@ -1032,7 +1184,26 @@ export default function Messages() {
                   <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-pink-500' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
+                  {userNotes[selectedUserId] && (
+                    <div className="mt-1 line-clamp-1 text-xs font-medium text-pink-500">
+                      Note: {userNotes[selectedUserId].text}
+                    </div>
+                  )}
                 </div>
+                <button
+                  onClick={() => setShowPinnedPanel(value => !value)}
+                  disabled={pinnedMessages.length === 0}
+                  className="relative rounded-full p-2 text-gray-500 transition hover:bg-yellow-50 hover:text-yellow-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-yellow-950/30"
+                  aria-label="View pinned messages"
+                  title="View pinned messages"
+                >
+                  <Pin size={18} />
+                  {pinnedMessages.length > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-yellow-500 px-1 text-[11px] font-bold text-white">
+                      {pinnedMessages.length > 9 ? '9+' : pinnedMessages.length}
+                    </span>
+                  )}
+                </button>
                 <button
                   onClick={handleDeleteConversation}
                   className="rounded-full p-2 text-gray-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
@@ -1042,6 +1213,51 @@ export default function Messages() {
                   <Trash2 size={18} />
                 </button>
               </header>
+
+              <AnimatePresence>
+                {showPinnedPanel && pinnedMessages.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="border-b border-yellow-200 bg-yellow-50/95 px-4 py-3 shadow-sm dark:border-yellow-900/60 dark:bg-yellow-950/20"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-bold text-yellow-800 dark:text-yellow-200">
+                        <Pin size={15} />
+                        Pinned messages
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPinnedPanel(false)}
+                        className="rounded-full p-1 text-yellow-700 transition hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-950/50"
+                        aria-label="Close pinned messages"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {pinnedMessages.map(message => {
+                        const isMe = getEntityId(message.from) === currentUserId;
+                        const sender = isMe ? user : selectedUser;
+                        const messageId = getEntityId(message);
+
+                        return (
+                          <button
+                            key={messageId}
+                            type="button"
+                            onClick={() => scrollToPinnedMessage(messageId)}
+                            className="min-w-[220px] max-w-xs rounded-xl border border-yellow-200 bg-white px-3 py-2 text-left text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-yellow-900/60 dark:bg-gray-900"
+                          >
+                            <span className="block truncate text-xs font-bold text-yellow-700 dark:text-yellow-300">{isMe ? 'You' : sender?.name}</span>
+                            <span className="mt-1 block truncate text-gray-700 dark:text-gray-200">{getMessageSnippet(message)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
                 {loading ? (
@@ -1054,42 +1270,8 @@ export default function Messages() {
                   </div>
                 ) : (
                   <>
-                    {pinnedMessages.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mb-5 rounded-2xl border border-yellow-200 bg-yellow-50/80 p-3 shadow-sm dark:border-yellow-900/70 dark:bg-yellow-950/20"
-                      >
-                        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-yellow-700 dark:text-yellow-300">
-                          <Pin size={13} /> Pinned
-                        </div>
-                        <div className="space-y-2">
-                          {pinnedMessages.map(message => {
-                            const isMe = getEntityId(message.from) === currentUserId;
-                            const sender = isMe ? user : selectedUser;
-
-                            return (
-                              <div key={getEntityId(message)} className="flex items-center gap-2 rounded-xl bg-white/70 p-2 text-sm dark:bg-gray-900/60">
-                                {renderAvatar(sender, 'h-7 w-7', 14)}
-                                <div className="min-w-0 flex-1 truncate">
-                                  <span className="font-semibold">{isMe ? 'You' : sender.name}:</span> {getMessageSnippet(message)}
-                                </div>
-                                <button
-                                  onClick={() => handlePin(getEntityId(message))}
-                                  className="rounded-full p-1 text-gray-400 transition hover:bg-yellow-100 hover:text-yellow-600 dark:hover:bg-yellow-950"
-                                  aria-label="Unpin message"
-                                >
-                                  <PinOff size={14} />
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    )}
-
                     <AnimatePresence initial={false}>
-                      {normalMessages.map((message) => {
+                      {messages.map((message) => {
                         const messageId = getEntityId(message);
                         const isMe = getEntityId(message.from) === currentUserId;
                         const sender = isMe ? user : selectedUser;
@@ -1099,12 +1281,16 @@ export default function Messages() {
                         return (
                           <motion.div
                             key={messageId}
+                            ref={(node) => {
+                              if (node) messageRefs.current[messageId] = node;
+                              else delete messageRefs.current[messageId];
+                            }}
                             variants={messageVariants}
                             initial="hidden"
                             animate="visible"
                             exit="hidden"
                             transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-                            className={`mb-4 flex ${isMe ? 'justify-end' : 'justify-start'} group`}
+                            className={`mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
                           >
                             {!isMe && (
                               <div className="mr-2 mt-5 shrink-0">
@@ -1127,6 +1313,14 @@ export default function Messages() {
                                   <MessageAttachment message={message} isMe={isMe} />
                                   {message.text && !message.unsent && (
                                     <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{message.text}</p>
+                                  )}
+                                  {message.pinned && !message.unsent && (
+                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                      isMe ? 'bg-white/15 text-white/85' : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200'
+                                    }`}>
+                                      <Pin size={11} />
+                                      Pinned
+                                    </span>
                                   )}
                                 </div>
 
@@ -1169,8 +1363,15 @@ export default function Messages() {
                                         <Smile size={14} />
                                       </button>
                                       {emojiPickerMessageId === messageId && (
-                                        <div className={`absolute bottom-7 z-30 ${isMe ? 'right-0' : 'left-0'}`}>
-                                          <EmojiPicker onEmojiClick={(emoji) => handleReaction(messageId, emoji.emoji)} />
+                                        <div className={`absolute bottom-7 z-30 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl shadow-2xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                          <EmojiPicker
+                                            onEmojiClick={(emoji) => handleReaction(messageId, emoji.emoji)}
+                                            width={300}
+                                            height={340}
+                                            lazyLoadEmojis
+                                            skinTonesDisabled
+                                            previewConfig={{ showPreview: false }}
+                                          />
                                         </div>
                                       )}
                                     </div>

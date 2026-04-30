@@ -7,6 +7,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
 const auth = require('./middleware/auth');
+const User = require('./models/User');
 
 dotenv.config();
 
@@ -88,6 +89,9 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/group-chat', require('./routes/groupChat'));
+app.use('/api/memories', require('./routes/memories'));
+app.use('/api/notes', require('./routes/notes'));
+app.use('/api/activity', require('./routes/activity'));
 
 const notifications = require('./routes/notifications');
 app.use('/api/notifications', notifications.router);
@@ -167,8 +171,17 @@ app.get('/api/presence/online', auth, (req, res) => {
   res.json({ users: getOnlineUserIds() });
 });
 
-app.get('/api/presence/online/:userId', auth, (req, res) => {
-  res.json({ online: onlineUsers.has(normalizeId(req.params.userId)) });
+app.get('/api/presence/online/:userId', auth, async (req, res) => {
+  try {
+    const userId = normalizeId(req.params.userId);
+    const user = await User.findById(userId).select('lastSeen');
+    res.json({
+      online: onlineUsers.has(userId),
+      lastSeen: user?.lastSeen || null
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
 });
 
 io.on('connection', (socket) => {
@@ -198,10 +211,14 @@ io.on('connection', (socket) => {
   });
 
   // Check online status
-  socket.on('check-online', (userId, callback) => {
-    const isOnline = onlineUsers.has(normalizeId(userId));
+  socket.on('check-online', async (userId, callback) => {
+    const normalizedUserId = normalizeId(userId);
+    const isOnline = onlineUsers.has(normalizedUserId);
 
-    if (callback) callback(isOnline);
+    if (callback) {
+      const user = await User.findById(normalizedUserId).select('lastSeen').catch(() => null);
+      callback({ online: isOnline, lastSeen: user?.lastSeen || null });
+    }
   });
 
   socket.on('get-online-users', (callback) => {
@@ -270,13 +287,17 @@ io.on('connection', (socket) => {
   });
 
   // Disconnect
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     const disconnectedUserId = removeUserSocket(socket);
 
     if (disconnectedUserId) {
+      const lastSeen = new Date();
+      await User.findByIdAndUpdate(disconnectedUserId, { lastSeen }).catch(err => {
+        console.log('Last seen update failed:', err.message);
+      });
       console.log(`User ${disconnectedUserId} went offline`);
 
-      socket.broadcast.emit('user-offline', disconnectedUserId);
+      socket.broadcast.emit('user-offline', { userId: disconnectedUserId, lastSeen });
       broadcastOnlineUsers();
     }
 

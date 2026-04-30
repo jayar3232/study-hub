@@ -5,11 +5,20 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
+import { playUiSound } from '../utils/sound';
 
 let socket;
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 const getUserInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?');
+const getFileName = (value = '') => {
+  try {
+    const cleanValue = value.split('?')[0];
+    return decodeURIComponent(cleanValue.split('/').pop() || 'Attachment');
+  } catch {
+    return value.split('/').pop() || 'Attachment';
+  }
+};
 
 export default function GroupChat({ groupId }) {
   const { user } = useAuth();
@@ -60,6 +69,7 @@ export default function GroupChat({ groupId }) {
 
     try {
       const res = await api.post('/group-chat', { groupId, text: trimmedText });
+      playUiSound('send');
       socket.emit('send-group-message', { groupId, message: res.data });
     } catch (err) {
       console.error('Send error', err);
@@ -81,6 +91,7 @@ export default function GroupChat({ groupId }) {
       const fileUrl = uploadRes.data.url || uploadRes.data.fileUrl || `/uploads/${uploadRes.data.filename}`;
       const text = type === 'image' ? 'Sent an image' : 'Sent a video';
       const res = await api.post('/group-chat', { groupId, text, fileUrl, fileType: type });
+      playUiSound('send');
       socket.emit('send-group-message', { groupId, message: res.data });
     } catch (err) {
       console.error('Media upload error', err);
@@ -191,17 +202,43 @@ export default function GroupChat({ groupId }) {
     if (message.fileUrl && message.fileType === 'image') {
       const mediaUrl = resolveMediaUrl(message.fileUrl);
       return (
-        <img
-          src={mediaUrl}
-          alt="attachment"
-          className="mt-1 max-h-64 cursor-pointer rounded-xl object-contain"
-          onClick={() => window.open(mediaUrl)}
-        />
+        <div className="space-y-2">
+          {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+          <img
+            src={mediaUrl}
+            alt="attachment"
+            className="mt-1 max-h-64 cursor-pointer rounded-xl object-contain"
+            onClick={() => window.open(mediaUrl)}
+          />
+        </div>
       );
     }
 
     if (message.fileUrl && message.fileType === 'video') {
-      return <video controls className="mt-1 max-h-64 rounded-xl" src={resolveMediaUrl(message.fileUrl)} />;
+      return (
+        <div className="space-y-2">
+          {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+          <video controls className="mt-1 max-h-64 rounded-xl" src={resolveMediaUrl(message.fileUrl)} />
+        </div>
+      );
+    }
+
+    if (message.fileUrl) {
+      const mediaUrl = resolveMediaUrl(message.fileUrl);
+      return (
+        <div className="space-y-2">
+          {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+          <a
+            href={mediaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 flex items-center justify-between gap-3 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm transition hover:bg-white/15"
+          >
+            <span className="truncate">{getFileName(message.fileUrl)}</span>
+            <span className="font-semibold">Open</span>
+          </a>
+        </div>
+      );
     }
 
     return <p className="whitespace-pre-wrap break-words">{message.text}</p>;
@@ -222,6 +259,7 @@ export default function GroupChat({ groupId }) {
       scrollToBottom();
 
       if (getEntityId(message.userId) !== currentUserId) {
+        playUiSound('message');
         markMessagesSeen([getEntityId(message)]);
       }
     };

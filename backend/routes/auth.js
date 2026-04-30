@@ -15,6 +15,7 @@ const toClientUser = (user) => ({
   course: user.course,
   bio: user.bio,
   avatar: user.avatar,
+  lastSeen: user.lastSeen,
   createdAt: user.createdAt
 });
 

@@ -48,10 +48,10 @@ export default function GroupMembers({ groupId }) {
   };
 
   const kickMember = async (memberId, memberName) => {
-    if (!window.confirm(`Kick ${memberName} from the group?`)) return;
+    if (!window.confirm(`Remove ${memberName} from the workspace?`)) return;
     try {
       await api.delete(`/groups/${groupId}/kick/${memberId}`);
-      toast.success(`${memberName} kicked`);
+      toast.success(`${memberName} removed`);
       fetchMembers();
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to kick');
@@ -59,10 +59,10 @@ export default function GroupMembers({ groupId }) {
   };
 
   const promoteToCoCreator = async (memberId, memberName) => {
-    if (!window.confirm(`Promote ${memberName} to co-creator?`)) return;
+    if (!window.confirm(`Promote ${memberName} to admin?`)) return;
     try {
       await api.put(`/groups/${groupId}/promote/${memberId}`);
-      toast.success(`${memberName} is now co-creator`);
+      toast.success(`${memberName} is now an admin`);
       fetchMembers();
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Promotion failed');
@@ -70,7 +70,7 @@ export default function GroupMembers({ groupId }) {
   };
 
   const demoteToMember = async (memberId, memberName) => {
-    if (!window.confirm(`Demote ${memberName} from co-creator to member?`)) return;
+    if (!window.confirm(`Demote ${memberName} from admin to member?`)) return;
     try {
       await api.put(`/groups/${groupId}/demote/${memberId}`);
       toast.success(`${memberName} demoted to member`);
@@ -89,12 +89,17 @@ export default function GroupMembers({ groupId }) {
   };
 
   const getRoleBadge = (role) => {
+    const labels = {
+      creator: 'Owner',
+      'co-creator': 'Admin',
+      member: 'Member'
+    };
     const styles = {
       creator: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
       'co-creator': 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
       member: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
     };
-    return <span className={`text-xs px-2 py-0.5 rounded-full ${styles[role]}`}>{role}</span>;
+    return <span className={`text-xs px-2 py-0.5 rounded-full ${styles[role]}`}>{labels[role] || 'Member'}</span>;
   };
 
   if (loading) {
@@ -118,7 +123,7 @@ export default function GroupMembers({ groupId }) {
     <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
         <Users size={20} className="text-pink-500" />
-        <h3 className="font-semibold text-gray-900 dark:text-white">Members ({members.length})</h3>
+        <h3 className="font-semibold text-gray-900 dark:text-white">Workspace Members ({members.length})</h3>
       </div>
       <div className="space-y-2">
         {members.map(member => {
@@ -161,7 +166,7 @@ export default function GroupMembers({ groupId }) {
                   <button
                     onClick={() => promoteToCoCreator(member._id, member.name)}
                     className="p-1.5 text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition"
-                    title="Promote to co-creator"
+                    title="Promote to admin"
                   >
                     <ArrowUp size={16} />
                   </button>

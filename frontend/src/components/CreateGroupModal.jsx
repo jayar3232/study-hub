@@ -6,6 +6,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
   const [groupName, setGroupName] = useState('');
   const [groupDesc, setGroupDesc] = useState('');
   const [focused, setFocused] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -13,14 +14,21 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
       setGroupName('');
       setGroupDesc('');
       setFocused(null);
+      setSubmitting(false);
     }
   }, [isOpen]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!groupName.trim()) return;
-    onCreate(groupName, groupDesc);
-    onClose();
+    if (!groupName.trim() || submitting) return;
+
+    setSubmitting(true);
+    try {
+      const created = await onCreate(groupName, groupDesc);
+      if (created !== false) onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -53,7 +61,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
                   <div className="p-2 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600">
                     <Sparkles size={18} className="text-white" />
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create New Group</h2>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create New Workspace</h2>
                 </div>
                 <button
                   onClick={onClose}
@@ -89,7 +97,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
                         : 'text-gray-500 dark:text-gray-400 translate-y-4'
                     }`}
                   >
-                    Group name
+                    Workspace name
                   </label>
                 </div>
 
@@ -135,13 +143,13 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
                       </span>
                     </div>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                      {groupName || 'Group name preview'}
+                      {groupName || 'Workspace name preview'}
                     </h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      {groupDesc || 'Description preview – this is how your group card will look.'}
+                      {groupDesc || 'Description preview - this is how your workspace card will look.'}
                     </p>
                     <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                      <div className="text-xs text-gray-400 font-mono">JOIN CODE</div>
+                      <div className="text-xs text-gray-400 font-mono">ACCESS CODE</div>
                       <div className="flex items-center gap-1 text-pink-500 text-sm font-medium">
                         Enter <ArrowRight size={14} />
                       </div>
@@ -154,17 +162,19 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
                   <button
                     type="button"
                     onClick={onClose}
+                    disabled={submitting}
                     className="px-5 py-2 rounded-xl font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                   >
                     Cancel
                   </button>
                   <motion.button
                     type="submit"
+                    disabled={submitting}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="px-5 py-2 rounded-xl font-medium bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md hover:shadow-lg transition"
+                    className="px-5 py-2 rounded-xl font-medium bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md hover:shadow-lg transition disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Create Group
+                    {submitting ? 'Creating...' : 'Create Workspace'}
                   </motion.button>
                 </div>
               </form>

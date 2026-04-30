@@ -21,6 +21,7 @@ const toClientUser = (user) => ({
   course: user.course,
   bio: user.bio,
   avatar: user.avatar,
+  lastSeen: user.lastSeen,
   createdAt: user.createdAt
 });
 
@@ -153,7 +154,7 @@ router.get('/search', auth, async (req, res) => {
         { name: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } }
       ]
-    }).select('name email avatar').limit(10);
+    }).select('name email avatar lastSeen').limit(10);
     res.json(users);
   } catch (err) {
     res.status(500).json({ msg: err.message });

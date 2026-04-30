@@ -3,6 +3,8 @@ const auth = require('../middleware/auth');
 const GroupChat = require('../models/GroupChat');
 const Group = require('../models/Group');
 const User = require('../models/User');
+const { createNotifications } = require('../services/notifications');
+const { getMentionedMemberIds } = require('../services/mentions');
 const router = express.Router();
 
 const isGroupMember = (group, userId) => group.members.some(member => member.toString() === userId);
@@ -133,6 +135,19 @@ router.post('/', auth, async (req, res) => {
 
     const message = new GroupChat({ groupId, userId: req.user, text, fileUrl, fileType });
     await message.save();
+    const mentionedUserIds = await getMentionedMemberIds(group, text);
+    if (mentionedUserIds.length) {
+      await createNotifications({
+        io: req.app.get('io'),
+        userIds: mentionedUserIds,
+        actorId: req.user,
+        type: 'group',
+        title: `${group.name}: you were mentioned in chat`,
+        body: text,
+        href: `/group/${groupId}`,
+        meta: { groupId, messageId: message._id, mention: true }
+      });
+    }
     await message.populate('userId', 'name avatar');
     await message.populate('seenBy.userId', 'name avatar');
     res.json(message);

@@ -6,6 +6,7 @@ const auth = require('../middleware/auth');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { createNotification } = require('../services/notifications');
 const router = express.Router();
 
 const messageUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
@@ -59,12 +60,12 @@ const getFileType = (file) => {
 };
 
 const populateMessage = (messageId) => Message.findById(messageId)
-  .populate('from', 'name email avatar')
-  .populate('to', 'name email avatar')
+  .populate('from', 'name email avatar lastSeen')
+  .populate('to', 'name email avatar lastSeen')
   .populate('reactions.userId', 'name avatar')
   .populate({
     path: 'replyTo',
-    populate: { path: 'from', select: 'name email avatar' }
+    populate: { path: 'from', select: 'name email avatar lastSeen' }
   });
 
 const isParticipant = (message, userId) => (
@@ -126,7 +127,7 @@ router.get('/conversations', auth, async (req, res) => {
     const messages = await Message.find({
       $or: [{ from: req.user }, { to: req.user }],
       deletedFor: { $ne: req.user }
-    }).sort('-createdAt').populate('from', 'name email avatar').populate('to', 'name email avatar');
+    }).sort('-createdAt').populate('from', 'name email avatar lastSeen').populate('to', 'name email avatar lastSeen');
 
     const usersMap = new Map();
 
@@ -195,12 +196,12 @@ router.get('/:userId', auth, async (req, res) => {
         { from: req.params.userId, to: req.user }
       ],
       deletedFor: { $ne: req.user }
-    }).populate('from', 'name email avatar')
-      .populate('to', 'name email avatar')
+    }).populate('from', 'name email avatar lastSeen')
+      .populate('to', 'name email avatar lastSeen')
       .populate('reactions.userId', 'name avatar')
       .populate({
         path: 'replyTo',
-        populate: { path: 'from', select: 'name email avatar' }
+        populate: { path: 'from', select: 'name email avatar lastSeen' }
       })
       .sort('createdAt');
     res.json(messages);
@@ -259,6 +260,17 @@ router.post('/', auth, async (req, res) => {
       io.to(`user_${to}`).emit('receiveMessage', populatedMessage);
       io.to(`user_${req.user}`).emit('receiveMessage', populatedMessage);
     }
+
+    await createNotification({
+      io,
+      userId: to,
+      actorId: req.user,
+      type: 'message',
+      title: 'New message',
+      body: describeMessage(message),
+      href: '/messages',
+      meta: { messageId: message._id, from: req.user }
+    });
 
     res.status(201).json(populatedMessage);
   } catch (err) {

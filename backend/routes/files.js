@@ -8,6 +8,8 @@ const auth = require('../middleware/auth');
 const File = require('../models/File');
 const Group = require('../models/Group');
 const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { createNotifications } = require('../services/notifications');
+const { createGroupActivity } = require('../services/activity');
 const router = express.Router();
 
 const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -100,6 +102,25 @@ router.post('/upload/:groupId', auth, ensureGroupMember, uploadSingleFile, async
     });
     await file.save();
     await file.populate('uploadedBy', 'name avatar');
+    await createGroupActivity({
+      groupId: req.params.groupId,
+      actorId: req.user,
+      type: 'file',
+      title: 'uploaded a file',
+      detail: req.file.originalname,
+      targetId: file._id,
+      targetModel: 'File'
+    });
+    await createNotifications({
+      io: req.app.get('io'),
+      userIds: req.group.members,
+      actorId: req.user,
+      type: 'file',
+      title: `${req.group.name}: new file`,
+      body: req.file.originalname,
+      href: `/group/${req.params.groupId}`,
+      meta: { groupId: req.params.groupId, fileId: file._id }
+    });
     res.status(201).json(file);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {

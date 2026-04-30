@@ -3,7 +3,7 @@ import { Users, MessageCircle, FileText } from 'lucide-react';
 
 export default function EmptyState({ type, action }) {
   const config = {
-    groups: { icon: Users, title: 'No groups yet', message: 'Create a new group or join using a code.', buttonText: 'Create Group', buttonAction: action },
+    groups: { icon: Users, title: 'No workspaces yet', message: 'Create a new workspace or join using a code.', buttonText: 'Create Workspace', buttonAction: action },
     messages: { icon: MessageCircle, title: 'No messages yet', message: 'Start a conversation by clicking +', buttonText: 'Start Chat', buttonAction: action },
     posts: { icon: FileText, title: 'No posts yet', message: 'Be the first to share something!', buttonText: 'Create Post', buttonAction: action },
   };
