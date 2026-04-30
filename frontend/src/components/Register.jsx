@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { ArrowRight, BookOpen, Lock, Mail, User } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus } from 'lucide-react';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -15,13 +15,14 @@ export default function Register() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
+
     try {
       const res = await api.post('/auth/register', { name, email, password, course });
       login(res.data.token, res.data.user);
-      toast.success('Account created!');
+      toast.success('Account created');
       navigate('/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Registration failed');
@@ -31,28 +32,120 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-800 to-pink-700 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white/10 backdrop-blur-lg p-8 rounded-2xl shadow-2xl w-full max-w-md border border-white/20"
-      >
-        <div className="text-center mb-8">
-          <UserPlus className="w-12 h-12 text-white mx-auto mb-2" />
-          <h2 className="text-3xl font-bold text-white">Join StudyHub</h2>
-          <p className="text-purple-200 mt-2">Create your free account</p>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input type="text" placeholder="Full Name" className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-purple-200 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500" value={name} onChange={e => setName(e.target.value)} required />
-          <input type="email" placeholder="Email" className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-purple-200 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500" value={email} onChange={e => setEmail(e.target.value)} required />
-          <input type="password" placeholder="Password" className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-purple-200 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500" value={password} onChange={e => setPassword(e.target.value)} required />
-          <input type="text" placeholder="Course (optional)" className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-purple-200 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500" value={course} onChange={e => setCourse(e.target.value)} />
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="w-full bg-gradient-to-r from-green-500 to-teal-600 text-white p-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50">
-            {loading ? 'Creating account...' : 'Register'}
-          </motion.button>
-        </form>
-        <p className="text-center mt-6 text-purple-200">Already have an account? <Link to="/login" className="text-white font-semibold hover:underline">Login</Link></p>
-      </motion.div>
+    <div className="min-h-screen bg-gray-50 text-gray-950 dark:bg-gray-950 dark:text-white">
+      <div className="grid min-h-screen lg:grid-cols-[0.95fr_1fr]">
+        <main className="flex items-center justify-center px-4 py-10 sm:px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+            className="w-full max-w-md"
+          >
+            <div className="mb-8 lg:hidden">
+              <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">StudyHub</div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xl shadow-gray-200/60 dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20 sm:p-8">
+              <div className="mb-7">
+                <h2 className="text-2xl font-bold tracking-normal text-gray-950 dark:text-white">Create your account</h2>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Start your study workspace in a few details.</p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Full name</span>
+                  <div className="relative">
+                    <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                      value={name}
+                      onChange={event => setName(event.target.value)}
+                      autoComplete="name"
+                      required
+                    />
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Email</span>
+                  <div className="relative">
+                    <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="email"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                      value={email}
+                      onChange={event => setEmail(event.target.value)}
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Password</span>
+                  <div className="relative">
+                    <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="password"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                      value={password}
+                      onChange={event => setPassword(event.target.value)}
+                      autoComplete="new-password"
+                      required
+                    />
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Course</span>
+                  <div className="relative">
+                    <BookOpen size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                      value={course}
+                      onChange={event => setCourse(event.target.value)}
+                    />
+                  </div>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-gray-950/15 transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-200"
+                >
+                  {loading ? 'Creating account...' : 'Create account'}
+                  {!loading && <ArrowRight size={17} />}
+                </button>
+              </form>
+
+              <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                Already registered?{' '}
+                <Link to="/login" className="font-semibold text-pink-600 hover:text-pink-700 dark:text-pink-400">
+                  Sign in
+                </Link>
+              </p>
+            </div>
+          </motion.div>
+        </main>
+
+        <section className="hidden border-l border-gray-200 bg-white px-10 py-12 dark:border-gray-800 dark:bg-gray-900 lg:flex lg:flex-col lg:justify-between">
+          <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">StudyHub</div>
+          <div className="max-w-lg">
+            <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-pink-500">Collaborative learning</p>
+            <h1 className="text-5xl font-bold leading-tight tracking-normal text-gray-950 dark:text-white">
+              Build a calmer place for group work.
+            </h1>
+            <p className="mt-5 text-lg leading-8 text-gray-600 dark:text-gray-300">
+              Create groups, assign tasks, share files, and keep conversations connected to your class work.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
+            Your dashboard is ready immediately after signup.
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

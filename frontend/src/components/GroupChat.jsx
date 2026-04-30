@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Image as ImageIcon, Video, X, MoreVertical } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { CheckCheck, Image as ImageIcon, MoreVertical, Send, Video, X } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import io from 'socket.io-client';
-import { formatDistanceToNow } from 'date-fns';
+import { getSocket } from '../services/socket';
+import { resolveMediaUrl } from '../utils/media';
 
 let socket;
+
+const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const getUserInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?');
 
 export default function GroupChat({ groupId }) {
   const { user } = useAuth();
@@ -18,15 +22,19 @@ export default function GroupChat({ groupId }) {
   const [mediaType, setMediaType] = useState(null);
   const [activeMenuMessageId, setActiveMenuMessageId] = useState(null);
   const messagesEndRef = useRef(null);
+  const currentUserId = getEntityId(user);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    });
   };
 
   const fetchMessages = async () => {
     try {
       const res = await api.get(`/group-chat/${groupId}`);
       setMessages(res.data);
+      scrollToBottom('auto');
     } catch (err) {
       console.error('Fetch error', err);
     } finally {
@@ -34,30 +42,44 @@ export default function GroupChat({ groupId }) {
     }
   };
 
+  const markMessagesSeen = async (messageIds = []) => {
+    if (!groupId || !currentUserId) return;
+
+    try {
+      await api.put(`/group-chat/${groupId}/seen`, { messageIds });
+    } catch (err) {
+      console.error('Seen update error', err);
+    }
+  };
+
   const sendTextMessage = async (text) => {
     if (!text.trim()) return;
+
+    const trimmedText = text.trim();
     setNewMessage('');
+
     try {
-      const res = await api.post('/group-chat', { groupId, text });
+      const res = await api.post('/group-chat', { groupId, text: trimmedText });
       socket.emit('send-group-message', { groupId, message: res.data });
     } catch (err) {
       console.error('Send error', err);
-      setNewMessage(text);
+      setNewMessage(trimmedText);
     }
   };
 
   const sendMediaMessage = async (file, type) => {
     if (!file) return;
+
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
+
     try {
       const uploadRes = await api.post(`/files/upload/${groupId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      // ✅ Use relative path instead of localhost
-      const fileUrl = `/uploads/${uploadRes.data.filename}`;
-      let text = type === 'image' ? '📷 Sent an image' : '🎥 Sent a video';
+      const fileUrl = uploadRes.data.url || uploadRes.data.fileUrl || `/uploads/${uploadRes.data.filename}`;
+      const text = type === 'image' ? 'Sent an image' : 'Sent a video';
       const res = await api.post('/group-chat', { groupId, text, fileUrl, fileType: type });
       socket.emit('send-group-message', { groupId, message: res.data });
     } catch (err) {
@@ -70,14 +92,15 @@ export default function GroupChat({ groupId }) {
     }
   };
 
-  const handleFileSelect = (e, type) => {
-    const file = e.target.files[0];
+  const handleFileSelect = (event, type) => {
+    const file = event.target.files[0];
     if (!file) return;
+
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setSelectedMedia(file);
     setMediaType(type);
-    const preview = URL.createObjectURL(file);
-    setMediaPreview(preview);
-    e.target.value = '';
+    setMediaPreview(URL.createObjectURL(file));
+    event.target.value = '';
   };
 
   const cancelMedia = () => {
@@ -90,7 +113,7 @@ export default function GroupChat({ groupId }) {
   const deleteForMe = async (messageId) => {
     try {
       await api.delete(`/group-chat/me/${messageId}`);
-      setMessages(prev => prev.filter(m => m._id !== messageId));
+      setMessages(prev => prev.filter(message => getEntityId(message) !== messageId));
       setActiveMenuMessageId(null);
     } catch (err) {
       console.error('Delete for me error', err);
@@ -99,6 +122,7 @@ export default function GroupChat({ groupId }) {
 
   const deleteForEveryone = async (messageId) => {
     if (!window.confirm('Unsend this message for everyone? It will be removed for all members.')) return;
+
     try {
       await api.delete(`/group-chat/everyone/${messageId}`);
       socket.emit('delete-message-for-everyone', { messageId, groupId });
@@ -108,149 +132,272 @@ export default function GroupChat({ groupId }) {
     }
   };
 
-  const getUserInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?');
+  const renderAvatar = (person, sizeClass = 'h-8 w-8') => {
+    const avatar = resolveMediaUrl(person?.avatar);
 
-  const renderMessageContent = (msg) => {
-    if (msg.fileUrl && msg.fileType === 'image') {
-      return <img src={msg.fileUrl} alt="attachment" className="max-h-64 rounded-lg mt-1 cursor-pointer" onClick={() => window.open(msg.fileUrl)} />;
+    return (
+      <div className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-xs font-bold text-white shadow-sm`}>
+        {avatar ? (
+          <img src={avatar} alt={person?.name || 'User'} className="h-full w-full object-cover" />
+        ) : (
+          getUserInitial(person?.name)
+        )}
+      </div>
+    );
+  };
+
+  const getSeenUsers = (message) => {
+    const senderId = getEntityId(message.userId);
+
+    return (message.seenBy || [])
+      .map(entry => entry?.userId || entry)
+      .filter(person => {
+        const personId = getEntityId(person);
+        return personId && personId !== senderId && personId !== currentUserId;
+      });
+  };
+
+  const SeenStatus = ({ message }) => {
+    const seenUsers = getSeenUsers(message);
+
+    if (seenUsers.length === 0) {
+      return (
+        <div className="mt-1 flex items-center justify-end gap-1 text-[11px] font-medium text-gray-400">
+          <CheckCheck size={13} />
+          <span>Sent</span>
+        </div>
+      );
     }
-    if (msg.fileUrl && msg.fileType === 'video') {
-      return <video controls className="max-h-64 rounded-lg mt-1" src={msg.fileUrl} />;
+
+    const names = seenUsers.slice(0, 2).map(person => person.name || 'Someone').join(', ');
+    const extraCount = seenUsers.length - 2;
+    const label = extraCount > 0 ? `${names} +${extraCount}` : names;
+
+    return (
+      <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] font-medium text-sky-500">
+        <div className="flex -space-x-1">
+          {seenUsers.slice(0, 3).map(person => (
+            <div key={getEntityId(person)} className="rounded-full border border-white dark:border-gray-950">
+              {renderAvatar(person, 'h-4 w-4')}
+            </div>
+          ))}
+        </div>
+        <span>Seen by {label}</span>
+      </div>
+    );
+  };
+
+  const renderMessageContent = (message) => {
+    if (message.fileUrl && message.fileType === 'image') {
+      const mediaUrl = resolveMediaUrl(message.fileUrl);
+      return (
+        <img
+          src={mediaUrl}
+          alt="attachment"
+          className="mt-1 max-h-64 cursor-pointer rounded-xl object-contain"
+          onClick={() => window.open(mediaUrl)}
+        />
+      );
     }
-    return <p className="whitespace-pre-wrap break-words">{msg.text}</p>;
+
+    if (message.fileUrl && message.fileType === 'video') {
+      return <video controls className="mt-1 max-h-64 rounded-xl" src={resolveMediaUrl(message.fileUrl)} />;
+    }
+
+    return <p className="whitespace-pre-wrap break-words">{message.text}</p>;
   };
 
   useEffect(() => {
-    if (!socket) {
-      // ✅ Connect to current origin (works through proxy)
-      socket = io('', { transports: ['websocket'] });
-    }
+    socket = getSocket();
     socket.emit('join-group', groupId);
     fetchMessages();
 
     const handleReceive = (message) => {
-      if (message.groupId === groupId) {
-        setMessages(prev => {
-          if (prev.some(m => m._id === message._id)) return prev;
-          return [...prev, message];
-        });
-        scrollToBottom();
+      if (getEntityId(message.groupId) !== getEntityId(groupId)) return;
+
+      setMessages(prev => {
+        if (prev.some(item => getEntityId(item) === getEntityId(message))) return prev;
+        return [...prev, message];
+      });
+      scrollToBottom();
+
+      if (getEntityId(message.userId) !== currentUserId) {
+        markMessagesSeen([getEntityId(message)]);
       }
     };
+
+    const handleSeen = ({ groupId: seenGroupId, messageIds = [], seenBy }) => {
+      if (getEntityId(seenGroupId) !== getEntityId(groupId) || !seenBy?.userId) return;
+
+      const seenMessageIds = new Set(messageIds.map(String));
+      const readerId = getEntityId(seenBy.userId);
+
+      setMessages(prev => prev.map(message => {
+        if (!seenMessageIds.has(getEntityId(message))) return message;
+
+        const existingSeen = message.seenBy || [];
+        const alreadySeen = existingSeen.some(entry => getEntityId(entry?.userId || entry) === readerId);
+        if (alreadySeen) return message;
+
+        return { ...message, seenBy: [...existingSeen, seenBy] };
+      }));
+    };
+
     const handleDeleteForEveryone = (messageId) => {
-      setMessages(prev => prev.filter(m => m._id !== messageId));
+      setMessages(prev => prev.filter(message => getEntityId(message) !== getEntityId(messageId)));
     };
 
     socket.on('receive-group-message', handleReceive);
+    socket.on('group-messages-seen', handleSeen);
     socket.on('message-deleted-for-everyone', handleDeleteForEveryone);
 
     return () => {
       socket.emit('leave-group', groupId);
       socket.off('receive-group-message', handleReceive);
+      socket.off('group-messages-seen', handleSeen);
       socket.off('message-deleted-for-everyone', handleDeleteForEveryone);
     };
-  }, [groupId]);
+  }, [groupId, currentUserId]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  if (loading) return <div className="p-4 text-gray-500 dark:text-gray-400">Loading chat...</div>;
+  if (loading) {
+    return (
+      <div className="flex h-[520px] items-center justify-center rounded-2xl border border-gray-200 bg-white/80 text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
+        Loading chat...
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-[500px] bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg) => {
-          const isMe = msg.userId?._id === user?._id;
-          return (
-            <div key={msg._id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}>
-              {!isMe && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 flex items-center justify-center text-white text-sm mr-2 flex-shrink-0 overflow-hidden">
-                  {msg.userId?.avatar ? (
-                    // ✅ Use relative avatar URL
-                    <img src={msg.userId.avatar} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    getUserInitial(msg.userId?.name)
-                  )}
-                </div>
-              )}
-              <div className="relative max-w-[70%]">
-                {isMe && (
-                  <div className="absolute -left-10 top-1/2 transform -translate-y-1/2 z-10">
-                    <button
-                      onClick={() => setActiveMenuMessageId(activeMenuMessageId === msg._id ? null : msg._id)}
-                      className="p-2 bg-gray-800 text-white rounded-full hover:bg-gray-700 transition shadow-md focus:outline-none"
-                      aria-label="Message options"
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-                    {activeMenuMessageId === msg._id && (
-                      <div className="absolute left-10 top-0 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-20 w-40">
-                        <button
-                          onClick={() => deleteForMe(msg._id)}
-                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        >
-                          Delete for me
-                        </button>
-                        <button
-                          onClick={() => deleteForEveryone(msg._id)}
-                          className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        >
-                          Unsend for everyone
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className={`${isMe ? 'bg-pink-500 text-white rounded-br-none' : 'bg-gray-200 dark:bg-gray-700 rounded-bl-none'} rounded-2xl px-4 py-2 shadow-sm`}>
-                  {!isMe && <p className="text-xs font-semibold mb-1">{msg.userId?.name}</p>}
-                  {renderMessageContent(msg)}
-                  <p className="text-xs mt-1 opacity-70 text-right">
-                    {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-                  </p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
+    <div className="flex h-[min(72vh,680px)] min-h-[520px] flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white/90 shadow-xl shadow-pink-500/5 backdrop-blur dark:border-gray-800 dark:bg-gray-900/90">
+      <div className="flex items-center justify-between border-b border-gray-200/80 bg-white/85 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/85">
+        <div>
+          <h3 className="font-semibold text-gray-950 dark:text-white">Group chat</h3>
+          <p className="text-xs text-gray-500">{messages.length} message{messages.length === 1 ? '' : 's'}</p>
+        </div>
       </div>
 
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/80 p-4 dark:bg-gray-950/40">
+        <div className="space-y-4">
+          {messages.map((message) => {
+            const messageId = getEntityId(message);
+            const isMe = getEntityId(message.userId) === currentUserId;
+
+            return (
+              <div key={messageId} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}>
+                {!isMe && <div className="mr-2 mt-5">{renderAvatar(message.userId)}</div>}
+
+                <div className={`relative max-w-[78%] md:max-w-[68%] ${isMe ? 'text-right' : 'text-left'}`}>
+                  {!isMe && <p className="mb-1 px-1 text-xs font-semibold text-gray-500">{message.userId?.name}</p>}
+
+                  {isMe && (
+                    <div className="absolute -left-10 top-2 z-10 opacity-0 transition group-hover:opacity-100">
+                      <button
+                        onClick={() => setActiveMenuMessageId(activeMenuMessageId === messageId ? null : messageId)}
+                        className="rounded-full bg-white p-2 text-gray-500 shadow-md transition hover:bg-gray-100 hover:text-gray-900 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-white"
+                        aria-label="Message options"
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                      {activeMenuMessageId === messageId && (
+                        <div className="absolute left-10 top-0 z-20 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                          <button
+                            onClick={() => deleteForMe(messageId)}
+                            className="block w-full px-4 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                          >
+                            Delete for me
+                          </button>
+                          <button
+                            onClick={() => deleteForEveryone(messageId)}
+                            className="block w-full px-4 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                          >
+                            Unsend for everyone
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className={`rounded-3xl px-4 py-3 shadow-sm ${
+                    isMe
+                      ? 'rounded-br-lg bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow-pink-500/20'
+                      : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
+                  }`}>
+                    {renderMessageContent(message)}
+                    <p className={`mt-1 text-xs ${isMe ? 'text-white/75' : 'text-gray-400'}`}>
+                      {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+                    </p>
+                  </div>
+
+                  {isMe && <SeenStatus message={message} />}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      <div className="border-t border-gray-200/80 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95">
         {mediaPreview && (
-          <div className="mb-2 p-2 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">
             <div className="flex items-center gap-2">
-              {mediaType === 'image' && <img src={mediaPreview} alt="preview" className="h-10 w-10 object-cover rounded" />}
-              {mediaType === 'video' && <video src={mediaPreview} className="h-10 w-10 object-cover rounded" />}
+              {mediaType === 'image' && <img src={mediaPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
+              {mediaType === 'video' && <video src={mediaPreview} className="h-12 w-12 rounded-xl object-cover" />}
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{mediaType === 'image' ? 'Image ready' : 'Video ready'}</span>
             </div>
-            <button onClick={cancelMedia} className="text-gray-500"><X size={18} /></button>
+            <button onClick={cancelMedia} className="rounded-full p-1 text-gray-500 transition hover:bg-white dark:hover:bg-gray-900" aria-label="Cancel media">
+              <X size={18} />
+            </button>
           </div>
         )}
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-2">
           <input
             type="text"
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !uploading && sendTextMessage(newMessage)}
+            onChange={(event) => setNewMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !uploading) {
+                event.preventDefault();
+                sendTextMessage(newMessage);
+              }
+            }}
             placeholder="Type a message..."
-            className="flex-1 p-2 rounded-full border dark:bg-gray-700 focus:ring-2 focus:ring-pink-500 outline-none"
+            className="min-h-11 flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
             disabled={uploading}
           />
-          <label className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">
-            <ImageIcon size={20} className="text-pink-500" />
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, 'image')} disabled={uploading} />
+
+          <label className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach image">
+            <ImageIcon size={20} />
+            <input type="file" accept="image/*" className="hidden" onChange={(event) => handleFileSelect(event, 'image')} disabled={uploading} />
           </label>
-          <label className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">
-            <Video size={20} className="text-pink-500" />
-            <input type="file" accept="video/*" className="hidden" onChange={(e) => handleFileSelect(e, 'video')} disabled={uploading} />
+
+          <label className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach video">
+            <Video size={20} />
+            <input type="file" accept="video/*" className="hidden" onChange={(event) => handleFileSelect(event, 'video')} disabled={uploading} />
           </label>
+
           {selectedMedia ? (
-            <button onClick={() => sendMediaMessage(selectedMedia, mediaType)} className="bg-pink-500 text-white p-2 rounded-full disabled:opacity-50 hover:bg-pink-600 transition" disabled={uploading}>
-              <Send size={20} />
+            <button
+              onClick={() => sendMediaMessage(selectedMedia, mediaType)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow-lg shadow-pink-500/20 transition hover:scale-105 disabled:opacity-50"
+              disabled={uploading}
+              aria-label="Send media"
+            >
+              <Send size={19} />
             </button>
           ) : (
-            <button onClick={() => sendTextMessage(newMessage)} disabled={!newMessage.trim() || uploading} className="bg-pink-500 text-white p-2 rounded-full disabled:opacity-50 hover:bg-pink-600 transition">
-              <Send size={20} />
+            <button
+              onClick={() => sendTextMessage(newMessage)}
+              disabled={!newMessage.trim() || uploading}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow-lg shadow-pink-500/20 transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label="Send message"
+            >
+              <Send size={19} />
             </button>
           )}
         </div>

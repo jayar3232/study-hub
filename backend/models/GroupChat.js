@@ -6,6 +6,10 @@ const GroupChatSchema = new mongoose.Schema({
   text: { type: String },
   fileUrl: { type: String },
   fileType: { type: String },
+  seenBy: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    seenAt: { type: Date, default: Date.now }
+  }],
   deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   createdAt: { type: Date, default: Date.now }
 });

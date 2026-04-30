@@ -5,17 +5,75 @@ const dotenv = require('dotenv');
 const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
+const jwt = require('jsonwebtoken');
+const auth = require('./middleware/auth');
 
 dotenv.config();
 
 const app = express();
 
-// CORS Configuration
-app.use(cors({
-  origin: 'https://study-hub-app-six.vercel.app',
+const DEFAULT_CLIENT_ORIGINS = [
+  'https://study-hub-app-six.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5002',
+  'http://127.0.0.1:5002'
+];
+
+const allowedOrigins = (process.env.CLIENT_ORIGINS || DEFAULT_CLIENT_ORIGINS.join(','))
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const TUNNEL_HOST_SUFFIXES = [
+  '.trycloudflare.com',
+  '.ngrok-free.app',
+  '.ngrok.io',
+  '.loca.lt',
+  '.localtunnel.me',
+  '.localhost.run',
+  '.serveo.net',
+  '.tunnelmole.net',
+  '.devtunnels.ms'
+];
+
+const wildcardOriginPatterns = allowedOrigins
+  .filter(origin => origin.includes('*') && origin !== '*')
+  .map(origin => new RegExp(`^${origin.split('*').map(escapeRegex).join('.*')}$`));
+
+const isTunnelOrigin = (origin) => {
+  try {
+    const { hostname } = new URL(origin);
+    return TUNNEL_HOST_SUFFIXES.some(suffix => hostname.endsWith(suffix));
+  } catch {
+    return false;
+  }
+};
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+  if (isTunnelOrigin(origin)) return true;
+  return wildcardOriginPatterns.some(pattern => pattern.test(origin));
+};
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
-}));
+};
+
+// CORS Configuration
+app.use(cors(corsOptions));
 
 // Middleware
 app.use(express.json());
@@ -38,60 +96,147 @@ app.use('/api/notifications', notifications.router);
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/studyhub';
 
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.log('❌ MongoDB connection error:', err));
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.log('MongoDB connection error:', err));
 
 // Create HTTP server
 const server = http.createServer(app);
 
 // Socket.io
 const io = socketIo(server, {
-  cors: {
-    origin: 'https://study-hub-app-six.vercel.app',
-    methods: ['GET', 'POST']
-  }
+  cors: corsOptions
 });
 
-// Store online users
+app.set('io', io);
+
+// Store online users. One user can have multiple tabs/devices open.
 const onlineUsers = new Map();
 
+const normalizeId = (value) => String(value?._id || value?.id || value || '');
+
+const getOnlineUserIds = () => Array.from(onlineUsers.keys());
+
+const broadcastOnlineUsers = () => {
+  io.emit('online-users', getOnlineUserIds());
+};
+
+const addUserSocket = (userId, socketId) => {
+  const id = normalizeId(userId);
+  if (!id) return false;
+
+  const wasOffline = !onlineUsers.has(id);
+  const sockets = onlineUsers.get(id) || new Set();
+  sockets.add(socketId);
+  onlineUsers.set(id, sockets);
+  return wasOffline;
+};
+
+const registerOnlineUser = (socket, userId) => {
+  const normalizedUserId = normalizeId(userId);
+  if (!normalizedUserId) return false;
+
+  const wasOffline = addUserSocket(normalizedUserId, socket.id);
+  socket.data.userId = normalizedUserId;
+  socket.join(`user_${normalizedUserId}`);
+  broadcastOnlineUsers();
+
+  if (wasOffline) {
+    socket.broadcast.emit('user-online', normalizedUserId);
+  }
+
+  return true;
+};
+
+const removeUserSocket = (socket) => {
+  const userId = normalizeId(socket.data?.userId);
+  if (!userId || !onlineUsers.has(userId)) return null;
+
+  const sockets = onlineUsers.get(userId);
+  sockets.delete(socket.id);
+
+  if (sockets.size === 0) {
+    onlineUsers.delete(userId);
+    return userId;
+  }
+
+  onlineUsers.set(userId, sockets);
+  return null;
+};
+
+app.get('/api/presence/online', auth, (req, res) => {
+  res.json({ users: getOnlineUserIds() });
+});
+
+app.get('/api/presence/online/:userId', auth, (req, res) => {
+  res.json({ online: onlineUsers.has(normalizeId(req.params.userId)) });
+});
+
 io.on('connection', (socket) => {
-  console.log('🔌 New client connected:', socket.id);
+  console.log('New client connected:', socket.id);
+
+  const token = socket.handshake.auth?.token;
+  if (token && process.env.JWT_SECRET) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      registerOnlineUser(socket, decoded.userId);
+      console.log(`User ${decoded.userId} is online via socket auth`);
+    } catch (err) {
+      console.log('Socket auth failed:', err.message);
+    }
+  }
 
   // User online
-  socket.on('user-online', (userId) => {
-    if (userId) {
-      onlineUsers.set(userId, socket.id);
+  socket.on('user-online', (userId, callback) => {
+    const normalizedUserId = normalizeId(userId);
 
-      console.log(`✅ User ${userId} is online`);
+    if (normalizedUserId) {
+      registerOnlineUser(socket, normalizedUserId);
+      console.log(`User ${normalizedUserId} is online`);
 
-      socket.broadcast.emit('user-online', userId);
+      if (typeof callback === 'function') callback(getOnlineUserIds());
     }
   });
 
   // Check online status
   socket.on('check-online', (userId, callback) => {
-    const isOnline = onlineUsers.has(userId);
+    const isOnline = onlineUsers.has(normalizeId(userId));
 
     if (callback) callback(isOnline);
   });
 
+  socket.on('get-online-users', (callback) => {
+    if (callback) callback(getOnlineUserIds());
+  });
+
   // Typing event
   socket.on('typing', ({ to, from }) => {
-    const targetSocketId = onlineUsers.get(to);
+    const toId = normalizeId(to);
+    const fromId = normalizeId(from);
 
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('user-typing', { from });
+    if (toId && fromId) {
+      io.to(`user_${toId}`).emit('user-typing', { from: fromId });
     }
   });
 
   // Stop typing
   socket.on('stop-typing', ({ to, from }) => {
-    const targetSocketId = onlineUsers.get(to);
+    const toId = normalizeId(to);
+    const fromId = normalizeId(from);
 
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('user-stop-typing', { from });
+    if (toId && fromId) {
+      io.to(`user_${toId}`).emit('user-stop-typing', { from: fromId });
     }
+  });
+
+  // Direct messages
+  socket.on('sendMessage', (message) => {
+    const toId = normalizeId(message?.to);
+    const fromId = normalizeId(message?.from);
+
+    if (!message || !toId || !fromId) return;
+
+    io.to(`user_${toId}`).emit('receiveMessage', message);
+    socket.to(`user_${fromId}`).emit('receiveMessage', message);
   });
 
   // Join group
@@ -126,23 +271,16 @@ io.on('connection', (socket) => {
 
   // Disconnect
   socket.on('disconnect', () => {
-    let disconnectedUserId = null;
-
-    for (let [userId, sid] of onlineUsers.entries()) {
-      if (sid === socket.id) {
-        disconnectedUserId = userId;
-        onlineUsers.delete(userId);
-        break;
-      }
-    }
+    const disconnectedUserId = removeUserSocket(socket);
 
     if (disconnectedUserId) {
-      console.log(`🔴 User ${disconnectedUserId} went offline`);
+      console.log(`User ${disconnectedUserId} went offline`);
 
       socket.broadcast.emit('user-offline', disconnectedUserId);
+      broadcastOnlineUsers();
     }
 
-    console.log('🔌 Client disconnected');
+    console.log('Client disconnected');
   });
 });
 
@@ -150,5 +288,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

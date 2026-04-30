@@ -5,6 +5,7 @@ import { Home, Users, MessageCircle, User, LogOut, Sun, Moon, Menu, X } from 'lu
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { resolveMediaUrl } from '../utils/media';
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -13,6 +14,7 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const avatarSrc = resolveMediaUrl(user?.avatar);
 
   // Listen for unread message count updates from Messages component
   useEffect(() => {
@@ -90,7 +92,18 @@ export default function Layout({ children }) {
         <nav className="flex-1 p-4 space-y-2">
           {navItems.map(item => renderNavLink(item, false))}
         </nav>
-        <div className="p-4 border-t space-y-2">
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+          {user && (
+            <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/60">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-gray-900 dark:text-white">{user.name}</div>
+                <div className="truncate text-xs text-gray-500">{user.email}</div>
+              </div>
+            </div>
+          )}
           <button
             onClick={toggleTheme}
             className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -110,13 +123,20 @@ export default function Layout({ children }) {
 
       {/* Mobile header + bottom nav */}
       <div className="md:ml-64 flex flex-col min-h-screen">
-        <header className="md:hidden bg-white dark:bg-gray-800 border-b p-4 flex justify-between items-center sticky top-0 z-20">
+        <header className="md:hidden bg-white/95 dark:bg-gray-800/95 border-b border-gray-200 dark:border-gray-700 p-4 flex justify-between items-center sticky top-0 z-20 backdrop-blur">
           <h1 className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
             StudyHub
           </h1>
-          <button onClick={() => setSidebarOpen(true)}>
-            <Menu size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            {user && (
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
+              </div>
+            )}
+            <button onClick={() => setSidebarOpen(true)} className="rounded-full p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700" aria-label="Open menu">
+              <Menu size={22} />
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 p-4 pb-20 md:pb-4 overflow-x-hidden">

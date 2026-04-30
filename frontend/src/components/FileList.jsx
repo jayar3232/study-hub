@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { resolveMediaUrl } from '../utils/media';
 
 export default function FileList({ groupId }) {
   const [files, setFiles] = useState([]);
@@ -28,7 +29,7 @@ export default function FileList({ groupId }) {
   };
 
   // ✅ Use relative URL instead of localhost
-  const downloadUrl = (filename) => `/uploads/${filename}`;
+  const downloadUrl = (file) => resolveMediaUrl(file.url || file.fileUrl || `/uploads/${file.filename}`);
 
   return (
     <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
@@ -40,7 +41,7 @@ export default function FileList({ groupId }) {
         {files.map(file => (
           <li key={file._id} className="border-b border-white/20 py-2 flex justify-between text-white">
             <span>{file.originalName}</span>
-            <a href={downloadUrl(file.filename)} download className="text-pink-300 hover:text-pink-400">Download</a>
+            <a href={downloadUrl(file)} download className="text-pink-300 hover:text-pink-400">Download</a>
           </li>
         ))}
       </ul>

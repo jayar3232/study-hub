@@ -1,9 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { 
-  Plus, Users, TrendingUp, Rocket, Sparkles, ArrowRight, Copy, Check, Clock, Trash2
+import {
+  ArrowRight,
+  Check,
+  Clock,
+  Copy,
+  Plus,
+  Rocket,
+  Search,
+  Sparkles,
+  Trash2,
+  TrendingUp,
+  Users
 } from 'lucide-react';
 import api from '../services/api';
 import EmptyState from './EmptyState';
@@ -12,11 +22,35 @@ import FloatingActionButton from './FloatingActionButton';
 import CreateGroupModal from './CreateGroupModal';
 import { useAuth } from '../context/AuthContext';
 
+const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 18, scale: 0.97 },
+  visible: { opacity: 1, y: 0, scale: 1 }
+};
+
+const getGroupColor = (value = '') => {
+  const colors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(index);
+  }
+
+  return colors[Math.abs(hash) % colors.length];
+};
+
+const formatGroupDate = (date) => {
+  if (!date) return 'Ready now';
+  return `Created ${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [groups, setGroups] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [joinCode, setJoinCode] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(null);
   const navigate = useNavigate();
@@ -42,9 +76,10 @@ export default function Dashboard() {
       toast.error('Group name is required');
       return;
     }
+
     try {
       await api.post('/groups', { name, description });
-      toast.success('Group created!');
+      toast.success('Group created');
       setShowCreate(false);
       fetchGroups();
     } catch (err) {
@@ -53,13 +88,15 @@ export default function Dashboard() {
   };
 
   const joinGroup = async () => {
-    if (!joinCode.trim()) {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) {
       toast.error('Please enter a join code');
       return;
     }
+
     try {
-      await api.post('/groups/join', { joinCode });
-      toast.success('Joined group!');
+      await api.post('/groups/join', { joinCode: code });
+      toast.success('Joined group');
       setJoinCode('');
       fetchGroups();
     } catch (err) {
@@ -67,17 +104,18 @@ export default function Dashboard() {
     }
   };
 
-  const copyJoinCode = (code, e) => {
-    e.stopPropagation();
+  const copyJoinCode = (code, event) => {
+    event.stopPropagation();
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
-    toast.success('Join code copied!');
+    toast.success('Join code copied');
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  const deleteGroup = async (groupId, groupName, e) => {
-    e.stopPropagation();
+  const deleteGroup = async (groupId, groupName, event) => {
+    event.stopPropagation();
     if (!window.confirm(`Delete group "${groupName}"? This action cannot be undone. All posts, tasks and files will be permanently removed.`)) return;
+
     try {
       await api.delete(`/groups/${groupId}`);
       toast.success('Group deleted');
@@ -87,49 +125,58 @@ export default function Dashboard() {
     }
   };
 
-  const totalMembers = groups.reduce((sum, g) => sum + (g.members?.length || 0), 0);
-  const activeGroups = groups.filter(g => g.members?.length > 0).length;
+  const filteredGroups = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return groups;
+
+    return groups.filter(group => (
+      group.name?.toLowerCase().includes(query) ||
+      group.description?.toLowerCase().includes(query) ||
+      group.subject?.toLowerCase().includes(query) ||
+      group.joinCode?.toLowerCase().includes(query)
+    ));
+  }, [groups, search]);
+
+  const totalMembers = groups.reduce((sum, group) => sum + (group.members?.length || 0), 0);
+  const createdCount = groups.filter(group => getEntityId(group.creator) === getEntityId(user)).length;
+  const activeGroups = groups.filter(group => (group.members?.length || 0) > 0).length;
 
   const stats = [
-    { 
-      icon: Users, 
-      label: 'Study Groups', 
-      value: groups.length, 
+    {
+      icon: Users,
+      label: 'Study Groups',
+      value: groups.length,
+      detail: `${createdCount} created by you`,
       gradient: 'from-pink-500 to-rose-500',
-      bgGradient: 'from-pink-50 dark:from-pink-950/20 to-rose-50 dark:to-rose-950/20',
+      bgGradient: 'from-pink-50 to-rose-50 dark:from-pink-950/20 dark:to-rose-950/20'
     },
-    { 
-      icon: TrendingUp, 
-      label: 'Total Members', 
-      value: totalMembers, 
-      gradient: 'from-purple-500 to-indigo-500',
-      bgGradient: 'from-purple-50 dark:from-purple-950/20 to-indigo-50 dark:to-indigo-950/20',
+    {
+      icon: TrendingUp,
+      label: 'Total Members',
+      value: totalMembers,
+      detail: `${groups.length ? Math.round(totalMembers / groups.length) : 0} average per group`,
+      gradient: 'from-violet-500 to-indigo-500',
+      bgGradient: 'from-violet-50 to-indigo-50 dark:from-violet-950/20 dark:to-indigo-950/20'
     },
-    { 
-      icon: Rocket, 
-      label: 'Active Groups', 
-      value: activeGroups, 
-      gradient: 'from-green-500 to-emerald-500',
-      bgGradient: 'from-green-50 dark:from-green-950/20 to-emerald-50 dark:to-emerald-950/20',
-    },
+    {
+      icon: Rocket,
+      label: 'Active Groups',
+      value: activeGroups,
+      detail: 'Ready for collaboration',
+      gradient: 'from-emerald-500 to-cyan-500',
+      bgGradient: 'from-emerald-50 to-cyan-50 dark:from-emerald-950/20 dark:to-cyan-950/20'
+    }
   ];
-
-  const getRandomColor = (str) => {
-    const colors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    return colors[Math.abs(hash) % colors.length];
-  };
 
   if (loading) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-        <div className="h-32 bg-white dark:bg-gray-800 rounded-2xl animate-pulse"></div>
-        <div className="grid md:grid-cols-3 gap-6">
-          {[1,2,3].map(i => <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-6 animate-pulse h-36"></div>)}
+        <div className="h-36 rounded-2xl bg-white dark:bg-gray-800 animate-pulse" />
+        <div className="grid gap-6 md:grid-cols-3">
+          {[1, 2, 3].map(item => <div key={item} className="h-36 rounded-2xl bg-white dark:bg-gray-800 animate-pulse" />)}
         </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1,2,3,4,5,6].map(i => <GroupSkeleton key={i} />)}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map(item => <GroupSkeleton key={item} />)}
         </div>
       </motion.div>
     );
@@ -137,192 +184,226 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Banner */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
+      <motion.section
+        initial={{ opacity: 0, y: -18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative overflow-hidden bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl shadow-xl"
+        transition={{ duration: 0.45 }}
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-indigo-500 shadow-xl shadow-pink-500/15"
       >
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]"></div>
+        <div className="absolute inset-0 bg-black/15" />
         <div className="relative p-6 md:p-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="space-y-2">
-              <h2 className="text-2xl md:text-3xl font-bold text-white">
-                Welcome back, {user?.name?.split(' ')[0] || 'Student'}! 👋
-              </h2>
-              <p className="text-purple-100 max-w-md">
-                You're managing <span className="font-semibold">{groups.length}</span> study group{groups.length !== 1 && 's'}. Keep it up!
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl space-y-2">
+              <p className="text-sm font-semibold uppercase tracking-wide text-white/75">StudyHub Dashboard</p>
+              <h1 className="text-2xl font-bold tracking-normal text-white md:text-3xl">
+                Welcome back, {user?.name?.split(' ')[0] || 'Student'}
+              </h1>
+              <p className="text-sm leading-6 text-white/85 md:text-base">
+                You are managing <span className="font-semibold text-white">{groups.length}</span> study group{groups.length === 1 ? '' : 's'}. Keep your class work organized and easy to follow.
               </p>
             </div>
             <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ y: -2, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 bg-white text-gray-800 px-5 py-2.5 rounded-xl font-medium shadow-md hover:shadow-lg transition-all"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-gray-900 shadow-lg shadow-black/10 transition hover:bg-pink-50"
             >
               <Plus size={18} /> New Group
             </motion.button>
           </div>
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
         </div>
-      </motion.div>
+      </motion.section>
 
-      {/* Stats Cards */}
-      <div className="grid md:grid-cols-3 gap-6">
-        {stats.map((stat, idx) => {
+      <section className="grid gap-6 md:grid-cols-3">
+        {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (
             <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1, type: 'spring', stiffness: 200 }}
-              whileHover={{ y: -8, scale: 1.02 }}
-              className={`relative overflow-hidden bg-gradient-to-br ${stat.bgGradient} backdrop-blur-sm rounded-2xl p-6 border border-white/20 dark:border-gray-700/50 shadow-xl group`}
+              key={stat.label}
+              variants={cardVariants}
+              initial="hidden"
+              animate="visible"
+              transition={{ delay: index * 0.08, type: 'spring', damping: 22, stiffness: 240 }}
+              whileHover={{ y: -5, scale: 1.01 }}
+              className={`group relative overflow-hidden rounded-2xl border border-white/60 bg-gradient-to-br ${stat.bgGradient} p-6 shadow-lg shadow-gray-200/60 dark:border-gray-700/50 dark:shadow-black/10`}
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">{stat.label}</p>
-                  <h3 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mt-1">
-                    {stat.value}
-                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
+                  <h2 className="mt-1 text-3xl font-bold text-gray-950 dark:text-white md:text-4xl">{stat.value}</h2>
+                  <p className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">{stat.detail}</p>
                 </div>
                 <motion.div
-                  animate={{ y: [0, -8, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                  className={`p-3 rounded-2xl bg-gradient-to-br ${stat.gradient} shadow-lg`}
+                  animate={{ y: [0, -5, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: index * 0.2 }}
+                  className={`rounded-2xl bg-gradient-to-br ${stat.gradient} p-3 text-white shadow-lg`}
                 >
-                  <Icon className="w-6 h-6 text-white" />
+                  <Icon size={24} />
                 </motion.div>
               </div>
-              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"></div>
+              <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
             </motion.div>
           );
         })}
-      </div>
+      </section>
 
-      {/* Quick Actions Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-200/50 dark:border-gray-700/50"
+        transition={{ delay: 0.2 }}
+        className="flex flex-col gap-4 rounded-2xl border border-gray-200/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-gray-700/50 dark:bg-gray-800/60 lg:flex-row lg:items-center lg:justify-between"
       >
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <Sparkles size={16} className="text-pink-500" />
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+          <Sparkles size={17} className="text-pink-500" />
           <span>Quick actions</span>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <button
             onClick={() => setShowCreate(true)}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-full font-medium transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 bg-white text-gray-800 shadow-md hover:shadow-lg"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-gray-800 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg dark:bg-gray-900 dark:text-gray-100"
           >
             <Plus size={16} /> Create Group
           </button>
-          <div className="flex gap-2">
+          <div className="flex rounded-full border border-gray-200 bg-white p-1 shadow-md dark:border-gray-700 dark:bg-gray-900">
             <input
-              type="text"
-              placeholder="Enter join code"
-              className="w-40 md:w-48 py-2 px-4 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500/50 outline-none transition-all text-sm"
               value={joinCode}
-              onChange={e => setJoinCode(e.target.value)}
+              onChange={event => setJoinCode(event.target.value.toUpperCase())}
+              onKeyDown={event => {
+                if (event.key === 'Enter') joinGroup();
+              }}
+              placeholder="Enter join code"
+              className="w-44 bg-transparent px-4 text-sm font-medium uppercase tracking-wide text-gray-900 outline-none placeholder:normal-case placeholder:tracking-normal dark:text-white"
             />
             <button
               onClick={joinGroup}
-              className="px-5 py-2 rounded-full font-medium transition-all duration-200 active:scale-95 bg-white text-gray-800 shadow-md hover:shadow-lg text-sm"
+              className="rounded-full bg-gray-950 px-5 py-2 text-sm font-semibold text-white transition hover:bg-pink-600 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-200"
             >
               Join
             </button>
           </div>
         </div>
-      </motion.div>
+      </motion.section>
 
-      {/* My Groups Section */}
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">My Groups</h3>
-          <span className="text-sm text-gray-500">{groups.length} total</span>
+      <section>
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-950 dark:text-white">My Groups</h2>
+            <p className="text-sm text-gray-500">{filteredGroups.length} visible of {groups.length}</p>
+          </div>
+          <div className="relative">
+            <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Search groups"
+              className="w-full rounded-full border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-72"
+            />
+          </div>
         </div>
 
-        {groups.length === 0 ? (
+        {filteredGroups.length === 0 ? (
           <EmptyState type="groups" action={() => setShowCreate(true)} />
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {groups.map((group, idx) => {
-              const memberCount = group.members?.length || 0;
-              const groupColor = getRandomColor(group.name);
-              const isCopied = copiedCode === group.joinCode;
-              const isCreator = group.creator === user?._id || group.creator?._id === user?._id;
-              return (
-                <motion.div
-                  key={group._id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: idx * 0.05, duration: 0.3 }}
-                  whileHover={{ y: -4 }}
-                  onClick={() => navigate(`/group/${group._id}`)}
-                  className="group relative cursor-pointer bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: groupColor }}></div>
-                  <div className="p-5 pt-6">
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white line-clamp-1 flex-1">
-                        {group.name}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {isCreator && (
-                          <button
-                            onClick={(e) => deleteGroup(group._id, group.name, e)}
-                            className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition"
-                            title="Delete group"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                        <div className="flex items-center gap-1">
-                          <Users size={14} className="text-gray-400" />
-                          <span className="text-xs font-medium text-gray-500">{memberCount}</span>
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
+          >
+            <AnimatePresence>
+              {filteredGroups.map((group, index) => {
+                const memberCount = group.members?.length || 0;
+                const groupColor = getGroupColor(group.name);
+                const isCopied = copiedCode === group.joinCode;
+                const isCreator = getEntityId(group.creator) === getEntityId(user);
+
+                return (
+                  <motion.article
+                    key={group._id}
+                    variants={cardVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="hidden"
+                    transition={{ delay: index * 0.04, type: 'spring', damping: 24, stiffness: 260 }}
+                    whileHover={{ y: -4 }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/group/${group._id}`)}
+                    onKeyDown={event => {
+                      if (event.currentTarget === event.target && event.key === 'Enter') navigate(`/group/${group._id}`);
+                    }}
+                    className="group relative flex min-h-52 cursor-pointer flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-xl dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    <div className="h-1.5" style={{ backgroundColor: groupColor }} />
+                    <div className="flex flex-1 flex-col p-5">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="line-clamp-1 text-lg font-bold text-gray-950 dark:text-white">{group.name}</h3>
+                          <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                            {group.description || 'No description yet'}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isCreator && (
+                            <button
+                              onClick={event => deleteGroup(group._id, group.name, event)}
+                              className="rounded-lg p-1.5 text-red-500 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                              title="Delete group"
+                              aria-label={`Delete ${group.name}`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                            <Users size={13} /> {memberCount}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto space-y-3">
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                          {isCreator && (
+                            <span className="rounded-full bg-yellow-50 px-2.5 py-1 font-semibold text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-300">
+                              Owner
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-1 dark:bg-gray-900">
+                            <Clock size={12} /> {formatGroupDate(group.createdAt)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-700">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="text-xs text-gray-400">Code</span>
+                            <code className="rounded-md bg-gray-100 px-2 py-1 font-mono text-sm font-semibold text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                              {group.joinCode}
+                            </code>
+                            <button
+                              onClick={event => copyJoinCode(group.joinCode, event)}
+                              className="rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-pink-600 dark:hover:bg-gray-700"
+                              title="Copy join code"
+                              aria-label="Copy join code"
+                            >
+                              {isCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                            </button>
+                          </div>
+                          <span className="inline-flex items-center gap-1 text-sm font-semibold text-pink-600 transition group-hover:translate-x-1 dark:text-pink-400">
+                            Enter <ArrowRight size={14} />
+                          </span>
                         </div>
                       </div>
                     </div>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm line-clamp-2 mb-3">
-                      {group.description || 'No description yet'}
-                    </p>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">Code:</span>
-                        <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md text-gray-700 dark:text-gray-300">
-                          {group.joinCode}
-                        </code>
-                        <button
-                          onClick={(e) => copyJoinCode(group.joinCode, e)}
-                          className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                          title="Copy join code"
-                        >
-                          {isCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-gray-400" />}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1 text-pink-500 text-sm font-medium">
-                        Enter <ArrowRight size={14} />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 mt-3 text-xs text-gray-400">
-                      <Clock size={12} />
-                      <span>Active {Math.floor(Math.random() * 24)}h ago</span>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
+                  </motion.article>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
         )}
-      </div>
+      </section>
 
-      <CreateGroupModal 
-        isOpen={showCreate} 
-        onClose={() => setShowCreate(false)} 
-        onCreate={createGroup} 
+      <CreateGroupModal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={createGroup}
       />
 
       <FloatingActionButton onGroupCreate={() => setShowCreate(true)} />

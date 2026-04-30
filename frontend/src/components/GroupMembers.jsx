@@ -4,11 +4,12 @@ import { Users, Crown, Star, UserMinus, ArrowUp, ArrowDown } from 'lucide-react'
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { resolveMediaUrl } from '../utils/media';
 
 // Helper to generate avatar URL (uses UI Avatars if no real avatar)
 const getAvatarUrl = (user) => {
   if (user?.avatar && user.avatar !== '') {
-    return user.avatar;
+    return resolveMediaUrl(user.avatar);
   }
   // Fallback: generate a nice avatar with initials
   const name = user?.name || 'User';

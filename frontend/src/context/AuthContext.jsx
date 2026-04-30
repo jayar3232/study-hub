@@ -1,7 +1,10 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import api from '../services/api';
+import { disconnectSocket, getSocket, refreshSocketAuth } from '../services/socket';
 
 const AuthContext = createContext();
+
+const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -21,9 +24,35 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
+  useEffect(() => {
+    const userId = getEntityId(user);
+    if (!userId) return undefined;
+
+    const socket = getSocket();
+    const announceOnline = () => {
+      socket.emit('user-online', userId);
+    };
+
+    socket.on('connect', announceOnline);
+
+    if (socket.connected) {
+      announceOnline();
+    } else {
+      socket.connect();
+    }
+
+    const heartbeat = setInterval(announceOnline, 30000);
+
+    return () => {
+      socket.off('connect', announceOnline);
+      clearInterval(heartbeat);
+    };
+  }, [user]);
+
   const login = (newToken, userData) => {
     localStorage.setItem('token', newToken);
     api.defaults.headers.common['x-auth-token'] = newToken;
+    refreshSocketAuth();
     setToken(newToken);
     setUser(userData);
   };
@@ -31,6 +60,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     delete api.defaults.headers.common['x-auth-token'];
+    disconnectSocket();
     setToken(null);
     setUser(null);
   };

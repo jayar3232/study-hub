@@ -1,44 +1,207 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const auth = require('../middleware/auth');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const router = express.Router();
 
-// Get conversations list
+const messageUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
+fs.mkdirSync(messageUploadDir, { recursive: true });
+
+const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
+const BLOCKED_EXTENSIONS = new Set(['.bat', '.cmd', '.com', '.exe', '.msi', '.ps1', '.scr', '.sh']);
+
+const normalizeId = (value) => String(value?._id || value?.id || value || '');
+
+const localStorage = multer.diskStorage({
+  destination: messageUploadDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.\w]/g, '');
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage: isCloudStorageEnabled ? multer.memoryStorage() : localStorage,
+  limits: { fileSize: MAX_MESSAGE_UPLOAD_SIZE },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (BLOCKED_EXTENSIONS.has(ext)) {
+      const err = new Error('This file type is not allowed');
+      err.status = 400;
+      return cb(err);
+    }
+    cb(null, true);
+  }
+});
+
+const uploadSingleFile = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ msg: 'File is too large. Maximum size is 25MB.' });
+    }
+
+    return res.status(err.status || 400).json({ msg: err.message || 'Upload failed' });
+  });
+};
+
+const getFileType = (file) => {
+  const mimeType = file?.mimetype || '';
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  return 'file';
+};
+
+const populateMessage = (messageId) => Message.findById(messageId)
+  .populate('from', 'name email avatar')
+  .populate('to', 'name email avatar')
+  .populate('reactions.userId', 'name avatar')
+  .populate({
+    path: 'replyTo',
+    populate: { path: 'from', select: 'name email avatar' }
+  });
+
+const isParticipant = (message, userId) => (
+  normalizeId(message?.from) === userId || normalizeId(message?.to) === userId
+);
+
+const describeMessage = (message) => {
+  if (message.unsent) return 'Message unsent';
+  if (message.text?.trim()) return message.text;
+  if (message.fileType === 'image') return 'Sent a photo';
+  if (message.fileType === 'video') return 'Sent a video';
+  if (message.fileType === 'audio') return 'Sent a voice message';
+  if (message.fileUrl) return 'Sent a file';
+  return 'Message';
+};
+
+const emitMessageUpdated = (req, message) => {
+  const io = req.app.get('io');
+  if (!io || !message) return;
+
+  io.to(`user_${normalizeId(message.from)}`).emit('message-updated', message);
+  io.to(`user_${normalizeId(message.to)}`).emit('message-updated', message);
+};
+
+router.post('/upload', auth, uploadSingleFile, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ msg: 'No file uploaded' });
+
+    const uploadedFile = isCloudStorageEnabled
+      ? await uploadBuffer({
+          buffer: req.file.buffer,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          folder: `messages/${req.user}`
+        })
+      : {
+          filename: req.file.filename,
+          path: '',
+          url: `/uploads/messages/${req.file.filename}`
+        };
+
+    res.status(201).json({
+      fileUrl: uploadedFile.url,
+      fileType: getFileType(req.file),
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      fileSize: req.file.size,
+      storagePath: uploadedFile.path,
+      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local'
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.get('/conversations', auth, async (req, res) => {
   try {
+    const currentUserId = req.user.toString();
     const messages = await Message.find({
-      $or: [{ from: req.user }, { to: req.user }]
+      $or: [{ from: req.user }, { to: req.user }],
+      deletedFor: { $ne: req.user }
     }).sort('-createdAt').populate('from', 'name email avatar').populate('to', 'name email avatar');
-    
+
     const usersMap = new Map();
+
     messages.forEach(msg => {
-      const other = msg.from._id.toString() === req.user ? msg.to : msg.from;
-      if (!usersMap.has(other._id.toString())) {
-        usersMap.set(other._id.toString(), {
+      if (!msg.from || !msg.to) return;
+
+      const fromId = msg.from._id.toString();
+      const toId = msg.to._id.toString();
+      const other = fromId === currentUserId ? msg.to : msg.from;
+      const otherId = other._id.toString();
+
+      if (!usersMap.has(otherId)) {
+        usersMap.set(otherId, {
           user: other,
-          lastMessage: msg.text,
-          lastTime: msg.createdAt
+          lastMessage: describeMessage(msg),
+          lastTime: msg.createdAt,
+          unreadCount: 0
         });
       }
+
+      if (toId === currentUserId && !msg.read && !msg.unsent) {
+        const conversation = usersMap.get(otherId);
+        conversation.unreadCount += 1;
+      }
     });
-    const conversations = Array.from(usersMap.values()).sort((a,b) => b.lastTime - a.lastTime);
+
+    const conversations = Array.from(usersMap.values()).sort((a, b) => b.lastTime - a.lastTime);
     res.json(conversations);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
 });
 
-// Get messages with a specific user
+router.delete('/conversation/:userId', auth, async (req, res) => {
+  try {
+    const otherUser = await User.findById(req.params.userId);
+    if (!otherUser) return res.status(404).json({ msg: 'User not found' });
+
+    await Message.updateMany(
+      {
+        $or: [
+          { from: req.user, to: req.params.userId },
+          { from: req.params.userId, to: req.user }
+        ],
+        deletedFor: { $ne: req.user }
+      },
+      { $push: { deletedFor: req.user } }
+    );
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${req.user}`).emit('conversation-deleted', { userId: req.params.userId });
+    }
+
+    res.json({ msg: 'Conversation deleted for you' });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.get('/:userId', auth, async (req, res) => {
   try {
     const messages = await Message.find({
       $or: [
         { from: req.user, to: req.params.userId },
         { from: req.params.userId, to: req.user }
-      ]
+      ],
+      deletedFor: { $ne: req.user }
     }).populate('from', 'name email avatar')
       .populate('to', 'name email avatar')
+      .populate('reactions.userId', 'name avatar')
+      .populate({
+        path: 'replyTo',
+        populate: { path: 'from', select: 'name email avatar' }
+      })
       .sort('createdAt');
     res.json(messages);
   } catch (err) {
@@ -46,70 +209,190 @@ router.get('/:userId', auth, async (req, res) => {
   }
 });
 
-// Send a message
 router.post('/', auth, async (req, res) => {
   try {
-    const { to, text } = req.body;
-    const message = new Message({ from: req.user, to, text });
+    const {
+      to,
+      text = '',
+      replyTo,
+      fileUrl = '',
+      fileType = '',
+      fileName = '',
+      mimeType = '',
+      fileSize = 0,
+      storagePath = '',
+      storageProvider = ''
+    } = req.body;
+    const recipient = await User.findById(to);
+    if (!recipient) return res.status(404).json({ msg: 'Recipient not found' });
+
+    const trimmedText = text.trim();
+    if (!trimmedText && !fileUrl) {
+      return res.status(400).json({ msg: 'Message cannot be empty' });
+    }
+
+    const userMessageFolder = `messages/${req.user}/`;
+    const safeStoragePath = storageProvider === 'supabase'
+      && typeof storagePath === 'string'
+      && storagePath.startsWith(userMessageFolder)
+      ? storagePath
+      : '';
+
+    const message = new Message({
+      from: req.user,
+      to,
+      text: trimmedText,
+      replyTo: replyTo || null,
+      fileUrl,
+      fileType,
+      fileName,
+      mimeType,
+      fileSize,
+      storagePath: safeStoragePath,
+      storageProvider: safeStoragePath ? 'supabase' : (fileUrl.startsWith('/uploads/messages/') ? 'local' : '')
+    });
     await message.save();
-    await message.populate('from', 'name email avatar');
-    await message.populate('to', 'name email avatar');
-    res.json(message);
+
+    const populatedMessage = await populateMessage(message._id);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${to}`).emit('receiveMessage', populatedMessage);
+      io.to(`user_${req.user}`).emit('receiveMessage', populatedMessage);
+    }
+
+    res.status(201).json(populatedMessage);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
 });
 
-// Pin / unpin a message
+router.put('/read/:userId', auth, async (req, res) => {
+  try {
+    const readAt = new Date();
+    const result = await Message.updateMany(
+      {
+        from: req.params.userId,
+        to: req.user,
+        read: false,
+        unsent: false,
+        deletedFor: { $ne: req.user }
+      },
+      { $set: { read: true, readAt } }
+    );
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${req.params.userId}`).emit('messages-read', {
+        readerId: req.user,
+        senderId: req.params.userId,
+        readAt
+      });
+    }
+
+    res.json({
+      msg: 'Messages marked as read',
+      modifiedCount: result.modifiedCount || 0,
+      readAt
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.put('/:messageId/pin', auth, async (req, res) => {
   try {
     const message = await Message.findById(req.params.messageId);
     if (!message) return res.status(404).json({ msg: 'Message not found' });
+    if (!isParticipant(message, req.user)) return res.status(403).json({ msg: 'Not authorized' });
+
     message.pinned = !message.pinned;
     await message.save();
-    res.json(message);
+    const populatedMessage = await populateMessage(message._id);
+    emitMessageUpdated(req, populatedMessage);
+    res.json(populatedMessage);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
 });
 
-// Add / remove reaction
 router.post('/:messageId/react', auth, async (req, res) => {
   try {
     const { emoji } = req.body;
     const message = await Message.findById(req.params.messageId);
     if (!message) return res.status(404).json({ msg: 'Message not found' });
+    if (!isParticipant(message, req.user)) return res.status(403).json({ msg: 'Not authorized' });
+    if (message.unsent) return res.status(400).json({ msg: 'Cannot react to an unsent message' });
 
     const existing = message.reactions.find(r => r.userId.toString() === req.user);
     if (existing) {
       if (existing.emoji === emoji) {
-        // Remove reaction
         message.reactions = message.reactions.filter(r => r.userId.toString() !== req.user);
       } else {
-        // Change emoji
         existing.emoji = emoji;
       }
     } else {
       message.reactions.push({ userId: req.user, emoji });
     }
     await message.save();
-    res.json(message);
-  } catch (err) {
-    res.status(500).json({ msg: err.message });
-  }
-});
-// Mark all messages from a specific user as read
-router.put('/read/:userId', auth, async (req, res) => {
-  try {
-    await Message.updateMany(
-      { from: req.params.userId, to: req.user, read: false },
-      { $set: { read: true } }
-    );
-    res.json({ msg: 'Messages marked as read' });
+    const populatedMessage = await populateMessage(message._id);
+    emitMessageUpdated(req, populatedMessage);
+    res.json(populatedMessage);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
 });
 
+router.delete('/:messageId/me', auth, async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ msg: 'Message not found' });
+    if (!isParticipant(message, req.user)) return res.status(403).json({ msg: 'Not authorized' });
+
+    if (!message.deletedFor.some(userId => userId.toString() === req.user)) {
+      message.deletedFor.push(req.user);
+      await message.save();
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${req.user}`).emit('message-hidden', { messageId: req.params.messageId });
+    }
+
+    res.json({ msg: 'Message removed for you', messageId: req.params.messageId });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.delete('/:messageId/everyone', auth, async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ msg: 'Message not found' });
+    if (normalizeId(message.from) !== req.user) return res.status(403).json({ msg: 'Only the sender can unsend this message' });
+
+    if (message.storageProvider === 'supabase' && message.storagePath) {
+      await deleteObject(message.storagePath).catch(err => console.error('Message attachment delete failed:', err.message));
+    }
+
+    message.unsent = true;
+    message.unsentAt = new Date();
+    message.text = '';
+    message.fileUrl = '';
+    message.fileType = '';
+    message.fileName = '';
+    message.mimeType = '';
+    message.fileSize = 0;
+    message.storagePath = '';
+    message.storageProvider = '';
+    message.reactions = [];
+    await message.save();
+
+    const populatedMessage = await populateMessage(message._id);
+    emitMessageUpdated(req, populatedMessage);
+    res.json(populatedMessage);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
 
 module.exports = router;

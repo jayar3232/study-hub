@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const TaskSchema = new mongoose.Schema({
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
   description: { type: String, required: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   dueDate: { type: Date },
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   status: { type: String, enum: ['not_started', 'in_progress', 'done'], default: 'not_started' },
