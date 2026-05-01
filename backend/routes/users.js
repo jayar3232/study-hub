@@ -5,7 +5,13 @@ const User = require('../models/User');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 const { isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const Group = require('../models/Group');
+const Task = require('../models/Task');
+const GameSession = require('../models/GameSession');
+const { RANK_TIERS, buildLeaderboard, buildRankStats } = require('../services/ranks');
+const { buildGameStats } = require('../services/gameRanks');
 const router = express.Router();
 
 const avatarUploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
@@ -22,6 +28,7 @@ const toClientUser = (user) => ({
   bio: user.bio,
   avatar: user.avatar,
   lastSeen: user.lastSeen,
+  isDeveloper: user.isDeveloper,
   createdAt: user.createdAt
 });
 
@@ -156,6 +163,75 @@ router.get('/search', auth, async (req, res) => {
       ]
     }).select('name email avatar lastSeen').limit(10);
     res.json(users);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/rankings/me', auth, async (req, res) => {
+  try {
+    const groups = await Group.find({ members: req.user }).select('members').lean();
+    const memberIds = [
+      ...new Set([
+        req.user,
+        ...groups.flatMap(group => (group.members || []).map(member => String(member)))
+      ])
+    ];
+
+    const [networkUsers, networkTasks, myTasks] = await Promise.all([
+      User.find({ _id: { $in: memberIds } }).select('name email course avatar').lean(),
+      Task.find({ assignedTo: { $in: memberIds } })
+        .select('assignedTo status priority approvalStatus completedAt dueDate')
+        .lean(),
+      Task.find({ assignedTo: req.user })
+        .select('assignedTo status priority approvalStatus completedAt dueDate')
+        .lean()
+    ]);
+
+    const leaderboard = buildLeaderboard(networkTasks, networkUsers);
+    const currentUserRank = leaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+
+    res.json({
+      me: buildRankStats(myTasks, req.user),
+      leaderboard: leaderboard.slice(0, 12),
+      currentUserRank,
+      totalRanked: leaderboard.length,
+      tiers: RANK_TIERS
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/:id/public', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const profile = await User.findById(req.params.id)
+      .select('name email course bio avatar lastSeen createdAt');
+
+    if (!profile) return res.status(404).json({ msg: 'User not found' });
+
+    const [sharedWorkspaces, rankTasks, gameSessions] = await Promise.all([
+      Group.countDocuments({
+        members: { $all: [req.user, profile._id] }
+      }),
+      Task.find({ assignedTo: profile._id })
+        .select('assignedTo status priority approvalStatus completedAt dueDate')
+        .lean(),
+      GameSession.find({ userId: profile._id, gameKey: 'typing-sprint', completedAt: { $ne: null } })
+        .select('score accuracy wpm correctCount totalCount maxStreak elapsedMs completedAt')
+        .lean()
+    ]);
+
+    res.json({
+      ...profile.toObject(),
+      sharedWorkspaces,
+      rankStats: buildRankStats(rankTasks, profile._id),
+      gameStats: buildGameStats(gameSessions)
+    });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }

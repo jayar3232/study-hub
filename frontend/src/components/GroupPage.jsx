@@ -9,7 +9,6 @@ import {
   Bookmark,
   BookmarkCheck,
   Calendar,
-  CalendarDays,
   Camera,
   Check,
   CheckCircle,
@@ -55,6 +54,7 @@ import GroupChat from './GroupChat';
 import GroupMembers from './GroupMembers';
 import LoadingSpinner from './LoadingSpinner';
 import EmptyState from './EmptyState';
+import UserProfileModal from './UserProfileModal';
 import { PostSkeleton } from './SkeletonLoader';
 import { resolveMediaUrl } from '../utils/media';
 import { getSocket } from '../services/socket';
@@ -111,6 +111,37 @@ const roleLabels = {
   creator: 'Owner',
   'co-creator': 'Admin',
   member: 'Member'
+};
+
+const sectionRoutes = {
+  overview: '',
+  posts: 'posts',
+  tasks: 'tasks',
+  files: 'files',
+  memories: 'assets',
+  activity: 'updates',
+  members: 'members',
+  chat: 'chat',
+  settings: 'settings'
+};
+
+const routeToSection = {
+  overview: 'overview',
+  posts: 'posts',
+  announcements: 'posts',
+  calendar: 'tasks',
+  tasks: 'tasks',
+  files: 'files',
+  assets: 'memories',
+  media: 'memories',
+  memories: 'memories',
+  'media-vault': 'memories',
+  activity: 'activity',
+  updates: 'activity',
+  members: 'members',
+  chat: 'chat',
+  'team-chat': 'chat',
+  settings: 'settings'
 };
 
 const parseLabels = (value = '') => [...new Set(value
@@ -276,20 +307,37 @@ const validateUploadFile = (file) => {
   return true;
 };
 
-const Avatar = ({ person, size = 'md' }) => {
+const Avatar = ({ person, size = 'md', onClick }) => {
   const sizeClasses = {
     sm: 'h-8 w-8 text-xs',
     md: 'h-10 w-10 text-sm',
     lg: 'h-12 w-12 text-base'
   };
+  const content = person?.avatar ? (
+    <img src={resolveMediaUrl(person.avatar)} alt="" className="h-full w-full object-cover" />
+  ) : (
+    getUserInitial(person?.name)
+  );
+
+  if (onClick && person) {
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick(person);
+        }}
+        className={`${sizeClasses[size]} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-900 font-semibold text-white shadow-sm ring-2 ring-transparent transition hover:ring-pink-300 dark:bg-gray-700`}
+        title={`View ${person?.name || 'profile'}`}
+      >
+        {content}
+      </button>
+    );
+  }
 
   return (
     <div className={`${sizeClasses[size]} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-900 font-semibold text-white shadow-sm dark:bg-gray-700`}>
-      {person?.avatar ? (
-        <img src={resolveMediaUrl(person.avatar)} alt="" className="h-full w-full object-cover" />
-      ) : (
-        getUserInitial(person?.name)
-      )}
+      {content}
     </div>
   );
 };
@@ -396,7 +444,7 @@ const PostAttachment = ({ fileUrl, onOpen }) => {
   );
 };
 
-const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, onDelete, onShare, onSave, onPin, onOpenMedia }) => {
+const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, onDelete, onShare, onSave, onPin, onOpenMedia, onUserClick }) => {
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -436,7 +484,7 @@ const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, o
   };
 
   const deletePost = async () => {
-    if (!window.confirm('Delete this post?')) return;
+    if (!window.confirm('Delete this announcement?')) return;
 
     setDeleting(true);
     try {
@@ -457,7 +505,7 @@ const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, o
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar person={post.userId} />
+          <Avatar person={post.userId} onClick={onUserClick} />
           <div className="min-w-0">
             <p className="truncate font-semibold text-gray-900 dark:text-white">{post.userId?.name || 'Unknown member'}</p>
             <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
@@ -490,7 +538,7 @@ const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, o
               onClick={deletePost}
               disabled={deleting}
               className="rounded-lg p-2 text-gray-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950/30"
-              title="Delete post"
+              title="Delete announcement"
             >
               {deleting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
             </button>
@@ -598,7 +646,7 @@ const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, o
                 {reactions.map((reaction, index) => (
                   <div key={`${reaction.emoji}-${normalizeId(reaction.userId)}-${index}`} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm dark:bg-gray-900">
                     <span className="text-lg">{reaction.emoji}</span>
-                    <Avatar person={reaction.userId} size="sm" />
+                    <Avatar person={reaction.userId} size="sm" onClick={onUserClick} />
                     <span className="min-w-0 truncate font-medium text-gray-900 dark:text-white">{reaction.userId?.name || 'Member'}</span>
                   </div>
                 ))}
@@ -623,7 +671,7 @@ const PostCard = memo(({ post, currentUserId, canModerate, onReact, onComment, o
                 ) : (
                   comments.map((comment, index) => (
                     <div key={`${comment._id || index}-${comment.date || comment.createdAt || index}`} className="flex gap-2">
-                      <Avatar person={comment.userId} size="sm" />
+                      <Avatar person={comment.userId} size="sm" onClick={onUserClick} />
                       <div className="min-w-0 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-semibold text-gray-900 dark:text-white">{comment.userId?.name || 'Member'}</span>
@@ -904,7 +952,7 @@ const TaskCard = memo(({ task, members, isExpanded, isUpdating, canDelete, onTog
               <div>
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
                   <Activity size={15} />
-                  Activity
+                  Updates
                 </div>
                 <div className="max-h-72 space-y-3 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950">
                   {task.activity?.length ? (
@@ -1043,7 +1091,7 @@ const FileRow = ({ file, canManage, onDelete, onPreview }) => {
   );
 };
 
-const MemoryCard = ({ memory, currentUserId, canModerate, onDelete, onOpen }) => {
+const MemoryCard = ({ memory, currentUserId, canModerate, onDelete, onOpen, onUserClick }) => {
   const [deleting, setDeleting] = useState(false);
   const canDelete = canModerate || normalizeId(memory.userId) === currentUserId;
   const mediaUrl = resolveMediaUrl(memory.fileUrl);
@@ -1083,7 +1131,7 @@ const MemoryCard = ({ memory, currentUserId, canModerate, onDelete, onOpen }) =>
               {memory.caption || (memory.fileType === 'image' ? 'Photo memory' : 'Video memory')}
             </p>
             <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-              <Avatar person={memory.userId} size="sm" />
+              <Avatar person={memory.userId} size="sm" onClick={onUserClick} />
               <span className="min-w-0 truncate">{memory.userId?.name || 'Member'}</span>
               <span>{formatRelativeDate(memory.createdAt)}</span>
             </div>
@@ -1106,7 +1154,7 @@ const MemoryCard = ({ memory, currentUserId, canModerate, onDelete, onOpen }) =>
 };
 
 export default function GroupPage() {
-  const { id } = useParams();
+  const { id, section } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -1118,7 +1166,6 @@ export default function GroupPage() {
   const [activities, setActivities] = useState([]);
   const [groupMembers, setGroupMembers] = useState([]);
 
-  const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1133,7 +1180,6 @@ export default function GroupPage() {
   const [postSearch, setPostSearch] = useState('');
   const [postTypeFilter, setPostTypeFilter] = useState('all');
   const [postSort, setPostSort] = useState('newest');
-  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
 
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [newTaskDesc, setNewTaskDesc] = useState('');
@@ -1182,6 +1228,28 @@ export default function GroupPage() {
   const [pendingInvites, setPendingInvites] = useState([]);
   const [searchingInviteUsers, setSearchingInviteUsers] = useState(false);
   const [sendingInviteIds, setSendingInviteIds] = useState({});
+  const [profileUser, setProfileUser] = useState(null);
+
+  const openUserProfile = (person) => {
+    if (!person) return;
+    setProfileUser(person);
+  };
+
+  const requestedSection = section?.toLowerCase() || 'overview';
+  const activeTab = routeToSection[requestedSection] || 'overview';
+  const setActiveTab = (nextSection) => {
+    const nextRoute = sectionRoutes[nextSection] ?? '';
+    navigate(nextRoute ? `/group/${id}/${nextRoute}` : `/group/${id}`);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    if (section && !routeToSection[requestedSection]) {
+      navigate(`/group/${id}`, { replace: true });
+    }
+  }, [id, navigate, requestedSection, section]);
 
   useEffect(() => {
     fetchGroupData();
@@ -1601,7 +1669,7 @@ export default function GroupPage() {
 
     const kind = getFileKind(file);
     if (kind !== 'image' && kind !== 'video') {
-      toast.error('Media Vault accepts photos or videos only');
+      toast.error('Project Assets accepts photos or videos only');
       return;
     }
 
@@ -1889,7 +1957,7 @@ export default function GroupPage() {
         title: memory.caption || (memory.fileType === 'image' ? 'Saved photo' : 'Saved video'),
         author: memory.userId?.name || 'Member',
         createdAt: memory.createdAt,
-        origin: 'Media Vault'
+        origin: 'Project Assets'
       });
     });
 
@@ -1946,40 +2014,6 @@ export default function GroupPage() {
     });
   };
 
-  const calendarTasksByDate = useMemo(() => {
-    return tasks.reduce((map, task) => {
-      if (!task.dueDate) return map;
-      const key = task.dueDate.split('T')[0];
-      map[key] = [...(map[key] || []), task];
-      return map;
-    }, {});
-  }, [tasks]);
-
-  const calendarDays = useMemo(() => {
-    const year = calendarCursor.getFullYear();
-    const month = calendarCursor.getMonth();
-    const firstOfMonth = new Date(year, month, 1);
-    const start = new Date(firstOfMonth);
-    start.setDate(start.getDate() - start.getDay());
-
-    return Array.from({ length: 42 }, (_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      const key = toDateInputValue(date);
-      return {
-        key,
-        date,
-        inMonth: date.getMonth() === month,
-        tasks: calendarTasksByDate[key] || []
-      };
-    });
-  }, [calendarCursor, calendarTasksByDate]);
-
-  const upcomingTasks = useMemo(() => tasks
-    .filter(task => task.dueDate && task.status !== 'done')
-    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-    .slice(0, 8), [tasks]);
-
   const dueSoonTasks = useMemo(() => {
     const soon = new Date();
     soon.setDate(soon.getDate() + 3);
@@ -1997,21 +2031,16 @@ export default function GroupPage() {
   const pinnedPosts = useMemo(() => posts.filter(post => post.pinned).slice(0, 3), [posts]);
   const needsApprovalTasks = useMemo(() => tasks.filter(task => task.approvalStatus === 'pending' || task.approvalStatus === 'changes_requested'), [tasks]);
 
-  const moveCalendarMonth = (direction) => {
-    setCalendarCursor(prev => new Date(prev.getFullYear(), prev.getMonth() + direction, 1));
-  };
-
   const tabs = [
-    { key: 'overview', label: 'Overview', icon: Activity, count: dueSoonTasks.length + pinnedPosts.length },
-    { key: 'posts', label: 'Posts', icon: FileText, count: posts.length },
-    { key: 'calendar', label: 'Calendar', icon: CalendarDays, count: tasks.filter(task => task.dueDate && task.status !== 'done').length },
-    { key: 'tasks', label: 'Tasks', icon: CheckCircle, count: taskStats.open },
-    { key: 'files', label: 'Files', icon: Upload, count: files.length },
-    { key: 'memories', label: 'Media Vault', icon: Images, count: memories.length },
-    { key: 'activity', label: 'Activity', icon: Activity, count: activities.length },
-    { key: 'members', label: 'Members', icon: Users, count: groupMembers.length || group?.members?.length || 0 },
-    { key: 'chat', label: 'Group Chat', icon: MessageCircle },
-    { key: 'settings', label: 'Settings', icon: Settings }
+    { key: 'overview', label: 'Overview', route: '', icon: Activity, count: dueSoonTasks.length + pinnedPosts.length, description: 'Command center for urgent updates, pinned announcements, and project health.' },
+    { key: 'posts', label: 'Announcements', route: 'posts', icon: FileText, count: posts.length, description: 'Important workspace updates, decisions, reactions, and shared post media.' },
+    { key: 'tasks', label: 'Tasks', route: 'tasks', icon: CheckCircle, count: taskStats.open, description: 'A focused task board with filters, assignments, deadlines, and approvals.' },
+    { key: 'files', label: 'Files', route: 'files', icon: Upload, count: files.length, description: 'Upload, preview, download, and manage workspace documents.' },
+    { key: 'memories', label: 'Project Assets', route: 'assets', icon: Images, count: memories.length, description: 'A dedicated gallery for photos, videos, screenshots, and visual references.' },
+    { key: 'chat', label: 'Team Chat', route: 'chat', icon: MessageCircle, description: 'Realtime conversation for the members of this workspace.' },
+    { key: 'members', label: 'Members', route: 'members', icon: Users, count: groupMembers.length || group?.members?.length || 0, description: 'People, roles, admins, and membership visibility.' },
+    { key: 'activity', label: 'Updates', route: 'updates', icon: Activity, count: activities.length, description: 'A running history of uploads, announcements, task changes, and workspace events.' },
+    { key: 'settings', label: 'Settings', route: 'settings', icon: Settings, description: 'Workspace profile, group photo, access code, and invite controls.' }
   ];
 
   if (loading) return <LoadingSpinner />;
@@ -2019,108 +2048,272 @@ export default function GroupPage() {
 
   const canManageFile = (file) => canModerate || normalizeId(file.uploadedBy) === currentUserId;
   const groupPhotoUrl = resolveMediaUrl(group.photo);
+  const activeSection = tabs.find(tab => tab.key === activeTab) || tabs[0];
+  const ActiveSectionIcon = activeSection.icon;
+  const workspaceModules = tabs.filter(tab => tab.key !== 'overview');
+  const moduleDetails = {
+    posts: `${posts.length} announcements and decisions`,
+    tasks: `${taskStats.open} open, ${taskStats.overdue} overdue`,
+    files: `${files.length} shared documents`,
+    memories: `${memories.length} photos and videos`,
+    chat: 'Realtime workspace conversation',
+    members: `${groupMembers.length || group.members?.length || 0} people in this space`,
+    activity: `${activities.length} recent events`,
+    settings: canModerate ? 'Manage identity and invitations' : 'View workspace settings'
+  };
+  const featuredModules = ['tasks', 'posts', 'files', 'memories'];
+  const compactModules = workspaceModules.filter(tab => !featuredModules.includes(tab.key));
+  const focusedQuickLinks = workspaceModules.filter(tab => tab.key !== activeTab).slice(0, 5);
+  const currentSectionCount = typeof activeSection.count === 'number' ? activeSection.count : null;
+  const focusedActions = [
+    activeTab === 'posts' && {
+      label: 'New post',
+      icon: PlusCircle,
+      onClick: () => setShowCreatePost(true),
+      primary: true
+    },
+    activeTab === 'tasks' && {
+      label: 'Add task',
+      icon: PlusCircle,
+      onClick: () => setShowCreateTask(true),
+      primary: true
+    },
+    activeTab !== 'chat' && {
+      label: 'Open chat',
+      icon: MessageCircle,
+      onClick: () => setActiveTab('chat')
+    }
+  ].filter(Boolean);
+
+  const quickStats = [
+    { label: 'Members', value: groupMembers.length || group.members?.length || 0 },
+    { label: 'Open tasks', value: taskStats.open },
+    { label: 'Files', value: files.length },
+    { label: 'Media', value: memories.length }
+  ];
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 overflow-x-hidden px-2 py-3 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      <section className="relative overflow-hidden rounded-xl border border-pink-200/70 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.08),0_18px_50px_rgba(236,72,153,0.12)] dark:border-pink-900/40 dark:bg-gray-900 dark:shadow-[0_0_0_1px_rgba(236,72,153,0.10),0_18px_50px_rgba(236,72,153,0.08)]">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400" />
-        <div className="flex flex-col gap-5 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
-            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-gray-900 text-white shadow-lg ring-1 ring-white/40 dark:bg-white dark:text-gray-900">
-              {groupPhotoUrl ? (
-                <img src={groupPhotoUrl} alt={group.name} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-500 via-indigo-500 to-cyan-500">
-                  <Users size={34} />
+      {activeTab === 'overview' ? (
+        <section className="relative overflow-hidden rounded-2xl border border-pink-200/70 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.08),0_18px_50px_rgba(236,72,153,0.12)] dark:border-pink-900/40 dark:bg-gray-900 dark:shadow-[0_0_0_1px_rgba(236,72,153,0.10),0_18px_50px_rgba(236,72,153,0.08)]">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400" />
+          <div className="flex flex-col gap-5 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
+              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-gray-900 text-white shadow-lg ring-1 ring-white/40 dark:bg-white dark:text-gray-900">
+                {groupPhotoUrl ? (
+                  <img src={groupPhotoUrl} alt={group.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-500 via-indigo-500 to-cyan-500">
+                    <Users size={34} />
+                  </div>
+                )}
+                {canModerate && (
+                  <label className="absolute inset-x-2 bottom-2 flex cursor-pointer items-center justify-center gap-1 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/70">
+                    {uploadingGroupPhoto ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
+                    Photo
+                    <input type="file" accept="image/*" className="hidden" onChange={event => handleGroupPhotoSelect(event.target.files?.[0])} disabled={uploadingGroupPhoto} />
+                  </label>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold uppercase text-pink-600 dark:text-pink-300">{group.subject || 'Group workspace'}</p>
+                <h1 className="mt-1 break-words text-2xl font-bold text-gray-950 dark:text-white sm:text-3xl">{group.name}</h1>
+                <p className="mt-2 max-w-3xl break-words text-sm leading-6 text-gray-600 dark:text-gray-300">
+                  {group.description || 'No description yet.'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">{groupMembers.length || group.members?.length || 0} members</span>
+                  <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">{memories.length} media keepsakes</span>
+                  <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">{pendingInvites.length} pending invites</span>
                 </div>
-              )}
-              {canModerate && (
-                <label className="absolute inset-x-2 bottom-2 flex cursor-pointer items-center justify-center gap-1 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/70">
-                  {uploadingGroupPhoto ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
-                  Photo
-                  <input type="file" accept="image/*" className="hidden" onChange={event => handleGroupPhotoSelect(event.target.files?.[0])} disabled={uploadingGroupPhoto} />
-                </label>
-              )}
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold uppercase text-pink-600 dark:text-pink-300">{group.subject || 'Group workspace'}</p>
-              <h1 className="mt-1 break-words text-2xl font-bold text-gray-950 dark:text-white sm:text-3xl">{group.name}</h1>
-              <p className="mt-2 max-w-3xl break-words text-sm leading-6 text-gray-600 dark:text-gray-300">
-                {group.description || 'No description yet.'}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">{groupMembers.length || group.members?.length || 0} members</span>
-                <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">{memories.length} media keepsakes</span>
-                <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">{pendingInvites.length} pending invites</span>
+
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <button
+                type="button"
+                onClick={copyJoinCode}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <Copy size={16} />
+                {group.joinCode}
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchGroupData({ silent: true })}
+                disabled={refreshing}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+              >
+                {refreshing ? <Loader2 size={16} className="animate-spin" /> : <Activity size={16} />}
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2 lg:grid-cols-4">
+            {quickStats.map(stat => (
+              <div key={stat.label} className="bg-white p-4 dark:bg-gray-900">
+                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{stat.label}</p>
+                <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab('overview')}
+                className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-600 dark:border-gray-700 dark:text-gray-300 dark:hover:border-pink-900 dark:hover:bg-pink-950/20"
+                title="Back to workspace home"
+              >
+                <Activity size={18} />
+              </button>
+              <div className="flex min-w-0 gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gray-950 text-white shadow-lg shadow-gray-900/10 dark:bg-white dark:text-gray-950">
+                  <ActiveSectionIcon size={22} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold uppercase text-pink-600 dark:text-pink-300">{group.name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-2xl font-bold text-gray-950 dark:text-white">{activeSection.label}</h1>
+                    {currentSectionCount !== null && (
+                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-300">{currentSectionCount}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">{activeSection.description}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
+              <label className="relative min-w-0 sm:w-56">
+                <span className="sr-only">Switch section</span>
+                <select
+                  value={activeTab}
+                  onChange={event => setActiveTab(event.target.value)}
+                  className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-9 text-sm font-semibold text-gray-900 outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                >
+                  {tabs.map(tab => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {focusedActions.map(action => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={action.onClick}
+                      className={`inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                        action.primary
+                          ? 'bg-pink-600 text-white hover:bg-pink-700'
+                          : 'border border-gray-200 text-gray-700 hover:border-pink-200 hover:bg-pink-50 dark:border-gray-700 dark:text-gray-200 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20'
+                      }`}
+                    >
+                      <Icon size={16} />
+                      {action.label}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => fetchGroupData({ silent: true })}
+                  disabled={refreshing}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  {refreshing ? <Loader2 size={16} className="animate-spin" /> : <Activity size={16} />}
+                  Refresh
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            <button
-              type="button"
-              onClick={copyJoinCode}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-            >
-              <Copy size={16} />
-              {group.joinCode}
-            </button>
-            <button
-              type="button"
-              onClick={() => fetchGroupData({ silent: true })}
-              disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-            >
-              {refreshing ? <Loader2 size={16} className="animate-spin" /> : <Activity size={16} />}
-              Refresh
-            </button>
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            {focusedQuickLinks.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-600 dark:border-gray-700 dark:text-gray-300 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+                >
+                  <Icon size={14} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </section>
+      )}
 
-        <div className="grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Members</p>
-            <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{groupMembers.length || group.members?.length || 0}</p>
+      {activeTab === 'overview' && (
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase text-pink-600 dark:text-pink-300">Workspace home</p>
+              <h2 className="mt-1 text-xl font-bold text-gray-950 dark:text-white">Open the right workspace area</h2>
+            </div>
+            <p className="max-w-xl text-sm text-gray-500 dark:text-gray-400">Each area opens as a focused page so tasks, files, chat, and media do not compete for attention.</p>
           </div>
-          <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Posts</p>
-            <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{posts.length}</p>
-          </div>
-          <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Open Tasks</p>
-            <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{taskStats.open}</p>
-          </div>
-          <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Files</p>
-            <p className="mt-1 text-2xl font-bold text-gray-950 dark:text-white">{files.length}</p>
-          </div>
-        </div>
-      </section>
-
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-        <div className="flex min-w-max gap-1">
-          {tabs.map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${active ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}`}
-              >
-                <Icon size={17} />
-                {tab.label}
-                {typeof tab.count === 'number' && (
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${active ? 'bg-white/20 text-current dark:bg-gray-900/10' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
-                    {tab.count}
+          <div className="grid gap-3 lg:grid-cols-4">
+            {featuredModules.map(key => {
+              const tab = tabs.find(item => item.key === key);
+              if (!tab) return null;
+              const Icon = tab.icon;
+              return (
+                <motion.button
+                  key={tab.key}
+                  type="button"
+                  whileHover={{ y: -4, scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setActiveTab(tab.key)}
+                  className="group relative min-h-44 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 p-5 text-left transition hover:border-pink-200 hover:bg-white hover:shadow-xl hover:shadow-pink-500/10 dark:border-gray-800 dark:bg-gray-950/60 dark:hover:border-pink-900/60 dark:hover:bg-gray-900"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="rounded-2xl bg-gray-950 p-3 text-white shadow-lg shadow-gray-900/10 transition group-hover:bg-pink-600 dark:bg-white dark:text-gray-950 dark:group-hover:bg-pink-200">
+                      <Icon size={24} />
+                    </div>
+                    {typeof tab.count === 'number' && (
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-gray-600 dark:bg-gray-900 dark:text-gray-300">{tab.count > 99 ? '99+' : tab.count}</span>
+                    )}
+                  </div>
+                  <h3 className="mt-5 text-lg font-bold text-gray-950 dark:text-white">{tab.label}</h3>
+                  <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{moduleDetails[tab.key]}</p>
+                  <span className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-pink-600 dark:text-pink-300">
+                    Open <ChevronDown size={15} className="-rotate-90" />
                   </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                </motion.button>
+              );
+            })}
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {compactModules.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className="flex min-w-0 items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-3 text-left transition hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                    <Icon size={17} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-gray-950 dark:text-white">{tab.label}</span>
+                    <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{moduleDetails[tab.key]}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <AnimatePresence mode="wait">
         {activeTab === 'overview' && (
@@ -2139,7 +2332,7 @@ export default function GroupPage() {
                     <h2 className="font-semibold text-gray-950 dark:text-white">Pinned announcements</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Important updates stay easy to find.</p>
                   </div>
-                  <button type="button" onClick={() => setActiveTab('posts')} className="text-sm font-semibold text-pink-600 hover:text-pink-700 dark:text-pink-300">View posts</button>
+                  <button type="button" onClick={() => setActiveTab('posts')} className="text-sm font-semibold text-pink-600 hover:text-pink-700 dark:text-pink-300">View announcements</button>
                 </div>
                 {pinnedPosts.length === 0 ? (
                   <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">No pinned announcements yet.</p>
@@ -2212,7 +2405,7 @@ export default function GroupPage() {
                 <div className="mt-3 space-y-2">
                   {groupMembers.slice(0, 6).map(member => (
                     <div key={member._id} className="flex min-w-0 items-center gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
-                      <Avatar person={member} size="sm" />
+                      <Avatar person={member} size="sm" onClick={openUserProfile} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{member.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{roleLabels[member.role] || 'Member'}</p>
@@ -2257,13 +2450,13 @@ export default function GroupPage() {
                       type="search"
                       value={postSearch}
                       onChange={event => setPostSearch(event.target.value)}
-                      placeholder="Find old posts, captions, authors, comments..."
+                      placeholder="Find announcements, captions, authors, comments..."
                       className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950"
                     />
                   </label>
                   <select value={postTypeFilter} onChange={event => setPostTypeFilter(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950">
-                    <option value="all">All posts</option>
-                    <option value="saved">Saved posts</option>
+                    <option value="all">All announcements</option>
+                    <option value="saved">Saved announcements</option>
                     <option value="text">Text only</option>
                     <option value="media">Photos/videos</option>
                     <option value="file">Files</option>
@@ -2284,7 +2477,7 @@ export default function GroupPage() {
               ) : filteredPosts.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-700 dark:bg-gray-900">
                   <Search className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
-                  <h3 className="mt-3 font-semibold text-gray-900 dark:text-white">No matching posts</h3>
+                  <h3 className="mt-3 font-semibold text-gray-900 dark:text-white">No matching announcements</h3>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Try another keyword, media filter, or sort.</p>
                 </div>
               ) : (
@@ -2302,6 +2495,7 @@ export default function GroupPage() {
                       onSave={handleSavePost}
                       onPin={handlePinPost}
                       onOpenMedia={openMediaViewer}
+                      onUserClick={openUserProfile}
                     />
                   ))}
                 </div>
@@ -2317,7 +2511,7 @@ export default function GroupPage() {
                 <div className="mt-3 space-y-3">
                   {groupMembers.slice(0, 5).map(member => (
                     <div key={member._id} className="flex min-w-0 items-center gap-3">
-                      <Avatar person={member} size="sm" />
+                      <Avatar person={member} size="sm" onClick={openUserProfile} />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{member.name}</p>
                         <p className="text-xs capitalize text-gray-500 dark:text-gray-400">{member.role}</p>
@@ -2326,82 +2520,6 @@ export default function GroupPage() {
                   ))}
                 </div>
               </div>
-            </aside>
-          </motion.div>
-        )}
-
-        {activeTab === 'calendar' && (
-          <motion.div key="calendar" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-950 dark:text-white">{format(calendarCursor, 'MMMM yyyy')}</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Task deadlines at a glance</p>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => moveCalendarMonth(-1)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">Previous</button>
-                  <button type="button" onClick={() => setCalendarCursor(new Date())} className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200">Today</button>
-                  <button type="button" onClick={() => moveCalendarMonth(1)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">Next</button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-gray-200 bg-gray-200 text-xs dark:border-gray-800 dark:bg-gray-800">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                  <div key={day} className="bg-gray-50 px-2 py-2 text-center font-bold text-gray-500 dark:bg-gray-950 dark:text-gray-400">{day}</div>
-                ))}
-                {calendarDays.map(day => (
-                  <div key={day.key} className={`min-h-[96px] bg-white p-2 dark:bg-gray-900 ${day.inMonth ? '' : 'opacity-45'}`}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="font-semibold text-gray-700 dark:text-gray-200">{day.date.getDate()}</span>
-                      {day.tasks.length > 0 && <span className="rounded-full bg-pink-100 px-1.5 py-0.5 text-[10px] font-bold text-pink-700 dark:bg-pink-950/40 dark:text-pink-200">{day.tasks.length}</span>}
-                    </div>
-                    <div className="space-y-1">
-                      {day.tasks.slice(0, 2).map(task => (
-                        <button
-                          key={task._id}
-                          type="button"
-                          onClick={() => {
-                            setActiveTab('tasks');
-                            setExpandedTaskId(task._id);
-                          }}
-                          className={`block w-full truncate rounded-md px-2 py-1 text-left text-[11px] font-semibold ${task.status === 'done' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200' : isTaskOverdue(task) ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-200' : 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-200'}`}
-                        >
-                          {task.description}
-                        </button>
-                      ))}
-                      {day.tasks.length > 2 && <div className="text-[11px] font-semibold text-gray-400">+{day.tasks.length - 2} more</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <aside className="space-y-4">
-              <MetricCard icon={CalendarDays} label="Scheduled" value={tasks.filter(task => task.dueDate).length} tone="blue" />
-              <MetricCard icon={AlertCircle} label="Overdue" value={taskStats.overdue} tone="amber" />
-              <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <h3 className="font-semibold text-gray-950 dark:text-white">Upcoming deadlines</h3>
-                <div className="mt-3 space-y-2">
-                  {upcomingTasks.length === 0 ? (
-                    <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">No upcoming task deadlines.</p>
-                  ) : (
-                    upcomingTasks.map(task => (
-                      <button
-                        key={task._id}
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('tasks');
-                          setExpandedTaskId(task._id);
-                        }}
-                        className="w-full rounded-lg border border-gray-100 p-3 text-left transition hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:hover:border-pink-900 dark:hover:bg-pink-950/20"
-                      >
-                        <p className="line-clamp-1 text-sm font-semibold text-gray-950 dark:text-white">{task.description}</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatShortDate(task.dueDate)} - {priorityLabels[task.priority]}</p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </section>
             </aside>
           </motion.div>
         )}
@@ -2679,7 +2797,7 @@ export default function GroupPage() {
               <form onSubmit={handleUploadMemory} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <div className="flex items-center gap-2">
                   <Images size={20} className="text-pink-500" />
-                  <h2 className="font-semibold text-gray-950 dark:text-white">Add to Media Vault</h2>
+                  <h2 className="font-semibold text-gray-950 dark:text-white">Add to Project Assets</h2>
                 </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Upload photos or videos your group wants to keep.</p>
 
@@ -2749,6 +2867,7 @@ export default function GroupPage() {
                         canModerate={canModerate}
                         onDelete={handleDeleteMemory}
                         onOpen={(memory) => openMediaViewer({ id: `memory-${memory._id}`, url: memory.fileUrl })}
+                        onUserClick={openUserProfile}
                       />
                     ))}
                   </div>
@@ -2763,7 +2882,7 @@ export default function GroupPage() {
             <section className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
               <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4 dark:border-gray-800">
                 <div>
-                  <h2 className="font-semibold text-gray-950 dark:text-white">Activity feed</h2>
+                  <h2 className="font-semibold text-gray-950 dark:text-white">Updates feed</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">A clear audit trail of what changed in this group.</p>
                 </div>
                 <button type="button" onClick={fetchActivity} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
@@ -2775,13 +2894,13 @@ export default function GroupPage() {
                 <div className="p-10 text-center">
                   <Activity className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
                   <h3 className="mt-3 font-semibold text-gray-900 dark:text-white">No activity yet</h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">New posts, files, media uploads, and task updates will appear here.</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">New announcements, files, asset uploads, and task updates will appear here.</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {activities.map(item => (
                     <div key={item._id} className="flex gap-3 p-4">
-                      <Avatar person={item.actorId} />
+                      <Avatar person={item.actorId} onClick={openUserProfile} />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-semibold text-gray-950 dark:text-white">{item.actorId?.name || 'System'}</span>
@@ -2799,7 +2918,7 @@ export default function GroupPage() {
 
             <aside className="space-y-4">
               <MetricCard icon={Activity} label="Events" value={activities.length} tone="gray" />
-              <MetricCard icon={FileText} label="Posts" value={activities.filter(item => item.type === 'post').length} tone="blue" />
+              <MetricCard icon={FileText} label="Announcements" value={activities.filter(item => item.type === 'post').length} tone="blue" />
               <MetricCard icon={Upload} label="Uploads" value={activities.filter(item => ['file', 'memory'].includes(item.type)).length} tone="emerald" />
             </aside>
           </motion.div>
@@ -2807,13 +2926,13 @@ export default function GroupPage() {
 
         {activeTab === 'members' && (
           <motion.div key="members" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-            <GroupMembers groupId={id} />
+            <GroupMembers groupId={id} onUserClick={openUserProfile} />
           </motion.div>
         )}
 
         {activeTab === 'chat' && (
           <motion.div key="chat" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-            <GroupChat groupId={id} />
+            <GroupChat groupId={id} group={group} members={groupMembers} onUserClick={openUserProfile} />
           </motion.div>
         )}
 
@@ -2926,7 +3045,7 @@ export default function GroupPage() {
 
                         return (
                           <div key={personId} className="flex items-center gap-3 rounded-lg border border-gray-100 p-2 dark:border-gray-800">
-                            <Avatar person={person} size="sm" />
+                            <Avatar person={person} size="sm" onClick={openUserProfile} />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{person.name}</p>
                               <p className="truncate text-xs text-gray-500 dark:text-gray-400">{person.email}</p>
@@ -2950,7 +3069,7 @@ export default function GroupPage() {
                         <div className="mt-2 space-y-2">
                           {pendingInvites.slice(0, 5).map(invite => (
                             <div key={invite._id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800">
-                              <Avatar person={invite.invitedUser} size="sm" />
+                              <Avatar person={invite.invitedUser} size="sm" onClick={openUserProfile} />
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{invite.invitedUser?.name || 'User'}</p>
                                 <p className="text-xs text-gray-500">Waiting for response</p>
@@ -3266,13 +3385,13 @@ export default function GroupPage() {
                     }}
                     className={`rounded-md px-3 py-2 text-sm font-semibold transition ${shareMode === 'group' ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-950 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
                   >
-                    Group chat
+                    Team chat
                   </button>
                 </div>
 
                 <label className="block">
                   <span className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {shareMode === 'message' ? 'Send to member' : 'Share to group chat'}
+                    {shareMode === 'message' ? 'Send to member' : 'Share to team chat'}
                   </span>
                   <select
                     value={shareTargetId}
@@ -3408,6 +3527,12 @@ export default function GroupPage() {
           </div>
         )}
       </AnimatePresence>
+
+      <UserProfileModal
+        isOpen={Boolean(profileUser)}
+        user={profileUser}
+        onClose={() => setProfileUser(null)}
+      />
 
     </div>
   );

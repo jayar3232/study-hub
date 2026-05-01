@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellOff, Home, Users, MessageCircle, User, LogOut, Sun, Moon, Menu, Sparkles, X, Volume2 } from 'lucide-react';
+import { BellOff, Home, Users, MessageCircle, User, LogOut, Sun, Moon, Menu, X, Volume2, Target } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -130,15 +130,17 @@ export default function Layout({ children }) {
   const BrandLogo = ({ compact = false }) => (
     <motion.div
       animate={{ y: [0, -2, 0] }}
-      transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-      className="inline-flex items-center gap-2"
+      transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
+      className="inline-flex items-center gap-3"
     >
-      <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow-lg shadow-pink-500/25">
-        <Sparkles size={compact ? 16 : 18} />
-        <span className="absolute inset-0 rounded-xl ring-2 ring-pink-300/30 blur-[2px]" />
+      <span className={`${compact ? 'h-10 w-10 rounded-2xl' : 'h-12 w-12 rounded-[1.35rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-gray-950 shadow-xl shadow-cyan-500/15 ring-1 ring-white/10 dark:bg-white`}>
+        <span className="absolute -left-2 top-2 h-8 w-8 rounded-full border-[3px] border-cyan-300/90 shadow-[0_0_18px_rgba(34,211,238,0.45)]" />
+        <span className="absolute -right-2 bottom-2 h-8 w-8 rounded-full border-[3px] border-pink-400/90 shadow-[0_0_18px_rgba(236,72,153,0.45)]" />
+        <span className="absolute inset-2 rounded-xl bg-white/10 dark:bg-gray-950/10" />
+        <span className="relative font-black tracking-normal text-white dark:text-gray-950">W</span>
       </span>
-      <span className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-normal bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-500 bg-clip-text text-transparent drop-shadow-sm`}>
-        WorkLoop
+      <span className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-normal text-gray-950 dark:text-white`}>
+        Work<span className="bg-gradient-to-r from-cyan-400 via-pink-500 to-indigo-500 bg-clip-text text-transparent">Loop</span>
       </span>
     </motion.div>
   );
@@ -164,6 +166,7 @@ export default function Layout({ children }) {
     { path: '/dashboard', icon: Home, label: 'Dashboard' },
     { path: '/groups', icon: Users, label: 'Workspaces' },
     { path: '/messages', icon: MessageCircle, label: 'Messages' },
+    { path: '/arena', icon: Target, label: 'Fix Arena' },
     { path: '/profile', icon: User, label: 'Profile' },
   ];
 
@@ -307,9 +310,6 @@ export default function Layout({ children }) {
               </Link>
             );
           })}
-          <button onClick={toggleTheme} className="p-2 text-gray-500 transition hover:-translate-y-0.5 dark:text-gray-400" aria-label="Toggle theme">
-            {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
-          </button>
         </nav>
       </div>
 
@@ -375,6 +375,13 @@ export default function Layout({ children }) {
               <nav className="p-4 space-y-2">
                 {navItems.map(item => renderNavLink(item, true))}
                 <DndToggle />
+                <button
+                  onClick={toggleTheme}
+                  className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                  <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                </button>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 mt-4 dark:hover:bg-red-900/30"

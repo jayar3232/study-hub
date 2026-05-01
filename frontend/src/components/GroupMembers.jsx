@@ -17,7 +17,7 @@ const getAvatarUrl = (user) => {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=ec4899&color=fff&bold=true&length=2`;
 };
 
-export default function GroupMembers({ groupId }) {
+export default function GroupMembers({ groupId, onUserClick }) {
   const { user } = useAuth();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,7 +134,11 @@ export default function GroupMembers({ groupId }) {
           const avatarUrl = getAvatarUrl(member);
           return (
             <div key={member._id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-              <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onUserClick?.(member)}
+                className="flex min-w-0 items-center gap-3 rounded-lg text-left transition hover:text-pink-600 dark:hover:text-pink-300"
+              >
                 <img
                   src={avatarUrl}
                   alt={member.name}
@@ -160,7 +164,7 @@ export default function GroupMembers({ groupId }) {
                     {getRoleBadge(member.role)}
                   </div>
                 </div>
-              </div>
+              </button>
               <div className="flex items-center gap-1">
                 {canPromote && (
                   <button

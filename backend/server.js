@@ -92,6 +92,7 @@ app.use('/api/group-chat', require('./routes/groupChat'));
 app.use('/api/memories', require('./routes/memories'));
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/activity', require('./routes/activity'));
+app.use('/api/games', require('./routes/games'));
 
 const notifications = require('./routes/notifications');
 app.use('/api/notifications', notifications.router);

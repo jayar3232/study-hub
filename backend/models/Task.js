@@ -7,6 +7,8 @@ const TaskSchema = new mongoose.Schema({
   dueDate: { type: Date },
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   status: { type: String, enum: ['not_started', 'in_progress', 'done'], default: 'not_started' },
+  completedAt: { type: Date, default: null },
+  completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   labels: [{ type: String, trim: true, maxlength: 28 }],
   approvalStatus: {
     type: String,

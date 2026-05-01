@@ -28,10 +28,12 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import EmojiPicker from 'emoji-picker-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import NewChatModal from './NewChatModal';
+import UserProfileModal from './UserProfileModal';
 import { resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
 
@@ -81,9 +83,11 @@ const messageVariants = {
 
 export default function Messages() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState([]);
   const [conversationSearch, setConversationSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -127,6 +131,15 @@ export default function Messages() {
   const messageRefs = useRef({});
 
   const currentUserId = getEntityId(user);
+  const targetUserId = searchParams.get('user');
+
+  const clearTargetUserParam = useCallback(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('user');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   useEffect(() => {
     selectedUserRef.current = selectedUser;
@@ -249,6 +262,43 @@ export default function Messages() {
 
     load();
   }, [fetchConversations, fetchUserNotes]);
+
+  useEffect(() => {
+    if (!targetUserId || !currentUserId || initialLoading) return undefined;
+
+    if (targetUserId === currentUserId) {
+      clearTargetUserParam();
+      return undefined;
+    }
+
+    const existingConversation = conversations.find(item => getEntityId(item.user) === targetUserId);
+    if (existingConversation?.user) {
+      setSelectedUser(existingConversation.user);
+      clearTargetUserParam();
+      return undefined;
+    }
+
+    let cancelled = false;
+    const openTargetConversation = async () => {
+      try {
+        const res = await api.get(`/users/${targetUserId}/public`);
+        if (!cancelled) {
+          setSelectedUser(res.data);
+          clearTargetUserParam();
+        }
+      } catch (err) {
+        if (!cancelled) {
+          toast.error('Could not open that conversation');
+          clearTargetUserParam();
+        }
+      }
+    };
+
+    openTargetConversation();
+    return () => {
+      cancelled = true;
+    };
+  }, [clearTargetUserParam, conversations, currentUserId, initialLoading, targetUserId]);
 
   useEffect(() => {
     if (!currentUserId) return undefined;
@@ -1172,13 +1222,13 @@ export default function Messages() {
                 >
                   <X size={18} />
                 </button>
-                <div className="relative">
+                <button type="button" onClick={() => setProfileUser(selectedUser)} className="relative shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-pink-300" title="View profile">
                   {renderAvatar(selectedUser, 'h-12 w-12', 22)}
                   <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
                     selectedIsOnline ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]' : 'bg-gray-300 dark:bg-gray-600'
                   }`} />
-                </div>
-                <div className="min-w-0 flex-1">
+                </button>
+                <button type="button" onClick={() => setProfileUser(selectedUser)} className="min-w-0 flex-1 text-left" title="View profile">
                   <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedUser.name}</div>
                   <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-pink-500' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
@@ -1188,7 +1238,7 @@ export default function Messages() {
                       Note: {userNotes[selectedUserId].text}
                     </div>
                   )}
-                </div>
+                </button>
                 <button
                   onClick={() => setShowPinnedPanel(value => !value)}
                   disabled={pinnedMessages.length === 0}
@@ -1605,6 +1655,12 @@ export default function Messages() {
           }}
         />
       )}
+
+      <UserProfileModal
+        isOpen={Boolean(profileUser)}
+        user={profileUser}
+        onClose={() => setProfileUser(null)}
+      />
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
   Save,
   Shield,
   Sun,
+  Trophy,
   TrendingUp,
   User,
   Users,
@@ -25,6 +26,8 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { resolveMediaUrl } from '../utils/media';
+import RankBadge, { RankEmblem } from './RankBadge';
+import GameRankBadge from './GameRankBadge';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -60,6 +63,8 @@ export default function Profile() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [groups, setGroups] = useState([]);
+  const [rankData, setRankData] = useState(null);
+  const [gameData, setGameData] = useState(null);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
@@ -72,6 +77,8 @@ export default function Profile() {
     setBio(user.bio || '');
     setAvatar(user.avatar || '');
     fetchGroups();
+    fetchRankings();
+    fetchGameSummary();
   }, [user]);
 
   const fetchGroups = async () => {
@@ -80,6 +87,24 @@ export default function Profile() {
       setGroups(res.data);
     } catch (err) {
       console.error('Error fetching groups:', err);
+    }
+  };
+
+  const fetchRankings = async () => {
+    try {
+      const res = await api.get('/users/rankings/me');
+      setRankData(res.data);
+    } catch (err) {
+      console.error('Error fetching rankings:', err);
+    }
+  };
+
+  const fetchGameSummary = async () => {
+    try {
+      const res = await api.get('/games/summary/me');
+      setGameData(res.data);
+    } catch (err) {
+      console.error('Error fetching game summary:', err);
     }
   };
 
@@ -189,6 +214,10 @@ export default function Profile() {
 
   const avatarSrc = resolveMediaUrl(avatar || user.avatar);
   const memberSince = formatMonthYear(user.createdAt);
+  const rankStats = rankData?.me;
+  const gameStats = gameData?.typingStats || gameData?.stats;
+  const leaderboard = rankData?.leaderboard || [];
+  const currentPosition = rankData?.currentUserRank?.position;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
@@ -227,15 +256,27 @@ export default function Profile() {
               </div>
             </div>
 
-            <div className="w-full rounded-xl bg-white/10 p-4 backdrop-blur md:w-72">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-semibold">Profile completeness</span>
-                <span>{completion}%</span>
+            <div className="grid w-full gap-3 md:w-80">
+              <div className="rounded-xl bg-white/10 p-4 backdrop-blur">
+                <div className="flex items-center gap-3">
+                  <RankEmblem rank={rankStats?.rank} size="sm" animated />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase text-pink-100/80">Current rank</p>
+                    <p className="truncate text-lg font-black">{rankStats?.rank?.name || 'Rookie Operator'}</p>
+                    <p className="text-xs text-white/65">{rankStats?.xp || 0} XP · #{currentPosition || '-'} network rank</p>
+                  </div>
+                </div>
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
-                <div className="h-full rounded-full bg-pink-400 transition-all" style={{ width: `${completion}%` }} />
+              <div className="rounded-xl bg-white/10 p-4 backdrop-blur">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold">Profile completeness</span>
+                  <span>{completion}%</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
+                  <div className="h-full rounded-full bg-pink-400 transition-all" style={{ width: `${completion}%` }} />
+                </div>
+                <p className="mt-2 text-xs text-white/65">Add course, bio, and avatar for a stronger profile.</p>
               </div>
-              <p className="mt-2 text-xs text-white/65">Add course, bio, and avatar for a stronger profile.</p>
             </div>
           </div>
         </div>
@@ -256,11 +297,53 @@ export default function Profile() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={Users} label="Groups Joined" value={groups.length} helper="Workspaces you can access" />
         <StatCard icon={TrendingUp} label="Total Members" value={totalMembers} helper="Across your joined groups" />
         <StatCard icon={Award} label="Created by You" value={createdGroups.length} helper="Groups you own" />
+        <StatCard icon={Trophy} label="Completed Tasks" value={rankStats?.completedTasks || 0} helper={`${rankStats?.xp || 0} career XP`} />
+        <StatCard icon={Trophy} label="Arena High Score" value={gameStats?.highScore || 0} helper={`${gameStats?.totalPlays || 0} ranked runs`} />
       </div>
+
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
+        <RankBadge stats={rankStats} />
+        <GameRankBadge stats={gameStats} />
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-gray-950 dark:text-white">Network Leaderboard</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Top contributors from your shared workspaces.</p>
+            </div>
+            <Trophy className="text-yellow-500" size={24} />
+          </div>
+          <div className="space-y-2">
+            {leaderboard.slice(0, 5).map(entry => {
+              const itemAvatar = resolveMediaUrl(entry.user?.avatar);
+              const isMe = getEntityId(entry.user) === getEntityId(user);
+
+              return (
+                <div key={entry.user?._id || entry.position} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${isMe ? 'border-pink-200 bg-pink-50 dark:border-pink-900/60 dark:bg-pink-950/20' : 'border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50'}`}>
+                  <div className="w-7 text-center text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</div>
+                  <RankEmblem rank={entry.stats?.rank} size="sm" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                    {itemAvatar ? <img src={itemAvatar} alt={entry.user?.name || 'User'} className="h-full w-full object-cover" /> : entry.user?.name?.charAt(0)?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-gray-950 dark:text-white">{entry.user?.name || 'User'}</p>
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">{entry.stats?.rank?.shortName || 'Rookie'} · {entry.stats?.completedTasks || 0} tasks</p>
+                  </div>
+                  <div className="text-right text-sm font-black text-gray-950 dark:text-white">{entry.stats?.xp || 0}</div>
+                </div>
+              );
+            })}
+            {leaderboard.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-5 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400">
+                Complete assigned tasks to start the leaderboard.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">

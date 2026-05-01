@@ -65,6 +65,7 @@ const findMemberGroup = async (groupId, userId) => {
 const populateTask = async (task) => {
   await task.populate('assignedTo', 'name avatar');
   await task.populate('createdBy', 'name avatar');
+  await task.populate('completedBy', 'name avatar');
   await task.populate('comments.userId', 'name avatar');
   await task.populate('activity.userId', 'name avatar');
   return task;
@@ -87,6 +88,7 @@ router.get('/group/:groupId', auth, async (req, res) => {
     const tasks = await Task.find({ groupId: req.params.groupId })
       .populate('assignedTo', 'name avatar')
       .populate('createdBy', 'name avatar')
+      .populate('completedBy', 'name avatar')
       .populate('comments.userId', 'name avatar')
       .populate('activity.userId', 'name avatar')
       .sort({ createdAt: -1 });
@@ -176,6 +178,13 @@ router.put('/:taskId', auth, async (req, res) => {
 
     if (status && VALID_STATUSES.includes(status) && status !== task.status) {
       task.activity.push({ userId: req.user, action: `changed status to ${status}` });
+      if (status === 'done') {
+        task.completedAt = task.completedAt || new Date();
+        task.completedBy = req.user;
+      } else if (task.status === 'done') {
+        task.completedAt = null;
+        task.completedBy = null;
+      }
       task.status = status;
     }
     if (priority && VALID_PRIORITIES.includes(priority) && priority !== task.priority) {
@@ -253,6 +262,8 @@ router.put('/:taskId/complete', auth, async (req, res) => {
     if (!group) return res.status(403).json({ msg: 'You are not a member of this group' });
 
     task.status = task.status === 'done' ? 'not_started' : 'done';
+    task.completedAt = task.status === 'done' ? new Date() : null;
+    task.completedBy = task.status === 'done' ? req.user : null;
     task.activity.push({ userId: req.user, action: `changed status to ${task.status}` });
     await task.save();
     await createGroupActivity({

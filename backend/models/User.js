@@ -7,7 +7,8 @@ const UserSchema = new mongoose.Schema({
   course: { type: String, default: '' },
   bio: { type: String, default: '' },
   avatar: { type: String, default: '' },
-  lastSeen: { type: Date, default: null }
+  lastSeen: { type: Date, default: null },
+  isDeveloper: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);

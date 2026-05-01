@@ -5,7 +5,7 @@ export default function EmptyState({ type, action }) {
   const config = {
     groups: { icon: Users, title: 'No workspaces yet', message: 'Create a new workspace or join using a code.', buttonText: 'Create Workspace', buttonAction: action },
     messages: { icon: MessageCircle, title: 'No messages yet', message: 'Start a conversation by clicking +', buttonText: 'Start Chat', buttonAction: action },
-    posts: { icon: FileText, title: 'No posts yet', message: 'Be the first to share something!', buttonText: 'Create Post', buttonAction: action },
+    posts: { icon: FileText, title: 'No announcements yet', message: 'Share the first workspace update.', buttonText: 'Create Announcement', buttonAction: action },
   };
   const { icon: Icon, title, message, buttonText, buttonAction } = config[type] || config.groups;
   return (

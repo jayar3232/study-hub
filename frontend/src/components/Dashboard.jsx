@@ -9,18 +9,25 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardCheck,
+  CloudSun,
   Clock,
   FolderKanban,
   Gauge,
+  MapPin,
   MessageCircle,
+  RefreshCw,
   Settings,
   Sparkles,
   Target,
+  Trophy,
   TrendingUp,
   Users
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import RankBadge, { RankEmblem } from './RankBadge';
+import { resolveMediaUrl } from '../utils/media';
+import UserProfileModal from './UserProfileModal';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -75,6 +82,40 @@ const statusLabels = {
   in_progress: 'In progress',
   done: 'Done'
 };
+
+const weatherLabels = {
+  0: 'Clear',
+  1: 'Mostly clear',
+  2: 'Partly cloudy',
+  3: 'Cloudy',
+  45: 'Foggy',
+  48: 'Foggy',
+  51: 'Light drizzle',
+  53: 'Drizzle',
+  55: 'Heavy drizzle',
+  61: 'Light rain',
+  63: 'Rain',
+  65: 'Heavy rain',
+  80: 'Rain showers',
+  81: 'Rain showers',
+  82: 'Heavy showers',
+  95: 'Thunderstorm'
+};
+
+const getWeatherLabel = (code) => weatherLabels[code] || 'Weather';
+
+const formatDashboardTime = (value) => value.toLocaleTimeString(undefined, {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+});
+
+const formatDashboardDate = (value) => value.toLocaleDateString(undefined, {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric'
+});
 
 const StatCard = ({ icon: Icon, label, value, helper, tone, delay }) => (
   <motion.div
@@ -135,8 +176,66 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [groups, setGroups] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [rankData, setRankData] = useState(null);
+  const [profileUser, setProfileUser] = useState(null);
+  const [now, setNow] = useState(() => new Date());
+  const [weather, setWeather] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchWeather = async (latitude, longitude, label) => {
+      setWeatherLoading(true);
+      try {
+        const params = new URLSearchParams({
+          latitude: String(latitude),
+          longitude: String(longitude),
+          current: 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m',
+          timezone: 'auto'
+        });
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+        if (!res.ok) throw new Error('Weather request failed');
+        const data = await res.json();
+        if (cancelled) return;
+
+        setWeather({
+          label,
+          temperature: Math.round(data.current?.temperature_2m ?? 0),
+          humidity: Math.round(data.current?.relative_humidity_2m ?? 0),
+          wind: Math.round(data.current?.wind_speed_10m ?? 0),
+          condition: getWeatherLabel(data.current?.weather_code)
+        });
+      } catch (err) {
+        if (!cancelled) setWeather(null);
+      } finally {
+        if (!cancelled) setWeatherLoading(false);
+      }
+    };
+
+    const useFallback = () => fetchWeather(14.5995, 120.9842, 'Manila');
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        position => fetchWeather(position.coords.latitude, position.coords.longitude, 'Your area'),
+        useFallback,
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 600000 }
+      );
+    } else {
+      useFallback();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,7 +243,10 @@ export default function Dashboard() {
     const loadDashboard = async () => {
       setLoading(true);
       try {
-        const groupRes = await api.get('/groups');
+        const [groupRes, rankRes] = await Promise.all([
+          api.get('/groups'),
+          api.get('/users/rankings/me').catch(() => ({ data: null }))
+        ]);
         const groupData = groupRes.data || [];
 
         const taskResults = await Promise.allSettled(
@@ -160,6 +262,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setGroups(groupData);
           setTasks(taskData);
+          setRankData(rankRes.data);
           window.dispatchEvent(new Event('groupsUpdated'));
         }
       } catch (err) {
@@ -174,6 +277,9 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, []);
+
+  const rankStats = rankData?.me;
+  const leaderboard = rankData?.leaderboard || [];
 
   const summary = useMemo(() => {
     const doneTasks = tasks.filter(task => task.status === 'done').length;
@@ -281,25 +387,59 @@ export default function Dashboard() {
               See deadlines, approvals, and team momentum at a glance before jumping into project work.
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <motion.button
-              whileHover={{ y: -2, scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => navigate('/groups')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-gray-950 shadow-lg shadow-black/10 transition hover:bg-pink-50"
-            >
-              <FolderKanban size={18} />
-              Open Projects
-            </motion.button>
-            <motion.button
-              whileHover={{ y: -2, scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => navigate('/messages')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/20"
-            >
-              <MessageCircle size={18} />
-              Messages
-            </motion.button>
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-white/10 p-4 text-white backdrop-blur">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase text-cyan-100/80">Today</p>
+                <p className="mt-1 text-3xl font-black tabular-nums">{formatDashboardTime(now)}</p>
+                <p className="mt-1 text-sm text-white/70">{formatDashboardDate(now)}</p>
+              </div>
+              <CloudSun className="text-yellow-200" size={34} />
+            </div>
+            <div className="mt-4 rounded-xl bg-white/10 p-3">
+              {weatherLoading ? (
+                <p className="flex items-center gap-2 text-sm font-semibold text-white/75">
+                  <RefreshCw size={15} className="animate-spin" />
+                  Loading weather
+                </p>
+              ) : weather ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-1 text-xs font-bold text-white/60">
+                      <MapPin size={13} />
+                      {weather.label}
+                    </p>
+                    <p className="mt-1 text-sm font-black">{weather.condition}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-black">{weather.temperature} C</p>
+                    <p className="text-xs text-white/60">{weather.humidity}% humidity - {weather.wind} km/h</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-white/70">Weather unavailable</p>
+              )}
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <motion.button
+                whileHover={{ y: -2, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/groups')}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-gray-950 shadow-lg shadow-black/10 transition hover:bg-pink-50"
+              >
+                <FolderKanban size={17} />
+                Projects
+              </motion.button>
+              <motion.button
+                whileHover={{ y: -2, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/messages')}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/20"
+              >
+                <MessageCircle size={17} />
+                Messages
+              </motion.button>
+            </div>
           </div>
         </div>
       </motion.section>
@@ -308,6 +448,59 @@ export default function Dashboard() {
         {stats.map((stat, index) => (
           <StatCard key={stat.label} {...stat} delay={index * 0.06} />
         ))}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+        <RankBadge stats={rankStats} />
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.14 }}
+          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+        >
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-gray-950 dark:text-white">Contributor Rankings</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">XP is based on completed assigned tasks across your workspace network.</p>
+            </div>
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-yellow-50 px-3 py-1 text-xs font-black text-yellow-700 ring-1 ring-yellow-100 dark:bg-yellow-950/30 dark:text-yellow-200 dark:ring-yellow-900/60">
+              <Trophy size={13} />
+              Top {Math.min(leaderboard.length, 5)}
+            </span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            {leaderboard.slice(0, 5).map(entry => {
+              const avatar = resolveMediaUrl(entry.user?.avatar);
+              return (
+                <button
+                  key={entry.user?._id || entry.position}
+                  type="button"
+                  onClick={() => setProfileUser(entry.user)}
+                  className="group rounded-xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:-translate-y-1 hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</span>
+                    <RankEmblem rank={entry.stats?.rank} size="sm" />
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                      {avatar ? <img src={avatar} alt={entry.user?.name || 'User'} className="h-full w-full object-cover" /> : entry.user?.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-gray-950 dark:text-white">{entry.user?.name || 'User'}</p>
+                      <p className="truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{entry.stats?.xp || 0} XP</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {leaderboard.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400 md:col-span-2 xl:col-span-5">
+                Finish assigned tasks to activate rankings.
+              </div>
+            )}
+          </div>
+        </motion.div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
@@ -395,7 +588,7 @@ export default function Dashboard() {
         </motion.div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-4">
         {[
           {
             icon: FolderKanban,
@@ -410,6 +603,13 @@ export default function Dashboard() {
             detail: 'Check direct messages, media, voice notes, and conversation updates.',
             action: 'Open inbox',
             path: '/messages'
+          },
+          {
+            icon: Trophy,
+            title: 'Fix Arena',
+            detail: 'Submit member reports, review fixes, and play Typing Sprint.',
+            action: 'Open arena',
+            path: '/arena'
           },
           {
             icon: Settings,
@@ -498,6 +698,12 @@ export default function Dashboard() {
           </div>
         )}
       </motion.section>
+
+      <UserProfileModal
+        isOpen={Boolean(profileUser)}
+        user={profileUser}
+        onClose={() => setProfileUser(null)}
+      />
     </div>
   );
 }
