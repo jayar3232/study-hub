@@ -37,7 +37,7 @@ const SocialButton = ({ provider, loading, onClick }) => {
       disabled={loading}
       className="group inline-flex h-12 items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:hover:border-pink-900/70"
     >
-      <span className={`grid h-7 w-7 place-items-center rounded-full text-base font-black ${isGoogle ? 'bg-white text-blue-600 ring-1 ring-gray-200' : 'bg-blue-600 text-white'}`}>
+      <span className={`grid h-7 w-7 place-items-center rounded-full text-base font-black ${isGoogle ? 'bg-white text-pink-600 ring-1 ring-gray-200' : 'bg-pink-600 text-white'}`}>
         {isGoogle ? 'G' : 'f'}
       </span>
       {isGoogle ? 'Google' : 'Facebook'}
@@ -180,7 +180,7 @@ export default function Login() {
               className="h-14 w-14 rounded-2xl bg-white object-cover p-1 shadow-2xl shadow-cyan-500/20"
             />
             <div>
-              <div className="text-3xl font-black tracking-normal">Work<span className="bg-gradient-to-r from-cyan-300 to-pink-400 bg-clip-text text-transparent">Loop</span></div>
+              <div className="text-3xl font-black tracking-normal">Nex<span className="bg-gradient-to-r from-pink-300 to-cyan-300 bg-clip-text text-transparent">us</span></div>
               <p className="text-xs font-black uppercase text-white/45">NEMSU workspace network</p>
             </div>
           </div>
@@ -218,7 +218,7 @@ export default function Login() {
           >
             <div className="mb-6 flex items-center justify-center gap-3 lg:hidden">
               <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="h-12 w-12 rounded-2xl bg-white object-cover p-1" />
-              <div className="text-3xl font-black">Work<span className="text-pink-400">Loop</span></div>
+              <div className="text-3xl font-black">Student<span className="text-pink-500">Hub</span></div>
             </div>
 
             <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/95 p-6 text-gray-950 shadow-2xl shadow-pink-500/20 dark:bg-gray-900/95 dark:text-white sm:p-8">
@@ -231,7 +231,7 @@ export default function Login() {
                   animate={{ y: [0, -4, 0] }}
                   transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
                   src={SCHOOL_LOGO_SRC}
-                  alt="WorkLoop"
+                  alt="StudentHub"
                   className="mx-auto h-16 w-16 rounded-2xl bg-gray-950 object-cover p-1 shadow-xl shadow-cyan-500/20 dark:bg-white"
                 />
                 <h2 className="mt-5 text-3xl font-black tracking-normal">Welcome back</h2>

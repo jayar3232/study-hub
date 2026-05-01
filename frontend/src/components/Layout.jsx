@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellOff, Home, Users, MessageCircle, User, LogOut, Sun, Moon, Menu, X, Volume2, Target, UserPlus } from 'lucide-react';
+import { BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { resolveMediaUrl } from '../utils/media';
-import { playUiSound } from '../utils/sound';
+import { installGlobalClickSound, playUiSound } from '../utils/sound';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { SCHOOL_LOGO_SRC } from '../utils/academics';
+
+const APP_NAME = 'StudentHub';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -27,7 +29,7 @@ const getMessageSnippet = (message) => {
 };
 
 export default function Layout({ children }) {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, currentTheme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -40,10 +42,13 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const avatarSrc = resolveMediaUrl(user?.avatar);
+  const pageContent = children || <Outlet />;
 
   useEffect(() => {
     localStorage.setItem('workloop-dnd', String(dndEnabled));
   }, [dndEnabled]);
+
+  useEffect(() => installGlobalClickSound(), []);
 
   useEffect(() => () => {
     Object.values(messageTimersRef.current).forEach(clearTimeout);
@@ -178,27 +183,32 @@ export default function Layout({ children }) {
     return () => socket.off('receiveMessage', onReceiveMessage);
   }, [dndEnabled, location.pathname, user]);
 
-  const BrandLogo = ({ compact = false }) => (
+  const BrandLogo = ({ compact = false, collapsed = false }) => (
     <motion.div
-      animate={{ y: [0, -2, 0] }}
-      transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
-      className="inline-flex items-center gap-3"
+      animate={{ y: [0, -3, 0] }}
+      transition={{ duration: 3.8, repeat: Infinity, ease: 'easeInOut' }}
+      className="group/brand inline-flex min-w-0 items-center gap-3"
+      title={APP_NAME}
     >
-      <span className={`${compact ? 'h-10 w-10 rounded-2xl' : 'h-12 w-12 rounded-[1.35rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-gray-950 shadow-xl shadow-cyan-500/15 ring-1 ring-white/10 dark:bg-white`}>
-        <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="relative h-full w-full object-cover p-1.5" />
+      <span className={`${compact ? 'h-14 w-14 rounded-[1.35rem]' : 'h-16 w-16 rounded-[1.6rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-white/90 shadow-xl shadow-cyan-500/15 ring-1 ring-white/70 transition group-hover/brand:shadow-pink-500/20 dark:bg-gray-950/80 dark:ring-white/10`}>
+        <span className="absolute inset-0 bg-gradient-to-br from-cyan-300/35 via-pink-300/25 to-indigo-400/35" />
+        <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="relative h-full w-full object-cover p-1" />
       </span>
-      <span className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-normal text-gray-950 dark:text-white`}>
-        Work<span className="bg-gradient-to-r from-cyan-400 via-pink-500 to-indigo-500 bg-clip-text text-transparent">Loop</span>
+      <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[11rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[11rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[11rem] opacity-100'} min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
+        <span className={`${compact ? 'text-[1.65rem]' : 'text-3xl'} block truncate font-black tracking-normal text-gray-950 drop-shadow-sm dark:text-white`}>
+          Student<span className="bg-gradient-to-r from-cyan-500 via-pink-500 to-indigo-500 bg-clip-text text-transparent">Hub</span>
+        </span>
+        <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} mt-0.5 block truncate font-black uppercase tracking-normal text-gray-500 dark:text-gray-400`}>NEMSU Workspace</span>
       </span>
     </motion.div>
   );
 
-  const DndToggle = ({ compact = false }) => (
+  const DndToggle = ({ compact = false, collapsed = false }) => (
     <button
       type="button"
       aria-pressed={dndEnabled}
       onClick={() => setDndEnabled(value => !value)}
-      className={`${compact ? 'rounded-full p-2' : 'flex w-full items-center gap-3 rounded-lg px-4 py-2'} transition ${
+      className={`${compact ? 'rounded-full p-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-3 rounded-lg px-4 py-2'} transition ${
         dndEnabled
           ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-300'
           : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
@@ -206,7 +216,28 @@ export default function Layout({ children }) {
       title={dndEnabled ? 'Do not disturb is on' : 'Message popups are on'}
     >
       {dndEnabled ? <BellOff size={compact ? 22 : 20} /> : <Volume2 size={compact ? 22 : 20} />}
-      {!compact && <span>{dndEnabled ? 'Do not disturb' : 'Message alerts'}</span>}
+      {!compact && (
+        <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[9rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[9rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[9rem] opacity-100'} overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
+          {dndEnabled ? 'Do not disturb' : 'Message alerts'}
+        </span>
+      )}
+    </button>
+  );
+
+  const ThemeToggle = ({ compact = false, collapsed = false }) => (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      className={`${compact ? 'rounded-full p-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-3 rounded-xl px-4 py-2.5'} text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 hover:text-pink-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-pink-300`}
+      title={currentTheme?.helper || 'Toggle theme'}
+      aria-label={currentTheme?.label || 'Toggle theme'}
+    >
+      {theme === 'dark' ? <Moon size={compact ? 22 : 20} /> : <Sun size={compact ? 22 : 20} />}
+      {!compact && (
+        <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[9rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[9rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[9rem] opacity-100'} overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
+          {currentTheme?.label || 'Theme'}
+        </span>
+      )}
     </button>
   );
 
@@ -238,12 +269,12 @@ export default function Layout({ children }) {
     const isFriends = item.path === '/friends';
     const badgeCount = isMessages ? unreadCount : isGroups ? groupBadgeCount : isFriends ? friendBadgeCount : 0;
     const activeClasses = isActive
-      ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 shadow-sm'
-      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
-    const baseClasses = `flex items-center gap-3 px-4 py-2 rounded-lg transition duration-200 hover:-translate-y-0.5 ${activeClasses}`;
+      ? 'border-pink-300/35 bg-white/35 text-pink-700 shadow-sm shadow-pink-500/10 backdrop-blur dark:border-pink-400/25 dark:bg-white/10 dark:text-pink-200'
+      : 'border-transparent bg-transparent text-gray-700 hover:border-white/45 hover:bg-white/25 hover:text-gray-950 dark:text-gray-300 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-white';
+    const baseClasses = `flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 font-semibold transition-all duration-300 hover:-translate-y-0.5 ${activeClasses}`;
     const linkContent = (
       <>
-        <div className="relative">
+        <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
           <item.icon size={isMobile ? 24 : 20} />
           {badgeCount > 0 && (
             <span className="absolute -top-1 -right-2 bg-pink-500 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center">
@@ -251,7 +282,11 @@ export default function Layout({ children }) {
             </span>
           )}
         </div>
-        {!isMobile && <span>{item.label}</span>}
+        {!isMobile && (
+          <span className="max-w-[10rem] overflow-hidden whitespace-nowrap opacity-100 transition-all duration-300 ease-out">
+            {item.label}
+          </span>
+        )}
       </>
     );
 
@@ -260,8 +295,9 @@ export default function Layout({ children }) {
         <Link
           key={item.path}
           to={item.path}
+          data-sound="tab"
           onClick={() => setSidebarOpen(false)}
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg transition ${activeClasses}`}
+          className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 font-semibold transition ${activeClasses}`}
         >
           {linkContent}
           <span>{item.label}</span>
@@ -270,53 +306,49 @@ export default function Layout({ children }) {
     }
 
     return (
-      <Link key={item.path} to={item.path} className={baseClasses}>
+      <Link key={item.path} to={item.path} data-sound="tab" className={baseClasses}>
         {linkContent}
       </Link>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <aside className="hidden md:flex md:w-64 fixed h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <BrandLogo />
+    <div className="min-h-screen text-gray-900 dark:text-gray-100">
+      <aside className="group/sidebar fixed z-30 hidden h-full w-64 flex-col overflow-hidden border-r border-white/45 bg-white/45 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/45 dark:shadow-black/20 md:flex">
+        <div className="border-b border-white/40 p-3 dark:border-white/10">
+          <BrandLogo compact />
         </div>
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 space-y-2 p-3">
           {navItems.map(item => renderNavLink(item, false))}
         </nav>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+        <div className="space-y-2 border-t border-white/40 p-3 dark:border-white/10">
           <DndToggle />
+          <ThemeToggle />
           {user && (
-            <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/60">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+            <div className="mb-3 flex items-center gap-3 rounded-2xl border border-white/45 bg-white/35 p-2 shadow-sm backdrop-blur transition-[gap] duration-300 ease-out dark:border-white/10 dark:bg-white/5" title={user.email}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
                 {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 max-w-[10rem] overflow-hidden opacity-100 transition-all duration-300 ease-out">
                 <div className="truncate text-sm font-semibold text-gray-900 dark:text-white">{user.name}</div>
                 <div className="truncate text-xs text-gray-500">{user.email}</div>
               </div>
             </div>
           )}
           <button
-            onClick={toggleTheme}
-            className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-            <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-          </button>
-          <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-red-600 transition hover:-translate-y-0.5 hover:bg-red-50 dark:hover:bg-red-900/30"
+            data-sound="close"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-red-600 transition hover:-translate-y-0.5 hover:bg-red-50 dark:hover:bg-red-900/30"
+            title="Logout"
           >
             <LogOut size={20} />
-            <span>Logout</span>
+            <span className="max-w-[8rem] overflow-hidden whitespace-nowrap opacity-100 transition-all duration-300 ease-out">Logout</span>
           </button>
         </div>
       </aside>
 
-      <div className="md:ml-64 flex flex-col min-h-screen">
-        <header className="md:hidden bg-white/95 dark:bg-gray-800/95 border-b border-gray-200 dark:border-gray-700 p-4 flex justify-between items-center sticky top-0 z-20 backdrop-blur">
+      <div className="flex min-h-screen flex-col md:ml-64">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/45 bg-white/55 p-4 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/55 dark:shadow-black/10 md:hidden">
           <BrandLogo compact />
           <div className="flex items-center gap-2">
             <DndToggle compact />
@@ -331,11 +363,26 @@ export default function Layout({ children }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 pb-20 md:pb-4 overflow-x-hidden">
-          {children}
+        <main className="flex-1 overflow-x-hidden p-4 pb-20 md:pb-4">
+          {location.pathname.startsWith('/arena') ? (
+            <div className="min-h-full">{pageContent}</div>
+          ) : (
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 14, scale: 0.988 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.992 }}
+                transition={{ duration: 0.24, ease: 'easeOut' }}
+                className="min-h-full"
+              >
+                {pageContent}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </main>
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around py-2 z-20">
+        <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-white/45 bg-white/55 py-2 shadow-2xl shadow-gray-300/35 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/55 dark:shadow-black/20 md:hidden">
           {mobileBottomItems.map(item => {
             const isActive = location.pathname === item.path;
             const isMessages = item.path === '/messages';
@@ -346,6 +393,7 @@ export default function Layout({ children }) {
               <Link
                 key={item.path}
                 to={item.path}
+                data-sound="tab"
                 className={`p-2 rounded-full relative transition hover:-translate-y-0.5 ${
                   isActive
                     ? 'text-pink-600 dark:text-pink-400'
@@ -420,20 +468,14 @@ export default function Layout({ children }) {
             >
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <BrandLogo compact />
-                <button onClick={() => setSidebarOpen(false)} aria-label="Close menu">
+                <button onClick={() => setSidebarOpen(false)} data-sound="close" aria-label="Close menu">
                   <X size={24} />
                 </button>
               </div>
               <nav className="p-4 space-y-2">
                 {navItems.map(item => renderNavLink(item, true))}
                 <DndToggle />
-                <button
-                  onClick={toggleTheme}
-                  className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                >
-                  {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-                  <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-                </button>
+                <ThemeToggle />
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 mt-4 dark:hover:bg-red-900/30"

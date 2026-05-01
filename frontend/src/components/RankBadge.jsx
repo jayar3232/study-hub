@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Award, Crown, Sparkles, Star } from 'lucide-react';
+import { Award, Crown, Flame, Sparkles, Star } from 'lucide-react';
 
 const rankPalettes = {
   rookie: {
@@ -58,6 +58,27 @@ const rankPalettes = {
     soft: 'bg-orange-50 dark:bg-orange-950/30',
     gradient: 'from-orange-200 via-red-500 to-fuchsia-950',
     glow: 'shadow-orange-500/40'
+  },
+  dragon: {
+    ring: 'ring-orange-300/80 dark:ring-orange-500/60',
+    text: 'text-orange-800 dark:text-orange-100',
+    soft: 'bg-orange-50 dark:bg-orange-950/30',
+    gradient: 'from-orange-200 via-red-500 to-zinc-950',
+    glow: 'shadow-orange-500/55'
+  },
+  inferno: {
+    ring: 'ring-red-300/90 dark:ring-red-500/70',
+    text: 'text-red-800 dark:text-red-100',
+    soft: 'bg-red-50 dark:bg-red-950/30',
+    gradient: 'from-yellow-200 via-orange-500 to-red-950',
+    glow: 'shadow-orange-500/60'
+  },
+  celestial: {
+    ring: 'ring-amber-200/90 dark:ring-amber-400/70',
+    text: 'text-amber-800 dark:text-amber-100',
+    soft: 'bg-amber-50 dark:bg-amber-950/30',
+    gradient: 'from-amber-100 via-fuchsia-500 to-cyan-950',
+    glow: 'shadow-amber-500/60'
   }
 };
 
@@ -95,6 +116,9 @@ export function RankEmblem({ rank = fallbackRank, size = 'md', animated = false 
   const classes = sizeClasses[size] || sizeClasses.md;
   const rankInitial = (rank?.shortName || rank?.name || 'R').charAt(0).toUpperCase();
   const MotionTag = animated ? motion.div : 'div';
+  const isEliteRank = ['dragon', 'inferno', 'celestial'].includes(rank?.key);
+  const isCycloneRank = ['inferno', 'celestial'].includes(rank?.key);
+  const isLowestRank = rank?.key === 'rookie';
 
   return (
     <MotionTag
@@ -105,14 +129,23 @@ export function RankEmblem({ rank = fallbackRank, size = 'md', animated = false 
       className={`relative ${classes.wrap} shrink-0`}
       title={rank?.name || fallbackRank.name}
     >
-      <div className={`absolute inset-0 rounded-[1.35rem] bg-gradient-to-br ${palette.gradient} opacity-30 blur-xl`} />
+      {!isLowestRank && <div className={`absolute inset-0 rounded-[1.35rem] bg-gradient-to-br ${palette.gradient} ${isCycloneRank ? 'opacity-40 blur-xl' : 'opacity-16 blur-md'}`} />}
+      {isCycloneRank && (
+        <motion.div
+          animate={animated ? { rotate: 360 } : undefined}
+          transition={animated ? { duration: 9, repeat: Infinity, ease: 'linear' } : undefined}
+          className="absolute inset-[-22%] rounded-full bg-[conic-gradient(from_90deg,transparent,rgba(250,204,21,0.8),transparent,rgba(249,115,22,0.72),transparent)] opacity-80"
+        />
+      )}
       <div
-        className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br ${palette.gradient} text-white shadow-xl ${palette.glow} ring-2 ${palette.ring}`}
+        className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br ${palette.gradient} text-white ${isLowestRank ? 'shadow-md shadow-black/10 dark:shadow-black/40' : isCycloneRank ? `shadow-xl ${palette.glow}` : 'shadow-lg shadow-black/10 dark:shadow-black/40'} ring-2 ${palette.ring}`}
         style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }}
       >
         <div className="absolute inset-[6px] border border-white/25" style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }} />
         <div className="absolute -left-5 top-1/2 h-16 w-28 -translate-y-1/2 rotate-[-25deg] bg-white/18 blur-sm" />
-        <Award size={classes.icon} className="relative z-10 drop-shadow" strokeWidth={2.4} />
+        {isEliteRank
+          ? <Flame size={classes.icon + 3} className="relative z-10 drop-shadow" strokeWidth={2.4} fill="currentColor" />
+          : <Award size={classes.icon} className="relative z-10 drop-shadow" strokeWidth={2.4} />}
         <span className={`absolute bottom-[18%] z-10 font-black ${classes.letter}`}>{rankInitial}</span>
       </div>
       <span className={`absolute -right-1 top-1 flex ${classes.star} items-center justify-center rounded-full bg-white text-yellow-500 shadow-md ring-1 ring-yellow-100 dark:bg-gray-950 dark:ring-yellow-700/40`}>

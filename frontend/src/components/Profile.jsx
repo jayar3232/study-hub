@@ -13,10 +13,9 @@ import {
   Lock,
   LogOut,
   Mail,
-  Moon,
+  Palette,
   Save,
   Shield,
-  Sun,
   Trophy,
   TrendingUp,
   User,
@@ -30,6 +29,7 @@ import { resolveMediaUrl } from '../utils/media';
 import RankBadge, { RankEmblem } from './RankBadge';
 import GameRankBadge from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
+import LoadingSpinner from './LoadingSpinner';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -39,23 +39,28 @@ const formatMonthYear = (value) => {
 };
 
 const StatCard = ({ icon: Icon, label, value, helper }) => (
-  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+  <motion.div
+    whileHover={{ y: -6, scale: 1.015 }}
+    className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60"
+  >
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
+    <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
     <div className="flex items-start justify-between gap-4">
       <div>
         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
         <p className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{value}</p>
         {helper && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>}
       </div>
-      <div className="rounded-lg bg-gray-100 p-3 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+      <div className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
         <Icon size={22} />
       </div>
     </div>
-  </div>
+  </motion.div>
 );
 
 export default function Profile() {
   const { user, login, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { currentTheme, toggleTheme } = useTheme();
 
   const [name, setName] = useState('');
   const [course, setCourse] = useState('');
@@ -63,6 +68,8 @@ export default function Profile() {
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('');
   const [coverPhoto, setCoverPhoto] = useState('');
+  const [coverPreview, setCoverPreview] = useState('');
+  const [coverLoadFailed, setCoverLoadFailed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -83,10 +90,15 @@ export default function Profile() {
     setBio(user.bio || '');
     setAvatar(user.avatar || '');
     setCoverPhoto(user.coverPhoto || '');
+    setCoverLoadFailed(false);
     fetchGroups();
     fetchRankings();
     fetchGameSummary();
   }, [user]);
+
+  useEffect(() => () => {
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+  }, [coverPreview]);
 
   const fetchGroups = async () => {
     try {
@@ -180,15 +192,22 @@ export default function Profile() {
       return;
     }
 
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    const previewUrl = URL.createObjectURL(file);
+    setCoverPreview(previewUrl);
+    setCoverLoadFailed(false);
+
     const formData = new FormData();
     formData.append('coverPhoto', file);
     setUploadingCover(true);
     try {
       const res = await api.post('/users/cover-photo', formData);
       setCoverPhoto(res.data.coverPhoto);
+      setCoverLoadFailed(false);
       login(localStorage.getItem('token'), res.data.user || { ...user, coverPhoto: res.data.coverPhoto });
       toast.success('Cover photo updated');
     } catch (err) {
+      setCoverPreview('');
       toast.error(err.response?.data?.msg || 'Cover upload failed');
     } finally {
       setUploadingCover(false);
@@ -242,15 +261,12 @@ export default function Profile() {
   }, [avatar, coverPhoto, user]);
 
   if (!user) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600" />
-      </div>
-    );
+    return <LoadingSpinner label="Loading profile" />;
   }
 
   const avatarSrc = resolveMediaUrl(avatar || user.avatar);
-  const coverSrc = resolveMediaUrl(coverPhoto || user.coverPhoto);
+  const resolvedCoverSrc = resolveMediaUrl(coverPhoto || user.coverPhoto);
+  const coverSrc = coverPreview || resolvedCoverSrc;
   const memberSince = formatMonthYear(user.createdAt);
   const rankStats = rankData?.me;
   const gameStats = gameData?.stats || gameData?.typingStats;
@@ -259,14 +275,20 @@ export default function Profile() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <section className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-xl shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
         <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
-          {coverSrc ? (
-            <img src={coverSrc} alt="Profile cover" className="absolute inset-0 h-full w-full object-cover" />
+          {coverSrc && !coverLoadFailed ? (
+            <img
+              src={coverSrc}
+              alt="Profile cover"
+              className="absolute inset-0 h-full w-full object-cover"
+              onLoad={() => setCoverLoadFailed(false)}
+              onError={() => setCoverLoadFailed(true)}
+            />
           ) : (
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.32),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_52%,#172554)]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/52 to-black/18" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/60 to-black/24" />
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-pink-500 to-emerald-300" />
           <label className="absolute right-4 top-4 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs font-black uppercase text-white shadow-xl backdrop-blur transition hover:-translate-y-0.5 hover:border-pink-200 hover:bg-pink-500/80">
             <Camera size={15} />
@@ -314,7 +336,7 @@ export default function Profile() {
             </div>
 
             <div className="grid w-full gap-3 md:w-80">
-              <div className="rounded-xl bg-white/10 p-4 backdrop-blur">
+              <div className="rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
                 <div className="flex items-center gap-3">
                   <RankEmblem rank={rankStats?.rank} size="sm" animated />
                   <div className="min-w-0">
@@ -324,7 +346,7 @@ export default function Profile() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-xl bg-white/10 p-4 backdrop-blur">
+              <div className="rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-semibold">Profile completeness</span>
                   <span>{completion}%</span>
@@ -365,7 +387,7 @@ export default function Profile() {
       <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
         <RankBadge stats={rankStats} />
         <GameRankBadge stats={gameStats} />
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-gray-950 dark:text-white">Network Leaderboard</h2>
@@ -381,7 +403,7 @@ export default function Profile() {
               return (
                 <div key={entry.user?._id || entry.position} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${isMe ? 'border-pink-200 bg-pink-50 dark:border-pink-900/60 dark:bg-pink-950/20' : 'border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50'}`}>
                   <div className="w-7 text-center text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</div>
-                  <RankEmblem rank={entry.stats?.rank} size="sm" />
+                  <RankEmblem rank={entry.stats?.rank} size="sm" animated />
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
                     {itemAvatar ? <img src={itemAvatar} alt={entry.user?.name || 'User'} className="h-full w-full object-cover" /> : entry.user?.name?.charAt(0)?.toUpperCase()}
                   </div>
@@ -403,7 +425,7 @@ export default function Profile() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-gray-950 dark:text-white">Personal information</h2>
@@ -480,7 +502,7 @@ export default function Profile() {
         </section>
 
         <aside className="space-y-6">
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
             <div className="mb-4 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
               <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="h-12 w-12 rounded-xl bg-white object-cover p-1 dark:bg-gray-900" />
               <div className="min-w-0">
@@ -525,15 +547,15 @@ export default function Profile() {
             </form>
           </section>
 
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
             <div className="mb-4 flex items-center gap-2">
               <Activity size={20} className="text-pink-600" />
               <h2 className="font-bold text-gray-950 dark:text-white">Account actions</h2>
             </div>
             <div className="space-y-2">
               <button onClick={toggleTheme} className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
-                <span className="inline-flex items-center gap-2">{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />} Appearance</span>
-                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                <span className="inline-flex items-center gap-2"><Palette size={17} /> Appearance</span>
+                <span>{currentTheme?.label || 'Theme'}</span>
               </button>
               <button onClick={logout} className="flex w-full items-center justify-between rounded-lg border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
                 <span className="inline-flex items-center gap-2"><LogOut size={17} /> Sign out</span>
@@ -542,7 +564,7 @@ export default function Profile() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
             <div className="mb-4 flex items-center gap-2">
               <CheckCircle size={20} className="text-emerald-600" />
               <h2 className="font-bold text-gray-950 dark:text-white">Profile checklist</h2>

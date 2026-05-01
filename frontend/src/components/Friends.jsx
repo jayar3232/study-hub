@@ -23,6 +23,7 @@ import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
 import UserProfileModal from './UserProfileModal';
 import { CAMPUS_OPTIONS } from '../utils/academics';
+import LoadingSpinner from './LoadingSpinner';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -314,7 +315,7 @@ export default function Friends() {
                 <Users size={30} />
               </motion.div>
               <div>
-                <p className="text-sm font-black uppercase text-pink-200">WorkLoop Network</p>
+                <p className="text-sm font-black uppercase text-pink-200">StudentHub Network</p>
                 <h1 className="mt-1 text-3xl font-black tracking-normal sm:text-4xl">Friends</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
                   Manage your trusted teammates, review requests, and start conversations faster.
@@ -383,11 +384,7 @@ export default function Friends() {
       </section>
 
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map(item => (
-            <div key={item} className="h-36 animate-pulse rounded-3xl bg-gray-100 dark:bg-gray-800" />
-          ))}
-        </div>
+        <LoadingSpinner label="Loading friends" />
       ) : (
         <>
           {activeTab === 'friends' && (
@@ -416,7 +413,7 @@ export default function Friends() {
               )}
 
               {friends.length === 0 ? (
-                <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing WorkLoop users." />
+                <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing StudentHub users." />
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {friends.map(item => (

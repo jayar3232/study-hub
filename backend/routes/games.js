@@ -176,6 +176,29 @@ const typingPrompts = [
   'The best developer response is calm, specific, and focused on what the member needs next.'
 ];
 
+const typingSentenceBank = [
+  ...typingPrompts,
+  'Review the report, confirm the issue, and send a clear update to the member.',
+  'A reliable team space keeps deadlines visible and ownership easy to understand.',
+  'Before closing a ticket, test the fix and explain the result in simple terms.',
+  'Good project flow depends on fast feedback, clean tasks, and responsible decisions.',
+  'When the build is ready, check the risky parts before you announce the release.',
+  'Invite the right people, assign the next action, and keep the workspace organized.',
+  'Strong developers protect user trust by fixing bugs with calm and careful notes.',
+  'The dashboard should guide the team toward urgent work without feeling crowded.',
+  'A polished profile helps classmates understand your course, campus, and role.',
+  'Smooth collaboration feels quiet, fast, and clear even when the project is busy.'
+];
+
+const createTypingSentences = (count = 18) => {
+  const pool = [...typingSentenceBank];
+  for (let index = pool.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [pool[index], pool[swapIndex]] = [pool[swapIndex], pool[index]];
+  }
+  return pool.slice(0, Math.min(count, pool.length));
+};
+
 const sanitizeText = (value, maxLength) => String(value || '').trim().slice(0, maxLength);
 
 const getDeveloperStatus = async (userId) => {
@@ -244,6 +267,56 @@ const scoreTyping = (expected, typed, elapsedMs) => {
   const score = Math.max(0, Math.round(accuracyScore + speedScore + timeBonus + perfectBonus));
 
   return { accuracy, wpm, score };
+};
+
+const scoreSentenceStream = (expected, typedSentences, elapsedMs) => {
+  const expectedSentences = expected.split(/\n+/).map(item => item.trim()).filter(Boolean);
+  const cleanTypedSentences = (Array.isArray(typedSentences) ? typedSentences : [])
+    .map(sentence => sanitizeText(sentence, 240))
+    .filter(Boolean)
+    .slice(0, expectedSentences.length);
+  let correctCount = 0;
+  let currentStreak = 0;
+  let maxStreak = 0;
+
+  cleanTypedSentences.forEach((sentence, index) => {
+    const cleanSentence = sentence.replace(/\s+/g, ' ').trim().toLowerCase();
+    const expectedSentence = expectedSentences[index]?.replace(/\s+/g, ' ').trim().toLowerCase();
+    const correct = cleanSentence === expectedSentence;
+    if (correct) {
+      correctCount += 1;
+      currentStreak += 1;
+      maxStreak = Math.max(maxStreak, currentStreak);
+    } else {
+      currentStreak = 0;
+    }
+  });
+
+  const totalCount = Math.max(cleanTypedSentences.length, 1);
+  const accuracy = Math.round((correctCount / totalCount) * 100);
+  const minutes = Math.max(elapsedMs / 60000, 0.02);
+  const correctWords = cleanTypedSentences.reduce((sum, sentence, index) => {
+    const cleanSentence = sentence.replace(/\s+/g, ' ').trim().toLowerCase();
+    const expectedSentence = expectedSentences[index]?.replace(/\s+/g, ' ').trim().toLowerCase();
+    return cleanSentence === expectedSentence ? sum + sentence.split(/\s+/).filter(Boolean).length : sum;
+  }, 0);
+  const wpm = Math.max(0, Math.round(correctWords / minutes));
+  const score = Math.max(0, Math.round(
+    (correctCount * 420)
+    + (Math.min(wpm, 140) * 12)
+    + (accuracy * 12)
+    + (maxStreak * 95)
+  ));
+
+  return {
+    accuracy,
+    wpm,
+    score,
+    correctCount,
+    totalCount,
+    maxStreak,
+    typedText: cleanTypedSentences.join('\n')
+  };
 };
 
 const shuffle = (items) => {
@@ -374,6 +447,34 @@ const createCompletedGameSession = async ({
 
   await session.save();
   return session;
+};
+
+const developerContributionScore = {
+  reviewing: 180,
+  approved: 520,
+  rejected: 360,
+  resolved: 650,
+  closed: 260,
+  reply: 140
+};
+
+const recordDeveloperContribution = async ({ userId, issue, action, detail }) => {
+  const score = developerContributionScore[action] || 160;
+  await createCompletedGameSession({
+    userId,
+    gameKey: 'developer-review',
+    title: action === 'reply' ? 'Developer Response' : 'Developer Review',
+    brief: action === 'reply'
+      ? 'Responded to a member report with a developer follow-up.'
+      : 'Reviewed a member report and updated the developer decision.',
+    signal: detail || `Report: ${issue?.title || 'Member report'}. Status: ${issue?.status || action}.`,
+    score,
+    accuracy: 100,
+    correctCount: 1,
+    totalCount: 1,
+    maxStreak: 1,
+    elapsedMs: 2200
+  });
 };
 
 router.get('/summary/me', auth, async (req, res) => {
@@ -572,6 +673,12 @@ router.put('/fix-arena/issues/:issueId/status', auth, async (req, res) => {
       text: `Status changed to ${status}.`
     });
     await issue.save();
+    await recordDeveloperContribution({
+      userId: req.user,
+      issue,
+      action: status,
+      detail: `Set "${issue.title}" to ${status}.`
+    }).catch(err => console.warn('Developer contribution score failed:', err.message));
 
     res.json(await populateIssue(IssueReport.findById(issue._id)));
   } catch (err) {
@@ -600,6 +707,14 @@ router.post('/fix-arena/issues/:issueId/messages', auth, async (req, res) => {
     });
     if (isDeveloper && issue.status === 'new') issue.status = 'reviewing';
     await issue.save();
+    if (isDeveloper) {
+      await recordDeveloperContribution({
+        userId: req.user,
+        issue,
+        action: 'reply',
+        detail: `Replied to "${issue.title}".`
+      }).catch(err => console.warn('Developer reply score failed:', err.message));
+    }
 
     res.json(await populateIssue(IssueReport.findById(issue._id)));
   } catch (err) {
@@ -610,11 +725,12 @@ router.post('/fix-arena/issues/:issueId/messages', auth, async (req, res) => {
 router.post('/typing-sprint/start', auth, async (req, res) => {
   try {
     const startedAt = new Date();
-    const prompt = typingPrompts[crypto.randomInt(typingPrompts.length)];
+    const sentences = createTypingSentences();
+    const prompt = sentences.join('\n');
     const session = new GameSession({
       userId: req.user,
       gameKey: 'typing-sprint',
-      durationSeconds: 60,
+      durationSeconds: 75,
       challenges: [{
         challengeId: crypto.randomUUID(),
         title: 'Typing Sprint',
@@ -623,19 +739,22 @@ router.post('/typing-sprint/start', auth, async (req, res) => {
         dueInHours: 1,
         estimateHours: 1,
         impact: 'medium',
-        signal: 'Type the prompt as accurately and quickly as possible.',
+        signal: 'Type each sentence accurately and quickly before the timer ends.',
         correctAnswer: prompt,
         basePoints: 100
       }],
       totalCount: 1,
       startedAt,
-      expiresAt: new Date(startedAt.getTime() + 90000)
+      expiresAt: new Date(startedAt.getTime() + 85000)
     });
 
     await session.save();
     res.status(201).json({
       sessionId: session._id,
       prompt,
+      sentences,
+      mode: 'sentence-stream',
+      durationSeconds: 75,
       startedAt: session.startedAt,
       expiresAt: session.expiresAt
     });
@@ -657,23 +776,27 @@ router.post('/typing-sprint/:sessionId/submit', auth, async (req, res) => {
     const now = new Date();
     if (now > session.expiresAt) return res.status(400).json({ msg: 'Typing session expired' });
 
-    const typedText = sanitizeText(req.body.text, 1000);
+    const typedText = sanitizeText(req.body.text, 2000);
     const expected = session.challenges[0].correctAnswer;
     const elapsedMs = Math.max(1000, now.getTime() - session.startedAt.getTime());
-    const scored = scoreTyping(expected, typedText, elapsedMs);
+    const isSentenceStream = req.body.mode === 'sentence-stream' && Array.isArray(req.body.typedSentences);
+    const scored = isSentenceStream
+      ? scoreSentenceStream(expected, req.body.typedSentences, elapsedMs)
+      : scoreTyping(expected, typedText, elapsedMs);
+    const answerText = isSentenceStream ? scored.typedText : typedText;
 
     session.answers = [{
       challengeId: session.challenges[0].challengeId,
-      answer: typedText || 'blank',
-      correct: scored.accuracy === 100,
+      answer: answerText || 'blank',
+      correct: isSentenceStream ? scored.correctCount > 0 : scored.accuracy === 100,
       points: scored.score
     }];
     session.score = scored.score;
     session.accuracy = scored.accuracy;
     session.wpm = scored.wpm;
-    session.correctCount = scored.accuracy === 100 ? 1 : 0;
-    session.totalCount = 1;
-    session.maxStreak = scored.accuracy === 100 ? 1 : 0;
+    session.correctCount = isSentenceStream ? scored.correctCount : (scored.accuracy === 100 ? 1 : 0);
+    session.totalCount = isSentenceStream ? scored.totalCount : 1;
+    session.maxStreak = isSentenceStream ? scored.maxStreak : (scored.accuracy === 100 ? 1 : 0);
     session.elapsedMs = elapsedMs;
     session.completedAt = now;
     await session.save();
@@ -687,7 +810,10 @@ router.post('/typing-sprint/:sessionId/submit', auth, async (req, res) => {
         accuracy: scored.accuracy,
         wpm: scored.wpm,
         elapsedMs,
-        expected
+        expected,
+        correctCount: session.correctCount,
+        totalCount: session.totalCount,
+        maxStreak: session.maxStreak
       },
       stats: buildGameStats(myTypingSessions)
     });

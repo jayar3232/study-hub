@@ -33,7 +33,7 @@ export default function FileList({ groupId }) {
     <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
       <div className="flex gap-2 mb-4">
         <input type="file" onChange={e => setSelectedFile(e.target.files[0])} className="text-white file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-sm file:bg-pink-500 file:text-white hover:file:bg-pink-600" />
-        <button onClick={uploadFile} className="bg-blue-500/80 hover:bg-blue-500 text-white px-4 py-1 rounded-lg transition">Upload</button>
+        <button onClick={uploadFile} className="bg-pink-500/80 hover:bg-pink-500 text-white px-4 py-1 rounded-lg transition">Upload</button>
       </div>
       <ul>
         {files.map(file => (

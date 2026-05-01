@@ -14,23 +14,27 @@ import Messages from './components/Messages';
 import Layout from './components/Layout';
 import OpsArena from './components/OpsArena';
 import Friends from './components/Friends';
+import LoadingSpinner from './components/LoadingSpinner';
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  if (loading) return <LoadingSpinner fullScreen label="Preparing StudentHub" />;
+  const protectedLayout = isAuthenticated ? <Layout /> : <Navigate to="/login" replace />;
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />} />
       <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" />} />
-      <Route path="/dashboard" element={isAuthenticated ? <Layout><Dashboard /></Layout> : <Navigate to="/login" />} />
-      <Route path="/groups" element={isAuthenticated ? <Layout><MyGroups /></Layout> : <Navigate to="/login" />} />
-      <Route path="/group/:id" element={isAuthenticated ? <Layout><GroupPage /></Layout> : <Navigate to="/login" />} />
-      <Route path="/group/:id/:section" element={isAuthenticated ? <Layout><GroupPage /></Layout> : <Navigate to="/login" />} />
-      <Route path="/profile" element={isAuthenticated ? <Layout><Profile /></Layout> : <Navigate to="/login" />} />
-      <Route path="/messages" element={isAuthenticated ? <Layout><Messages /></Layout> : <Navigate to="/login" />} />
-      <Route path="/friends" element={isAuthenticated ? <Layout><Friends /></Layout> : <Navigate to="/login" />} />
-      <Route path="/arena" element={isAuthenticated ? <Layout><OpsArena /></Layout> : <Navigate to="/login" />} />
+      <Route element={protectedLayout}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/groups" element={<MyGroups />} />
+        <Route path="/group/:id" element={<GroupPage />} />
+        <Route path="/group/:id/:section" element={<GroupPage />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/messages" element={<Messages />} />
+        <Route path="/friends" element={<Friends />} />
+        <Route path="/arena" element={<OpsArena />} />
+      </Route>
     </Routes>
   );
 }
@@ -41,25 +45,9 @@ function App() {
       <AuthProvider>
         <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
         <BrowserRouter>
-          <div className="relative min-h-screen">
-            {/* Animated background bubbles */}
-            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-              {[...Array(15)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full bg-gradient-to-r from-pink-400/20 to-purple-500/20 animate-float"
-                  style={{
-                    width: Math.random() * 100 + 50,
-                    height: Math.random() * 100 + 50,
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    animationDuration: `${Math.random() * 10 + 10}s`,
-                    animationDelay: `${Math.random() * 5}s`,
-                  }}
-                />
-              ))}
-            </div>
-            {/* Main app content */}
+          <div className="relative min-h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
+            <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
+            <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
             <div className="relative z-10">
               <AppRoutes />
             </div>

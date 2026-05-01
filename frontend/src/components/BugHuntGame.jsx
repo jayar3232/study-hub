@@ -223,7 +223,7 @@ export default function BugHuntGame({ stats, onScoreSaved }) {
 
             <div className="relative z-10 pointer-events-none grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
               <aside className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
-                <p className="text-sm font-black text-white">WorkLoop</p>
+                <p className="text-sm font-black text-white">StudentHub</p>
                 <div className="mt-4 space-y-2">
                   {['Dashboard', 'Workspaces', 'Messages 4', 'Fix Arena'].map(item => (
                     <div key={item} className="rounded-2xl bg-white/[0.07] px-3 py-2 text-xs font-bold text-white/65">{item}</div>

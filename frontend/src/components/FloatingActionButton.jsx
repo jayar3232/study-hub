@@ -37,7 +37,7 @@ export default function FloatingActionButton({ onGroupCreate, onNewChat }) {
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={() => setOpen(!open)}
-        className="w-14 h-14 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full shadow-lg flex items-center justify-center focus:outline-none"
+        className="w-14 h-14 bg-gradient-to-r from-pink-500 to-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center focus:outline-none"
       >
         {open ? <X size={24} /> : <Plus size={24} />}
       </motion.button>

@@ -36,6 +36,7 @@ import NewChatModal from './NewChatModal';
 import UserProfileModal from './UserProfileModal';
 import { resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
+import LoadingSpinner from './LoadingSpinner';
 
 let socket;
 
@@ -78,7 +79,13 @@ const getMessageSnippet = (message) => {
 
 const messageVariants = {
   hidden: { opacity: 0, y: 12, scale: 0.96 },
-  visible: { opacity: 1, y: 0, scale: 1 }
+  visible: { opacity: 1, y: 0, scale: 1 },
+  sent: {
+    opacity: 1,
+    y: [10, -3, 0],
+    scale: [0.96, 1.035, 1],
+    filter: ['brightness(1.08)', 'brightness(1.18)', 'brightness(1)']
+  }
 };
 
 export default function Messages() {
@@ -931,7 +938,7 @@ export default function Messages() {
     const avatar = getUserAvatar(person);
 
     return (
-      <div className={`${sizeClass} relative overflow-hidden rounded-full bg-gradient-to-br from-pink-500 via-fuchsia-500 to-indigo-500 shadow-sm`}>
+      <div className={`${sizeClass} relative overflow-hidden rounded-full bg-gradient-to-br from-pink-600 to-cyan-600 shadow-sm`}>
         {avatar ? (
           <img src={avatar} alt={getDisplayName(person)} className="h-full w-full object-cover" />
         ) : (
@@ -1027,18 +1034,15 @@ export default function Messages() {
   if (initialLoading) {
     return (
       <div className="flex h-[70vh] items-center justify-center">
-        <div className="relative h-14 w-14">
-          <div className="absolute inset-0 rounded-full border-4 border-pink-200 dark:border-pink-950" />
-          <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-pink-500 border-r-purple-500" />
-        </div>
+        <LoadingSpinner compact label="Loading messages" />
       </div>
     );
   }
 
   return (
-    <div className="h-[calc(100svh-8rem)] overflow-hidden rounded-2xl border border-white/60 bg-white/85 shadow-2xl shadow-pink-500/10 backdrop-blur-xl dark:border-gray-700/70 dark:bg-gray-900/85 md:h-[calc(100vh-3rem)]">
+    <div className="h-[calc(100svh-8rem)] overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/92 shadow-2xl shadow-slate-300/25 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/88 dark:shadow-black/20 md:h-[calc(100vh-3rem)]">
       <div className="flex h-full flex-col">
-        <div className="relative overflow-hidden border-b border-white/60 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-500 px-5 py-4 text-white dark:border-gray-800">
+        <div className="relative overflow-hidden border-b border-slate-200/80 bg-white/92 px-5 py-4 text-slate-950 dark:border-gray-800 dark:bg-gray-950/92 dark:text-white">
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1046,9 +1050,9 @@ export default function Messages() {
           >
             <div>
               <h2 className="text-xl font-bold tracking-normal md:text-2xl">Messages</h2>
-              <p className="text-sm text-white/80">Realtime chats, online status, and seen receipts</p>
+              <p className="text-sm text-slate-500 dark:text-gray-400">Realtime chats, online status, and seen receipts</p>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm backdrop-blur">
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600 backdrop-blur dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
               <span className={`h-2.5 w-2.5 rounded-full ${
                 socketConnected
                   ? 'bg-emerald-300 shadow-[0_0_0_4px_rgba(110,231,183,0.18)]'
@@ -1057,21 +1061,21 @@ export default function Messages() {
               {socketConnected ? `${onlineUsers.size} online` : 'Connecting'}
             </div>
           </motion.div>
-          <div className="absolute -right-10 -top-20 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
+          <div className="absolute -right-10 -top-20 h-40 w-40 rounded-full bg-pink-500/8 blur-2xl dark:bg-pink-400/10" />
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} w-full flex-col border-r border-gray-200/80 bg-white/80 dark:border-gray-800 dark:bg-gray-900/80 md:w-[22rem] md:max-w-sm md:flex`}>
+          <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} w-full flex-col border-r border-slate-200/80 bg-white/90 dark:border-gray-800 dark:bg-gray-950/80 md:w-[21rem] md:max-w-sm md:flex`}>
             <div className="border-b border-gray-200/80 p-4 dark:border-gray-800">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <MessageCircle size={20} className="text-pink-500" />
+                  <MessageCircle size={20} className="text-pink-600 dark:text-pink-300" />
                   <h3 className="font-semibold text-gray-950 dark:text-white">Chats</h3>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setSoundEnabled(value => !value)}
-                    className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-pink-500 dark:hover:bg-gray-800"
+                    className="rounded-full p-2 text-gray-500 transition hover:bg-slate-100 hover:text-pink-600 dark:hover:bg-gray-800 dark:hover:text-pink-300"
                     aria-label={soundEnabled ? 'Mute message sound' : 'Enable message sound'}
                   >
                     {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
@@ -1080,7 +1084,7 @@ export default function Messages() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setShowModal(true)}
-                    className="rounded-full bg-gray-950 p-2 text-white shadow-lg shadow-gray-950/20 transition hover:bg-pink-600 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-200"
+                    className="rounded-full bg-slate-950 p-2 text-white shadow-lg shadow-slate-950/20 transition hover:bg-pink-700 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
                     aria-label="Start new chat"
                   >
                     <Plus size={18} />
@@ -1091,10 +1095,10 @@ export default function Messages() {
               <form onSubmit={handleSaveNote} className="mb-3 rounded-2xl border border-pink-100 bg-pink-50/70 p-3 dark:border-pink-900/50 dark:bg-pink-950/20">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                    <StickyNote size={16} className="text-pink-500" />
+                    <StickyNote size={16} className="text-pink-600 dark:text-pink-300" />
                     Your note
                   </span>
-                  <span className="text-[11px] font-semibold text-pink-600 dark:text-pink-300">2 days</span>
+                  <span className="text-[11px] font-semibold text-pink-700 dark:text-pink-300">2 days</span>
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -1106,7 +1110,7 @@ export default function Messages() {
                   <button
                     type="submit"
                     disabled={savingNote || !noteText.trim()}
-                    className="rounded-full bg-gray-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:opacity-45 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-200"
+                    className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-45 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
                   >
                     Post
                   </button>
@@ -1127,7 +1131,7 @@ export default function Messages() {
                   value={conversationSearch}
                   onChange={event => setConversationSearch(event.target.value)}
                   placeholder="Search messages"
-                  className="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                  className="w-full rounded-full border border-gray-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
                 />
               </div>
             </div>
@@ -1138,7 +1142,7 @@ export default function Messages() {
                   <motion.div
                     animate={{ y: [0, -6, 0] }}
                     transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                    className="mb-3 rounded-full bg-pink-50 p-4 text-pink-500 dark:bg-pink-950/30"
+                    className="mb-3 rounded-full bg-pink-50 p-4 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300"
                   >
                     <MessageCircle size={34} />
                   </motion.div>
@@ -1167,7 +1171,7 @@ export default function Messages() {
                         className={`mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${
                           isActive
                             ? 'bg-pink-50 shadow-sm ring-1 ring-pink-100 dark:bg-pink-950/30 dark:ring-pink-900/50'
-                            : 'hover:bg-gray-100/80 dark:hover:bg-gray-800/80'
+                            : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
                         }`}
                       >
                         <div className="relative shrink-0">
@@ -1189,17 +1193,17 @@ export default function Messages() {
                             <div className="shrink-0 text-xs text-gray-400">{formatMessageTime(conversation.lastTime)}</div>
                           </div>
                           <div className="mt-1 flex items-center justify-between gap-2">
-                            <p className={`truncate text-sm ${isTyping ? 'font-semibold text-pink-500' : conversation.unreadCount ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                            <p className={`truncate text-sm ${isTyping ? 'font-semibold text-pink-600 dark:text-pink-300' : conversation.unreadCount ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
                               {isTyping ? 'Typing...' : conversation.lastMessage}
                             </p>
                             {conversation.unreadCount > 0 && (
-                              <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-pink-500 px-1.5 text-xs font-bold text-white">
+                              <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-pink-600 px-1.5 text-xs font-bold text-white">
                                 {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
                               </span>
                             )}
                           </div>
                           {activeNote && (
-                            <p className="mt-1 line-clamp-1 rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-pink-600 dark:bg-gray-950/70 dark:text-pink-300">
+                            <p className="mt-1 line-clamp-1 rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-pink-700 dark:bg-gray-950/70 dark:text-pink-300">
                               Note: {activeNote.text}
                             </p>
                           )}
@@ -1213,8 +1217,8 @@ export default function Messages() {
           </aside>
 
           {selectedUser ? (
-            <section className="flex min-w-0 flex-1 flex-col bg-gray-50/80 dark:bg-gray-950/60">
-              <header className="flex items-center gap-3 border-b border-gray-200/80 bg-white/90 px-4 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/90">
+            <section className="flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
+              <header className="flex items-center gap-3 border-b border-gray-200/80 bg-white/94 px-4 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-950/92">
                 <button
                   onClick={() => setSelectedUser(null)}
                   className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
@@ -1230,11 +1234,11 @@ export default function Messages() {
                 </button>
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="min-w-0 flex-1 text-left" title="View profile">
                   <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedUser.name}</div>
-                  <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-pink-500' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
+                  <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-pink-600 dark:text-pink-300' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
                   {userNotes[selectedUserId] && (
-                    <div className="mt-1 line-clamp-1 text-xs font-medium text-pink-500">
+                    <div className="mt-1 line-clamp-1 text-xs font-medium text-pink-600 dark:text-pink-300">
                       Note: {userNotes[selectedUserId].text}
                     </div>
                   )}
@@ -1336,9 +1340,9 @@ export default function Messages() {
                             }}
                             variants={messageVariants}
                             initial="hidden"
-                            animate="visible"
+                            animate={isMe && isLatestOwn ? 'sent' : 'visible'}
                             exit="hidden"
-                            transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                            transition={isMe && isLatestOwn ? { duration: 0.42, ease: 'easeOut' } : { type: 'spring', damping: 24, stiffness: 260 }}
                             className={`mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
                           >
                             {!isMe && (
@@ -1354,9 +1358,9 @@ export default function Messages() {
 
                               <div className={`relative rounded-3xl px-4 py-3 shadow-sm transition duration-200 group-hover:shadow-md ${
                                 isMe
-                                  ? 'rounded-br-lg bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow-pink-500/20'
+                                  ? 'rounded-br-lg bg-gradient-to-br from-pink-600 to-slate-800 text-white shadow-pink-500/15'
                                   : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
-                              }`}>
+                              } ${isMe && isLatestOwn ? 'ring-2 ring-pink-300/40 shadow-xl shadow-pink-500/20' : ''}`}>
                                 <ReplyPreview message={message} isMe={isMe} />
                                 <div className="space-y-2">
                                   <MessageAttachment message={message} isMe={isMe} />
@@ -1398,7 +1402,7 @@ export default function Messages() {
                                         setReplyingTo(message);
                                         inputRef.current?.focus();
                                       }}
-                                      className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-pink-500 group-hover:opacity-100 dark:hover:bg-gray-800"
+                                      className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-pink-600 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-pink-300"
                                       aria-label="Reply"
                                     >
                                       <Reply size={13} />
@@ -1406,7 +1410,7 @@ export default function Messages() {
                                     <div className="relative">
                                       <button
                                         onClick={() => setEmojiPickerMessageId(emojiPickerMessageId === messageId ? null : messageId)}
-                                        className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-pink-500 group-hover:opacity-100 dark:hover:bg-gray-800"
+                                        className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-pink-600 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-pink-300"
                                         aria-label="React"
                                       >
                                         <Smile size={14} />
@@ -1494,7 +1498,7 @@ export default function Messages() {
                 )}
               </div>
 
-              <footer className="border-t border-gray-200/80 bg-white/95 p-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
+              <footer className="border-t border-gray-200/80 bg-white/95 p-3 backdrop-blur dark:border-gray-800 dark:bg-gray-950/95">
                 <AnimatePresence>
                   {replyingTo && (
                     <motion.div
@@ -1532,8 +1536,8 @@ export default function Messages() {
                         <div className="flex min-w-0 items-center gap-3">
                           {selectedAttachment.fileType === 'image' && attachmentPreview && <img src={attachmentPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
                           {selectedAttachment.fileType === 'video' && attachmentPreview && <video src={attachmentPreview} className="h-12 w-12 rounded-xl object-cover" />}
-                          {selectedAttachment.fileType === 'audio' && <Mic size={22} className="text-pink-500" />}
-                          {selectedAttachment.fileType === 'file' && <FileText size={22} className="text-pink-500" />}
+                          {selectedAttachment.fileType === 'audio' && <Mic size={22} className="text-pink-600 dark:text-pink-300" />}
+                          {selectedAttachment.fileType === 'file' && <FileText size={22} className="text-pink-600 dark:text-pink-300" />}
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{selectedAttachment.file.name}</p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{formatBytes(selectedAttachment.file.size)}</p>
@@ -1545,7 +1549,7 @@ export default function Messages() {
                       </div>
                       {sending && uploadProgress > 0 && (
                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                          <div className="h-full rounded-full bg-pink-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                          <div className="h-full rounded-full bg-pink-600 transition-all" style={{ width: `${uploadProgress}%` }} />
                         </div>
                       )}
                     </motion.div>
@@ -1571,7 +1575,7 @@ export default function Messages() {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || recording}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-pink-500 disabled:opacity-50 dark:hover:bg-gray-800"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-slate-100 hover:text-pink-600 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-pink-300"
                     aria-label="Send picture"
                   >
                     <ImageIcon size={19} />
@@ -1579,7 +1583,7 @@ export default function Messages() {
                   <button
                     onClick={() => videoInputRef.current?.click()}
                     disabled={sending || recording}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-pink-500 disabled:opacity-50 dark:hover:bg-gray-800"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-slate-100 hover:text-pink-600 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-pink-300"
                     aria-label="Send video"
                   >
                     <Video size={19} />
@@ -1590,7 +1594,7 @@ export default function Messages() {
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition disabled:opacity-50 ${
                       recording
                         ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300'
-                        : 'text-gray-500 hover:bg-gray-100 hover:text-pink-500 dark:hover:bg-gray-800'
+                        : 'text-gray-500 hover:bg-slate-100 hover:text-pink-600 dark:hover:bg-gray-800 dark:hover:text-pink-300'
                     }`}
                     aria-label={recording ? 'Stop recording' : 'Record voice message'}
                   >
@@ -1612,15 +1616,17 @@ export default function Messages() {
                       }
                     }}
                     placeholder="Aa"
-                    className="min-h-12 flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                    className="min-h-12 flex-1 rounded-full border border-gray-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
                     disabled={sending || recording}
                   />
                   <motion.button
                     whileHover={{ scale: 1.05, y: -1 }}
                     whileTap={{ scale: 0.95 }}
+                    animate={sending ? { x: [0, 5, 0], rotate: [0, -12, 0], scale: [1, 1.08, 1] } : { x: 0, rotate: 0, scale: 1 }}
+                    transition={sending ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
                     onClick={() => sendMessage()}
                     disabled={(!newMessage.trim() && !selectedAttachment) || sending || recording}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow-lg shadow-pink-500/25 transition disabled:cursor-not-allowed disabled:opacity-45"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-600 to-cyan-600 text-white shadow-lg shadow-pink-500/20 transition disabled:cursor-not-allowed disabled:opacity-45"
                     aria-label="Send message"
                   >
                     {sending ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
@@ -1629,13 +1635,13 @@ export default function Messages() {
               </footer>
             </section>
           ) : (
-            <section className="hidden flex-1 items-center justify-center bg-gray-50/80 p-8 text-center dark:bg-gray-950/60 md:flex">
+            <section className="hidden flex-1 items-center justify-center bg-slate-50/90 p-8 text-center dark:bg-gray-950/70 md:flex">
               <motion.div
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="max-w-sm"
               >
-                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-pink-100 to-indigo-100 text-pink-500 dark:from-pink-950/40 dark:to-indigo-950/40">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-pink-100 to-cyan-100 text-pink-600 dark:from-pink-950/40 dark:to-cyan-950/40 dark:text-pink-300">
                   <MessageCircle size={38} />
                 </div>
                 <h3 className="text-xl font-bold text-gray-950 dark:text-white">Pick a conversation</h3>

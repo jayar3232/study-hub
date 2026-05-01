@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Crosshair, Grid3X3, MousePointerClick, RotateCcw, Save, Sparkles, Trophy, Zap } from 'lucide-react';
+import { Grid3X3, MousePointerClick, RotateCcw, Save, Sparkles, Trophy, Zap } from 'lucide-react';
 import api from '../services/api';
 
 const BOARD_SIZE = 8;
@@ -41,6 +41,26 @@ const canPlace = (board, piece, row, col) => {
       && nextCol < BOARD_SIZE
       && !board[nextRow][nextCol];
   });
+};
+
+const findPlacement = (board, piece, row, col) => {
+  if (!piece) return null;
+  const candidates = [
+    [row, col],
+    ...piece.cells.map(([cellRow, cellCol]) => [row - cellRow, col - cellCol])
+  ];
+  const seen = new Set();
+
+  for (const [candidateRow, candidateCol] of candidates) {
+    const key = `${candidateRow}-${candidateCol}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (canPlace(board, piece, candidateRow, candidateCol)) {
+      return { row: candidateRow, col: candidateCol };
+    }
+  }
+
+  return null;
 };
 
 const hasAnyMove = (board, pieces) => pieces.some(piece => {
@@ -137,6 +157,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
   const [flashCells, setFlashCells] = useState(() => new Set());
   const [comboBanner, setComboBanner] = useState(null);
   const [shakeKey, setShakeKey] = useState(0);
+  const [clearPulseKey, setClearPulseKey] = useState(0);
 
   const selectedPiece = pieces[selectedIndex];
   const fill = useMemo(() => filledPercent(board), [board]);
@@ -157,6 +178,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
     setScoreBursts([]);
     setFlashCells(new Set());
     setComboBanner(null);
+    setClearPulseKey(0);
   };
 
   const saveScore = async (payload) => {
@@ -196,7 +218,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
       row,
       col,
       text: `+${gained}`,
-      detail: cleared ? `${cleared} clear${cleared > 1 ? 's' : ''}${nextCombo > 1 ? ` x${nextCombo}` : ''}` : 'placed'
+      detail: `${cleared} clear${cleared > 1 ? 's' : ''}${nextCombo > 1 ? ` x${nextCombo}` : ''}`
     };
 
     setScoreBursts(prev => [burst, ...prev].slice(0, 4));
@@ -207,19 +229,22 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
 
   const handleCellClick = (row, col) => {
     if (gameOver || !selectedPiece) return;
-    if (!canPlace(board, selectedPiece, row, col)) {
+    const placement = findPlacement(board, selectedPiece, row, col);
+    if (!placement) {
       setShakeKey(value => value + 1);
-      toast.error('That block does not fit there');
       return;
     }
 
-    const placed = placePiece(board, selectedPiece, row, col);
+    const placed = placePiece(board, selectedPiece, placement.row, placement.col);
     const clearedResult = clearCompletedLanes(placed);
     const nextCombo = clearedResult.cleared ? combo + 1 : 0;
     const nextMaxCombo = Math.max(maxCombo, nextCombo);
-    const gained = (selectedPiece.cells.length * 24)
-      + (clearedResult.cleared * 300)
-      + (clearedResult.cleared ? nextCombo * 140 : 0);
+    const gained = clearedResult.cleared
+      ? (clearedResult.cleared * 420)
+        + (clearedResult.cells.length * 18)
+        + (nextCombo * 180)
+        + (clearedResult.cleared > 1 ? 260 : 0)
+      : 0;
     const nextScore = score + gained;
     const nextMoves = moves + 1;
     const nextLines = linesCleared + clearedResult.cleared;
@@ -229,9 +254,9 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
     const nextSelectedIndex = Math.max(0, nextPieces.findIndex(Boolean));
     const noMovesLeft = !hasAnyMove(clearedResult.board, nextPieces);
 
-    addScoreBurst(row, col, gained, clearedResult.cleared, nextCombo);
-
     if (clearedResult.cleared) {
+      addScoreBurst(row, col, gained, clearedResult.cleared, nextCombo);
+      setClearPulseKey(value => value + 1);
       setFlashCells(new Set(clearedResult.cells));
       setComboBanner({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -293,25 +318,33 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
           </div>
 
           <motion.div
-            key={shakeKey}
-            animate={shakeKey ? { x: [0, -8, 8, -5, 5, 0] } : { x: 0 }}
-            transition={{ duration: 0.28 }}
-            className="relative mx-auto aspect-square w-full max-w-[560px] rounded-[2rem] bg-gray-900 p-3 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10"
+            key={`${shakeKey}-${clearPulseKey}`}
+            animate={{
+              x: shakeKey ? [0, -8, 8, -5, 5, 0] : 0,
+              boxShadow: clearPulseKey
+                ? [
+                    '0 25px 50px -12px rgba(34,211,238,0.12)',
+                    '0 0 58px rgba(34,211,238,0.42), 0 0 84px rgba(236,72,153,0.28)',
+                    '0 25px 50px -12px rgba(34,211,238,0.12)'
+                  ]
+                : '0 25px 50px -12px rgba(34,211,238,0.12)'
+            }}
+            transition={{ duration: clearPulseKey ? 0.62 : 0.28 }}
+            className="relative mx-auto aspect-square w-full max-w-[640px] rounded-[2rem] bg-gray-900 p-3 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10"
           >
             <div className="absolute inset-3 rounded-[1.45rem] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:12.5%_12.5%]" />
 
             <div className="relative grid h-full w-full grid-cols-8 gap-1">
               {board.map((row, rowIndex) => row.map((cell, colIndex) => {
-                const valid = selectedPiece && canPlace(board, selectedPiece, rowIndex, colIndex);
+                const valid = selectedPiece && Boolean(findPlacement(board, selectedPiece, rowIndex, colIndex));
                 const flash = flashCells.has(`${rowIndex}-${colIndex}`);
                 return (
                   <motion.button
                     key={`${rowIndex}-${colIndex}`}
                     type="button"
-                    layout
                     initial={false}
                     animate={{
-                      scale: flash ? [1, 1.15, 0.9, 1] : 1,
+                      scale: flash ? [1, 1.22, 0.72, 1] : 1,
                       opacity: cell || flash ? 1 : 0.88
                     }}
                     whileHover={!cell && valid ? { scale: 1.06 } : undefined}
@@ -373,7 +406,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
 
           {gameOver && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm font-bold text-amber-100">
-              Board locked. Final score {score}. {savedScore ? 'Saved to rankings.' : saving ? 'Saving score...' : 'Score save pending.'}
+              Board locked. Final score {score}. {score <= 0 ? 'Clear at least one lane to save a ranked score.' : savedScore ? 'Saved to rankings.' : saving ? 'Saving score...' : 'Score save pending.'}
             </motion.div>
           )}
         </div>
@@ -452,21 +485,13 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
 
           <button
             type="button"
-            disabled={!gameOver || saving || savedScore}
+            disabled={!gameOver || saving || savedScore || score <= 0}
             onClick={() => saveScore({ score, moves, linesCleared, maxCombo, boardFill: fill, durationMs: Date.now() - startedAt })}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-gray-950 transition hover:-translate-y-0.5 hover:bg-cyan-100 disabled:opacity-50"
           >
             {saving ? <Zap size={17} className="animate-pulse" /> : <Save size={17} />}
-            {saving ? 'Saving...' : savedScore ? 'Saved' : 'Save Score'}
+            {saving ? 'Saving...' : savedScore ? 'Saved' : score <= 0 ? 'No Clear Score' : 'Save Score'}
           </button>
-
-          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-            <p className="flex items-center gap-2 text-sm font-black text-white">
-              <Crosshair size={17} className="text-pink-300" />
-              Scoring
-            </p>
-            <p className="mt-2 text-xs leading-5 text-white/45">Bigger blocks, lane clears, and combo clears give higher points. Scores save when the board has no legal moves.</p>
-          </div>
         </aside>
       </div>
     </section>

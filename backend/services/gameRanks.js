@@ -1,39 +1,57 @@
 const GAME_RANKS = [
   { key: 'recruit', name: 'Arena Recruit', shortName: 'Recruit', minXp: 0 },
-  { key: 'bronze', name: 'Bronze Tactician', shortName: 'Bronze', minXp: 500 },
-  { key: 'silver', name: 'Silver Shotcaller', shortName: 'Silver', minXp: 1000 },
-  { key: 'gold', name: 'Gold Strategist', shortName: 'Gold', minXp: 1700 },
-  { key: 'platinum', name: 'Platinum Vanguard', shortName: 'Platinum', minXp: 2400 },
-  { key: 'epic', name: 'Epic Commander', shortName: 'Epic', minXp: 3200 },
-  { key: 'mythic', name: 'Mythic Architect', shortName: 'Mythic', minXp: 4100 },
-  { key: 'apex', name: 'Apex Operator', shortName: 'Apex', minXp: 5000 }
+  { key: 'iron', name: 'Iron Runner', shortName: 'Iron', minXp: 350 },
+  { key: 'bronze', name: 'Bronze Tactician', shortName: 'Bronze', minXp: 750 },
+  { key: 'silver', name: 'Silver Shotcaller', shortName: 'Silver', minXp: 1250 },
+  { key: 'gold', name: 'Gold Strategist', shortName: 'Gold', minXp: 1900 },
+  { key: 'platinum', name: 'Platinum Vanguard', shortName: 'Platinum', minXp: 2700 },
+  { key: 'diamond', name: 'Diamond Sentinel', shortName: 'Diamond', minXp: 3600 },
+  { key: 'epic', name: 'Epic Commander', shortName: 'Epic', minXp: 4700 },
+  { key: 'legend', name: 'Legend Warden', shortName: 'Legend', minXp: 6100 },
+  { key: 'mythic', name: 'Mythic Architect', shortName: 'Mythic', minXp: 7800 },
+  { key: 'dragon', name: 'Ascendant Vanguard', shortName: 'Ascendant', minXp: 9800 },
+  { key: 'inferno', name: 'Immortal Vanguard', shortName: 'Immortal', minXp: 12200 },
+  { key: 'celestial', name: 'Celestial Sovereign', shortName: 'Celestial', minXp: 15000 },
+  { key: 'apex', name: 'Apex Sovereign', shortName: 'Apex', minXp: 18500 }
 ];
 
 const getId = (value) => String(value?._id || value?.id || value || '');
 
 const SEASON_LENGTH_MONTHS = 2;
-const APEX_STAR_STEP = 3000;
+const APEX_STAR_STEP = 2400;
 
 const GAME_REWARDS = {
   recruit: { title: 'Starter Badge', reward: '100 Arena Coins', accent: 'slate' },
+  iron: { title: 'Iron Plate', reward: 'Iron profile plate', accent: 'stone' },
   bronze: { title: 'Bronze Trail', reward: '250 Arena Coins', accent: 'orange' },
   silver: { title: 'Silver Frame', reward: 'Profile frame unlock', accent: 'zinc' },
   gold: { title: 'Gold Banner', reward: 'Gold banner unlock', accent: 'yellow' },
   platinum: { title: 'Platinum Crest', reward: 'Premium crest unlock', accent: 'cyan' },
+  diamond: { title: 'Diamond Edge', reward: 'Diamond border unlock', accent: 'sky' },
   epic: { title: 'Epic Recall', reward: 'Animated arena flair', accent: 'fuchsia' },
+  legend: { title: 'Legend Aura', reward: 'Legend glow aura', accent: 'violet' },
   mythic: { title: 'Mythic Crown', reward: 'Mythic profile crown', accent: 'rose' },
-  apex: { title: 'Apex Legacy', reward: 'Apex legacy title', accent: 'emerald' }
+  dragon: { title: 'Ascendant Crest', reward: 'Ascendant rank emblem', accent: 'orange' },
+  inferno: { title: 'Immortal Aura', reward: 'Elite glow trail', accent: 'red' },
+  celestial: { title: 'Celestial Spark', reward: 'Spark aura unlock', accent: 'amber' },
+  apex: { title: 'Sovereign Legacy', reward: 'Apex sovereign title', accent: 'emerald' }
 };
 
 const DEMOTION_MAP = {
   recruit: 'recruit',
-  bronze: 'recruit',
+  iron: 'recruit',
+  bronze: 'iron',
   silver: 'bronze',
   gold: 'silver',
   platinum: 'gold',
-  epic: 'platinum',
-  mythic: 'epic',
-  apex: 'mythic'
+  diamond: 'platinum',
+  epic: 'diamond',
+  legend: 'epic',
+  mythic: 'legend',
+  dragon: 'mythic',
+  inferno: 'dragon',
+  celestial: 'inferno',
+  apex: 'celestial'
 };
 
 const getApexStarStats = (xp = 0, starXp = xp) => {
@@ -174,7 +192,7 @@ const buildGameStats = (sessions = [], options = {}) => {
   const previousStats = summarizeCompletedSessions(previousSeasonCompleted);
   const lifetimeStats = summarizeCompletedSessions(completed);
   const resetRank = previousStats.totalPlays ? getDemotedRank(previousStats.rank) : GAME_RANKS[0];
-  const seasonRankScore = Math.max(seasonStats.highScore, resetRank.minXp);
+  const seasonRankScore = Math.max(seasonStats.lifetimeScore, resetRank.minXp);
   const seasonTotalScore = seasonStats.lifetimeScore;
   const rank = getGameRank(seasonRankScore, Math.max(seasonTotalScore, seasonRankScore));
 
@@ -240,6 +258,7 @@ const buildGameLeaderboard = (sessions = []) => {
     })
     .filter(entry => entry.stats.totalPlays > 0)
     .sort((a, b) => {
+      if (b.stats.seasonScore !== a.stats.seasonScore) return b.stats.seasonScore - a.stats.seasonScore;
       if (b.stats.highScore !== a.stats.highScore) return b.stats.highScore - a.stats.highScore;
       if (b.stats.bestAccuracy !== a.stats.bestAccuracy) return b.stats.bestAccuracy - a.stats.bestAccuracy;
       if (b.stats.bestWpm !== a.stats.bestWpm) return b.stats.bestWpm - a.stats.bestWpm;

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, User, UserCheck, UserPlus, UserX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
@@ -73,6 +73,20 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     onClose?.();
     navigate(profileId ? `/messages?user=${profileId}` : '/messages');
   };
+
+  const closeModal = (event) => {
+    event?.stopPropagation?.();
+    onClose?.();
+  };
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const syncFriendBadge = () => {
     window.dispatchEvent(new CustomEvent('friendsUpdated'));
@@ -189,13 +203,17 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-4">
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-4"
+          onMouseDown={closeModal}
+        >
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.96 }}
             transition={{ type: 'spring', damping: 24, stiffness: 260 }}
             className="max-h-[90vh] w-full max-w-[420px] overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl"
+            onMouseDown={event => event.stopPropagation()}
           >
             <div className="max-h-[90vh] overflow-y-auto">
               <div className="relative overflow-hidden bg-gray-950 p-5 text-white">
@@ -207,11 +225,11 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
               <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/45 to-black/15" />
               <button
                 type="button"
-                onClick={onClose}
-                className="absolute right-3 top-3 z-10 rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
-                aria-label="Close profile"
+                onClick={closeModal}
+                className="absolute left-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/35 text-white shadow-xl backdrop-blur transition hover:-translate-x-0.5 hover:bg-white/20 hover:text-white"
+                aria-label="Back"
               >
-                <X size={18} />
+                <ArrowLeft size={26} strokeWidth={2.8} />
               </button>
               <div className="relative z-10 flex items-end gap-4 pt-10">
                 <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white shadow-xl">
@@ -249,7 +267,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
 
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <div className="flex items-center gap-3">
-                  <RankEmblem rank={profile?.rankStats?.rank} size="sm" />
+                  <RankEmblem rank={profile?.rankStats?.rank} size="sm" animated />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Work Rank</p>
                     <p className="truncate text-sm font-black text-gray-950 dark:text-white">{profile?.rankStats?.rank?.name || 'Rookie Operator'}</p>
@@ -261,9 +279,9 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
 
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <div className="flex items-center gap-3">
-                  <GameRankEmblem rank={profile?.gameStats?.rank} size="sm" />
+                  <GameRankEmblem rank={profile?.gameStats?.rank} size="sm" animated />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Game Rank</p>
+                    <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Division Rank</p>
                     <p className="truncate text-sm font-black text-gray-950 dark:text-white">{profile?.gameStats?.rank?.name || 'Arena Recruit'}</p>
                     <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.gameStats?.highScore || 0} high score · {profile?.gameStats?.totalPlays || 0} runs</p>
                   </div>

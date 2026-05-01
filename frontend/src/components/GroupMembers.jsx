@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { resolveMediaUrl } from '../utils/media';
+import LoadingSpinner from './LoadingSpinner';
 
 // Helper to generate avatar URL (uses UI Avatars if no real avatar)
 const getAvatarUrl = (user) => {
@@ -83,7 +84,7 @@ export default function GroupMembers({ groupId, onUserClick }) {
   const getRoleIcon = (role) => {
     switch (role) {
       case 'creator': return <Crown size={16} className="text-yellow-500" />;
-      case 'co-creator': return <Star size={16} className="text-purple-500" />;
+      case 'co-creator': return <Star size={16} className="text-indigo-500" />;
       default: return <Users size={16} className="text-gray-400" />;
     }
   };
@@ -96,7 +97,7 @@ export default function GroupMembers({ groupId, onUserClick }) {
     };
     const styles = {
       creator: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
-      'co-creator': 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+      'co-creator': 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
       member: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
     };
     return <span className={`text-xs px-2 py-0.5 rounded-full ${styles[role]}`}>{labels[role] || 'Member'}</span>;
@@ -105,16 +106,7 @@ export default function GroupMembers({ groupId, onUserClick }) {
   if (loading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm">
-        <div className="space-y-3">
-          {[1,2,3].map(i => (
-            <div key={i} className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gray-300"></div>
-                <div className="h-4 w-24 bg-gray-300 rounded"></div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <LoadingSpinner compact label="Loading members" />
       </div>
     );
   }
@@ -149,7 +141,7 @@ export default function GroupMembers({ groupId, onUserClick }) {
                     e.target.style.display = 'none';
                     const parent = e.target.parentElement;
                     const fallback = document.createElement('div');
-                    fallback.className = 'w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 flex items-center justify-center text-white font-semibold';
+                    fallback.className = 'w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-indigo-600 flex items-center justify-center text-white font-semibold';
                     fallback.textContent = member.name?.charAt(0).toUpperCase() || '?';
                     parent.appendChild(fallback);
                   }}
@@ -169,7 +161,7 @@ export default function GroupMembers({ groupId, onUserClick }) {
                 {canPromote && (
                   <button
                     onClick={() => promoteToCoCreator(member._id, member.name)}
-                    className="p-1.5 text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition"
+                    className="p-1.5 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 rounded-lg transition"
                     title="Promote to admin"
                   >
                     <ArrowUp size={16} />

@@ -5,16 +5,18 @@ import { Activity, CheckCircle2, Gauge, Play, RotateCcw, Save, Sparkles, Target,
 import api from '../services/api';
 
 const TOTAL_ROUNDS = 12;
-const TARGET_WIDTH = 12;
+const TARGET_WIDTH = 18;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const calculateHit = (position, targetCenter, width = TARGET_WIDTH) => {
   const distance = Math.abs(position - targetCenter);
   const maxDistance = width / 2;
-  const accuracy = clamp(Math.round((1 - (distance / maxDistance)) * 100), 0, 100);
-  const perfect = accuracy >= 86;
-  const hit = accuracy > 0;
+  const hit = distance <= maxDistance + 1.5;
+  const accuracy = hit
+    ? clamp(Math.round((1 - (Math.min(distance, maxDistance) / maxDistance)) * 88) + 12, 12, 100)
+    : 0;
+  const perfect = accuracy >= 88;
   return { hit, perfect, accuracy, distance };
 };
 
@@ -43,17 +45,22 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
   const [saving, setSaving] = useState(false);
   const animationRef = useRef(null);
   const lastFrameRef = useRef(null);
+  const positionRef = useRef(0);
+  const targetCenterRef = useRef(50);
 
   const progress = useMemo(() => Math.round((round / TOTAL_ROUNDS) * 100), [round]);
 
   const nextTarget = () => {
-    setTargetCenter(18 + Math.round(Math.random() * 64));
+    const next = 18 + Math.round(Math.random() * 64);
+    targetCenterRef.current = next;
+    setTargetCenter(next);
   };
 
   const resetGame = () => {
     setRunning(true);
     setRound(0);
     setPosition(0);
+    positionRef.current = 0;
     setDirection(1);
     setScore(0);
     setHits(0);
@@ -122,6 +129,7 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
           next = 0;
           setDirection(1);
         }
+        positionRef.current = next;
         return next;
       });
 
@@ -137,7 +145,9 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
   const lockFocus = () => {
     if (!running) return;
 
-    const hitResult = calculateHit(position, targetCenter);
+    const livePosition = positionRef.current;
+    const liveTarget = targetCenterRef.current || targetCenter;
+    const hitResult = calculateHit(livePosition, liveTarget);
     const nextRound = round + 1;
     const nextStreak = hitResult.hit ? streak + 1 : 0;
     const nextBestStreak = Math.max(bestStreak, nextStreak);

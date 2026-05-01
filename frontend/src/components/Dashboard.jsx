@@ -28,13 +28,36 @@ import { useAuth } from '../context/AuthContext';
 import RankBadge, { RankEmblem } from './RankBadge';
 import { resolveMediaUrl } from '../utils/media';
 import UserProfileModal from './UserProfileModal';
+import LoadingSpinner from './LoadingSpinner';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
 const cardVariants = {
-  hidden: { opacity: 0, y: 18, scale: 0.98 },
+  hidden: { opacity: 0, y: 26, scale: 0.97 },
   visible: { opacity: 1, y: 0, scale: 1 }
 };
+
+const revealViewport = { once: false, amount: 0.16, margin: '0px 0px -80px 0px' };
+
+const panelVariants = {
+  hidden: { opacity: 0, y: 34, scale: 0.975 },
+  visible: { opacity: 1, y: 0, scale: 1 }
+};
+
+const revealTransition = { type: 'spring', damping: 24, stiffness: 160 };
+
+const RevealSection = ({ children, className = '', delay = 0 }) => (
+  <motion.section
+    variants={panelVariants}
+    initial="hidden"
+    whileInView="visible"
+    viewport={revealViewport}
+    transition={{ ...revealTransition, delay }}
+    className={className}
+  >
+    {children}
+  </motion.section>
+);
 
 const parseDate = (value) => {
   if (!value) return null;
@@ -121,7 +144,8 @@ const StatCard = ({ icon: Icon, label, value, helper, tone, delay }) => (
   <motion.div
     variants={cardVariants}
     initial="hidden"
-    animate="visible"
+    whileInView="visible"
+    viewport={revealViewport}
     transition={{ delay, type: 'spring', damping: 22, stiffness: 240 }}
     whileHover={{ y: -5, scale: 1.01 }}
     className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60"
@@ -337,7 +361,7 @@ export default function Dashboard() {
       label: 'Open Tasks',
       value: summary.openTasks.length,
       helper: `${summary.completionRate}% completion rate`,
-      tone: 'from-cyan-500 to-blue-500'
+      tone: 'from-cyan-500 to-pink-500'
     },
     {
       icon: CalendarDays,
@@ -351,32 +375,22 @@ export default function Dashboard() {
       label: 'Needs Approval',
       value: summary.needsApproval.length,
       helper: 'Pending review items',
-      tone: 'from-emerald-500 to-teal-500'
+      tone: 'from-emerald-500 to-cyan-500'
     }
   ];
 
   if (loading) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
-        <div className="h-44 animate-pulse rounded-2xl bg-white dark:bg-gray-800" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[1, 2, 3, 4].map(item => <div key={item} className="h-36 animate-pulse rounded-2xl bg-white dark:bg-gray-800" />)}
-        </div>
-        <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-          <div className="h-80 animate-pulse rounded-2xl bg-white dark:bg-gray-800" />
-          <div className="h-80 animate-pulse rounded-2xl bg-white dark:bg-gray-800" />
-        </div>
-      </motion.div>
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 lg:px-8">
+        <LoadingSpinner label="Loading command center" />
+      </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
-      <motion.section
-        initial={{ opacity: 0, y: -18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-gray-950 via-fuchsia-950 to-indigo-950 shadow-xl shadow-pink-500/15"
+      <RevealSection
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-gray-950 via-indigo-950 to-indigo-950 shadow-xl shadow-pink-500/15"
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.35),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.2),transparent_34%)]" />
         <div className="relative flex flex-col gap-6 p-6 md:p-8 lg:flex-row lg:items-center lg:justify-between">
@@ -447,7 +461,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </motion.section>
+      </RevealSection>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat, index) => (
@@ -455,12 +469,14 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+      <RevealSection className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]" delay={0.03}>
         <RankBadge stats={rankStats} />
         <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.14 }}
+          variants={cardVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={revealViewport}
+          transition={{ delay: 0.08, type: 'spring', damping: 22, stiffness: 180 }}
           whileHover={{ y: -5, scale: 1.006 }}
           className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
         >
@@ -493,7 +509,7 @@ export default function Dashboard() {
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-yellow-300 via-pink-500 to-cyan-400 opacity-0 transition group-hover/rank:opacity-100" />
                   <div className="relative flex items-center justify-between gap-2">
                     <span className="text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</span>
-                    <RankEmblem rank={entry.stats?.rank} size="sm" />
+                    <RankEmblem rank={entry.stats?.rank} size="sm" animated />
                   </div>
                   <div className="relative mt-3 flex items-center gap-2">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
@@ -514,13 +530,15 @@ export default function Dashboard() {
             )}
           </div>
         </motion.div>
-      </section>
+      </RevealSection>
 
-      <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+      <RevealSection className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]" delay={0.04}>
         <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12 }}
+          variants={cardVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={revealViewport}
+          transition={{ delay: 0.04, type: 'spring', damping: 22, stiffness: 180 }}
           whileHover={{ y: -5, scale: 1.006 }}
           className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
         >
@@ -559,9 +577,11 @@ export default function Dashboard() {
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18 }}
+          variants={cardVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={revealViewport}
+          transition={{ delay: 0.1, type: 'spring', damping: 22, stiffness: 180 }}
           whileHover={{ y: -5, scale: 1.006 }}
           className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-cyan-200 hover:shadow-2xl hover:shadow-cyan-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-cyan-900/60"
         >
@@ -615,9 +635,9 @@ export default function Dashboard() {
             </div>
           </div>
         </motion.div>
-      </section>
+      </RevealSection>
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <RevealSection className="grid gap-4 lg:grid-cols-4" delay={0.04}>
         {[
           {
             icon: FolderKanban,
@@ -657,8 +677,9 @@ export default function Dashboard() {
             <motion.button
               key={item.title}
               type="button"
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 24, scale: 0.97 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              viewport={revealViewport}
               transition={{ delay: 0.2 + index * 0.06 }}
               whileHover={{ y: -8, scale: 1.018 }}
               onClick={() => navigate(item.path)}
@@ -684,12 +705,14 @@ export default function Dashboard() {
             </motion.button>
           );
         })}
-      </section>
+      </RevealSection>
 
       <motion.section
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.26 }}
+        variants={panelVariants}
+        initial="hidden"
+        whileInView="visible"
+        viewport={revealViewport}
+        transition={{ ...revealTransition, delay: 0.06 }}
         whileHover={{ y: -4 }}
         className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
       >

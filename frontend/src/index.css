@@ -7,7 +7,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- CSS Variables (Colorful Theme) ---------- */
+/* ---------- CSS Variables (Clean Professional Theme) ---------- */
 :root {
   --color-primary: #ec4899;
   --color-primary-dark: #db2777;
@@ -21,13 +21,23 @@
   --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   --gradient-4: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
   --gradient-5: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-  --glass-bg: rgba(255, 255, 255, 0.1);
-  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(148, 163, 184, 0.26);
+  --app-bg: linear-gradient(135deg, #f8fafc 0%, #eef4ff 48%, #f7faf9 100%);
+  --app-grid-a: rgba(15, 23, 42, 0.035);
+  --app-grid-b: rgba(15, 23, 42, 0.028);
+  --app-ambient: radial-gradient(circle at 18% 8%, rgba(236, 72, 153, 0.12), transparent 30%), radial-gradient(circle at 82% 10%, rgba(34, 211, 238, 0.10), transparent 32%);
+  --theme-accent: #ec4899;
+  --theme-accent-2: #06b6d4;
 }
 
 .dark {
   --glass-bg: rgba(0, 0, 0, 0.3);
   --glass-border: rgba(255, 255, 255, 0.05);
+  --app-bg: linear-gradient(135deg, #020617 0%, #111827 52%, #1e1b4b 100%);
+  --app-ambient: radial-gradient(circle at 20% 10%, rgba(34, 211, 238, 0.16), transparent 32%), radial-gradient(circle at 82% 8%, rgba(236, 72, 153, 0.18), transparent 30%);
+  --theme-accent: #ec4899;
+  --theme-accent-2: #22d3ee;
 }
 
 /* ---------- Base ---------- */
@@ -39,7 +49,8 @@
 
   body {
     font-family: 'Inter', sans-serif;
-    @apply bg-gradient-to-br from-gray-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-purple-950;
+    background: var(--app-bg);
+    @apply text-slate-900 dark:text-slate-100;
     transition: background 0.3s;
   }
 

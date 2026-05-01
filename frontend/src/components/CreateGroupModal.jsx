@@ -53,12 +53,12 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
               className="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
             >
               {/* Gradient top bar */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500"></div>
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500 via-indigo-500 to-indigo-500"></div>
 
               {/* Header */}
               <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-pink-500 to-indigo-600">
                     <Sparkles size={18} className="text-white" />
                   </div>
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create New Workspace</h2>
@@ -172,7 +172,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
                     disabled={submitting}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="px-5 py-2 rounded-xl font-medium bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md hover:shadow-lg transition disabled:cursor-not-allowed disabled:opacity-60"
+                    className="px-5 py-2 rounded-xl font-medium bg-gradient-to-r from-pink-500 to-indigo-600 text-white shadow-md hover:shadow-lg transition disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {submitting ? 'Creating...' : 'Create Workspace'}
                   </motion.button>

@@ -29,6 +29,7 @@ import BugHuntGame, { BugHuntLogo } from './BugHuntGame';
 import FocusFlowGame, { FocusFlowLogo } from './FocusFlowGame';
 import GameRankBadge, { GameRankEmblem } from './GameRankBadge';
 import UserProfileModal from './UserProfileModal';
+import LoadingSpinner from './LoadingSpinner';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -36,11 +37,11 @@ const severityStyles = {
   low: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/60',
   medium: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60',
   high: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-950/30 dark:text-rose-200 dark:ring-rose-900/60',
-  critical: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100 dark:bg-fuchsia-950/30 dark:text-fuchsia-200 dark:ring-fuchsia-900/60'
+  critical: 'bg-indigo-50 text-indigo-700 ring-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-200 dark:ring-indigo-900/60'
 };
 
 const statusStyles = {
-  new: 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-950/30 dark:text-blue-200 dark:ring-blue-900/60',
+  new: 'bg-pink-50 text-pink-700 ring-pink-100 dark:bg-pink-950/30 dark:text-pink-200 dark:ring-pink-900/60',
   reviewing: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60',
   approved: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/60',
   rejected: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-950/30 dark:text-rose-200 dark:ring-rose-900/60',
@@ -124,10 +125,17 @@ const TypingGameLogo = ({ compact = false }) => (
 
 const ComingSoonLogo = ({ compact = false }) => (
   <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-violet-500/20 ring-1 ring-violet-300/20`}>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(168,85,247,0.5),transparent_34%),radial-gradient(circle_at_75%_80%,rgba(236,72,153,0.35),transparent_35%)]" />
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(79,70,229,0.5),transparent_34%),radial-gradient(circle_at_75%_80%,rgba(236,72,153,0.35),transparent_35%)]" />
     <Gamepad2 size={compact ? 24 : 30} className="relative z-10 text-violet-100 drop-shadow" />
   </div>
 );
+
+const getTypingSentences = (session) => {
+  if (Array.isArray(session?.sentences) && session.sentences.length) return session.sentences;
+  return String(session?.prompt || '').split(/\n+/).map(item => item.trim()).filter(Boolean);
+};
+
+const normalizeTypingSentence = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 export default function OpsArena() {
   const [summary, setSummary] = useState(null);
@@ -143,6 +151,7 @@ export default function OpsArena() {
   const [unlockingDeveloper, setUnlockingDeveloper] = useState(false);
   const [typingSession, setTypingSession] = useState(null);
   const [typingText, setTypingText] = useState('');
+  const [typingEntries, setTypingEntries] = useState([]);
   const [typingResult, setTypingResult] = useState(null);
   const [typingSeconds, setTypingSeconds] = useState(0);
   const [typingBusy, setTypingBusy] = useState(false);
@@ -246,6 +255,7 @@ export default function OpsArena() {
     try {
       const res = await api.put(`/games/fix-arena/issues/${issueId}/status`, { status });
       setIssues(prev => prev.map(issue => getEntityId(issue) === issueId ? res.data : issue));
+      loadArena({ silent: true });
       toast.success('Status updated');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Status update failed');
@@ -261,6 +271,7 @@ export default function OpsArena() {
       const res = await api.post(`/games/fix-arena/issues/${selectedIssue._id}/messages`, { text: messageText });
       setIssues(prev => prev.map(issue => getEntityId(issue) === getEntityId(selectedIssue) ? res.data : issue));
       setMessageText('');
+      if (isDeveloper) loadArena({ silent: true });
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Message failed');
     } finally {
@@ -272,6 +283,7 @@ export default function OpsArena() {
     setTypingBusy(true);
     setTypingResult(null);
     setTypingText('');
+    setTypingEntries([]);
     setTypingSeconds(0);
     try {
       const res = await api.post('/games/typing-sprint/start');
@@ -287,20 +299,45 @@ export default function OpsArena() {
     }
   };
 
-  const submitTypingSprint = async (event) => {
-    event.preventDefault();
-    if (!typingSession || !typingText.trim()) return;
+  const submitTypingSprint = useCallback(async (event, overrideEntries = null) => {
+    event?.preventDefault?.();
+    if (!typingSession || typingBusy) return;
+
+    const sentences = getTypingSentences(typingSession);
+    let finalEntries = overrideEntries || typingEntries;
+    const currentTyped = typingText.trim();
+
+    if (!overrideEntries && currentTyped && sentences[finalEntries.length]) {
+      const expected = sentences[finalEntries.length];
+      finalEntries = [
+        ...finalEntries,
+        {
+          expected,
+          typed: currentTyped,
+          correct: normalizeTypingSentence(currentTyped) === normalizeTypingSentence(expected)
+        }
+      ];
+    }
+
+    if (!finalEntries.length) return;
 
     setTypingBusy(true);
     try {
-      const res = await api.post(`/games/typing-sprint/${typingSession.sessionId}/submit`, { text: typingText });
+      const typedSentences = finalEntries.map(entry => entry.typed);
+      const res = await api.post(`/games/typing-sprint/${typingSession.sessionId}/submit`, {
+        mode: 'sentence-stream',
+        text: typedSentences.join('\n'),
+        typedSentences
+      });
       setTypingResult(res.data.result);
       setSummary(prev => ({ ...(prev || {}), typingStats: res.data.stats }));
       setTypingSession(null);
       setTypingSeconds(0);
+      setTypingEntries([]);
+      setTypingText('');
       const summaryRes = await api.get('/games/summary/me');
       setSummary(summaryRes.data);
-      toast.success('Typing score saved');
+      toast.success('Typing Sprint saved');
     } catch (err) {
       if (err.response?.status === 404) {
         toast.error('Backend is not updated yet. Redeploy Render backend first.');
@@ -310,17 +347,104 @@ export default function OpsArena() {
     } finally {
       setTypingBusy(false);
     }
+  }, [typingBusy, typingEntries, typingSession, typingText]);
+
+  const advanceTypingSentence = useCallback((rawSentence, expectedIndex = null) => {
+    if (!typingSession || typingBusy) return;
+    const typed = String(rawSentence || '').trim();
+    if (!typed) return;
+
+    const sentences = getTypingSentences(typingSession);
+    setTypingEntries(prev => {
+      if (expectedIndex !== null && prev.length !== expectedIndex) return prev;
+      const expected = sentences[prev.length];
+      if (!expected) return prev;
+      const next = [
+        ...prev,
+        {
+          expected,
+          typed,
+          correct: normalizeTypingSentence(typed) === normalizeTypingSentence(expected)
+        }
+      ];
+      if (next.length >= sentences.length) {
+        window.setTimeout(() => submitTypingSprint(null, next), 0);
+      }
+      return next;
+    });
+    setTypingText('');
+  }, [submitTypingSprint, typingBusy, typingSession]);
+
+  const handleTypingTextChange = (event) => {
+    const value = event.target.value;
+    if (!typingSession || typingBusy) return;
+    const sentences = getTypingSentences(typingSession);
+    const expected = sentences[typingEntries.length] || '';
+    const normalizedValue = normalizeTypingSentence(value);
+    const normalizedExpected = normalizeTypingSentence(expected);
+
+    setTypingText(value);
+
+    if (normalizedValue && normalizedValue === normalizedExpected) {
+      window.setTimeout(() => advanceTypingSentence(value, typingEntries.length), 120);
+      return;
+    }
+  };
+
+  const handleTypingKeyDown = (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    advanceTypingSentence(typingText, typingEntries.length);
   };
 
   useEffect(() => {
     if (!typingSession || typingResult) return undefined;
     const timer = setInterval(() => {
       const startedAt = new Date(typingSession.startedAt).getTime();
-      setTypingSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+      const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      setTypingSeconds(elapsed);
+      if (elapsed >= (typingSession.durationSeconds || 60)) {
+        submitTypingSprint(null);
+      }
     }, 250);
 
     return () => clearInterval(timer);
-  }, [typingResult, typingSession]);
+  }, [submitTypingSprint, typingResult, typingSession]);
+
+  const typingProgress = useMemo(() => {
+    const sentences = getTypingSentences(typingSession);
+    const prompt = sentences[typingEntries.length] || '';
+    const typed = typingText || '';
+    let mistakes = 0;
+
+    for (let index = 0; index < typed.length; index += 1) {
+      if (typed[index] !== prompt[index]) mistakes += 1;
+    }
+
+    const accuracy = typed.length
+      ? Math.max(0, Math.round(((typed.length - mistakes) / typed.length) * 100))
+      : 100;
+
+    return {
+      prompt,
+      sentences,
+      typed,
+      mistakes,
+      accuracy,
+      correctCount: typingEntries.filter(entry => entry.correct).length,
+      attemptedCount: typingEntries.length,
+      remainingCount: Math.max(0, sentences.length - typingEntries.length),
+      complete: Boolean(prompt) && normalizeTypingSentence(typed) === normalizeTypingSentence(prompt)
+    };
+  }, [typingEntries, typingSession, typingText]);
+  const typingRemainingSeconds = typingSession
+    ? Math.max(0, (typingSession.durationSeconds || 60) - typingSeconds)
+    : 0;
+  const typingInputWrong = Boolean(
+    typingProgress.typed
+    && typingProgress.prompt
+    && !normalizeTypingSentence(typingProgress.prompt).startsWith(normalizeTypingSentence(typingProgress.typed))
+  );
 
   const issueStats = useMemo(() => {
     const open = issues.filter(issue => !['approved', 'rejected', 'resolved', 'closed'].includes(issue.status)).length;
@@ -331,9 +455,9 @@ export default function OpsArena() {
 
   const statCards = [
     { icon: AlertTriangle, label: 'Pending Reports', value: issueStats.open, helper: isDeveloper ? 'Developer-only queue' : 'Visible to developers only', tone: 'from-rose-500 to-pink-600' },
-    { icon: CheckCircle2, label: 'Approved', value: issueStats.resolved, helper: 'Accepted suggestions or fixes', tone: 'from-emerald-500 to-teal-600' },
+    { icon: CheckCircle2, label: 'Approved', value: issueStats.resolved, helper: 'Accepted suggestions or fixes', tone: 'from-emerald-500 to-cyan-600' },
     { icon: Trophy, label: 'Arena Rank Score', value: summary?.stats?.highScore || 0, helper: `${summary?.stats?.totalPlays || 0} saved game runs`, tone: 'from-yellow-400 to-orange-600' },
-    { icon: Zap, label: 'Best Speed', value: `${summary?.typingStats?.bestWpm || 0} WPM`, helper: summary?.typingStats?.fastestMs ? `${formatElapsed(summary.typingStats.fastestMs)} fastest finish` : 'No timed run yet', tone: 'from-cyan-400 to-blue-600' }
+    { icon: Zap, label: 'Best Speed', value: `${summary?.typingStats?.bestWpm || 0} WPM`, helper: summary?.typingStats?.fastestMs ? `${formatElapsed(summary.typingStats.fastestMs)} fastest finish` : 'No timed run yet', tone: 'from-cyan-400 to-pink-600' }
   ];
 
   const gameCards = [
@@ -393,10 +517,7 @@ export default function OpsArena() {
   if (loading) {
     return (
       <div className="mx-auto max-w-7xl space-y-5 px-3 py-4 sm:px-6 lg:px-8">
-        <div className="h-56 animate-pulse rounded-3xl bg-white dark:bg-gray-800" />
-        <div className="grid gap-4 md:grid-cols-4">
-          {[1, 2, 3, 4].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl bg-white dark:bg-gray-800" />)}
-        </div>
+        <LoadingSpinner label="Loading Fix Arena" />
       </div>
     );
   }
@@ -502,7 +623,7 @@ export default function OpsArena() {
                       <div>
                         <p className="text-xs font-black uppercase text-yellow-500">Speed Challenge</p>
                         <h2 className="text-2xl font-black tracking-normal text-gray-950 dark:text-white">Typing Sprint</h2>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Type project prompts quickly and accurately. Best score counts toward your arena rank.</p>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Type each sentence, press Enter, and keep the streak alive until time runs out.</p>
                       </div>
                     </div>
                     <button onClick={startTypingSprint} disabled={typingBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
@@ -515,24 +636,77 @@ export default function OpsArena() {
                 <div className="p-5">
                   <div className="rounded-3xl bg-gray-50 p-5 dark:bg-gray-950/50">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Prompt</p>
+                      <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Live Sentence Stream</p>
                       {typingSession && (
                         <span className="inline-flex items-center gap-2 rounded-xl bg-cyan-50 px-3 py-2 text-sm font-black text-cyan-700 ring-1 ring-cyan-100 dark:bg-cyan-950/30 dark:text-cyan-200 dark:ring-cyan-900/60">
                           <Clock size={16} />
-                          {formatElapsed(typingSeconds * 1000)}
+                          {typingRemainingSeconds}s left
                         </span>
                       )}
                     </div>
-                    <p className="mt-3 text-lg font-black leading-8 text-gray-950 dark:text-white">
-                      {typingSession?.prompt || 'Start a sprint to receive a professional project prompt.'}
-                    </p>
+                    {typingSession ? (
+                      <>
+                        <div className="mt-3 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+                          <div className="flex flex-wrap gap-2">
+                            {typingEntries.slice(-10).map((entry, index) => (
+                              <span key={`${entry.expected}-${index}`} className={`rounded-xl px-3 py-1.5 text-sm font-black ring-1 ${
+                                entry.correct
+                                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/60'
+                                  : 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-950/30 dark:text-rose-200 dark:ring-rose-900/60'
+                              }`}>
+                                {entry.typed}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="mt-5 text-center">
+                            <p className="text-xs font-black uppercase text-gray-400">Current sentence</p>
+                            <motion.p
+                              key={typingProgress.prompt}
+                              initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              className="mx-auto mt-2 max-w-3xl text-2xl font-black leading-9 tracking-normal text-gray-950 dark:text-white md:text-3xl md:leading-10"
+                            >
+                              {typingProgress.prompt || 'Done'}
+                            </motion.p>
+                            <div className="mx-auto mt-4 h-2 max-w-md overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                              <motion.div
+                                animate={{ width: `${Math.min(100, (typingEntries.length / Math.max(1, typingProgress.sentences.length)) * 100)}%` }}
+                                className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="rounded-2xl bg-white p-3 text-sm dark:bg-gray-900">
+                            <p className="text-xs font-black uppercase text-gray-400">Accuracy</p>
+                            <p className={`mt-1 text-xl font-black ${typingInputWrong ? 'text-rose-500' : 'text-emerald-500'}`}>{typingProgress.attemptedCount ? Math.round((typingProgress.correctCount / typingProgress.attemptedCount) * 100) : 100}%</p>
+                          </div>
+                          <div className="rounded-2xl bg-white p-3 text-sm dark:bg-gray-900">
+                            <p className="text-xs font-black uppercase text-gray-400">Correct</p>
+                            <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{typingProgress.correctCount}/{typingProgress.attemptedCount}</p>
+                          </div>
+                          <div className="rounded-2xl bg-white p-3 text-sm dark:bg-gray-900">
+                            <p className="text-xs font-black uppercase text-gray-400">Sentences left</p>
+                            <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{typingProgress.remainingCount}</p>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-3 text-lg font-black leading-8 text-gray-950 dark:text-white">
+                        Start a sprint to receive a professional project prompt.
+                      </p>
+                    )}
                   </div>
 
                   <form onSubmit={submitTypingSprint} className="mt-4 space-y-3">
-                    <textarea value={typingText} onChange={event => setTypingText(event.target.value)} disabled={!typingSession || typingBusy} rows="4" placeholder="Type the prompt here..." className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 disabled:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-cyan-950 dark:disabled:bg-gray-900" />
-                    <button disabled={!typingSession || typingBusy || !typingText.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 text-sm font-black text-white transition hover:bg-cyan-700 disabled:opacity-50">
+                    <textarea value={typingText} onChange={handleTypingTextChange} onKeyDown={handleTypingKeyDown} disabled={!typingSession || typingBusy} rows="3" placeholder="Type current sentence, then press Enter..." className={`w-full resize-none rounded-2xl border bg-white px-4 py-4 text-lg font-black leading-8 text-gray-900 outline-none disabled:bg-gray-50 dark:bg-gray-950 dark:text-white dark:disabled:bg-gray-900 ${
+                      typingInputWrong
+                        ? 'border-rose-300 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 dark:border-rose-900/70 dark:focus:ring-rose-950'
+                        : 'border-gray-200 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 dark:border-gray-700 dark:focus:ring-cyan-950'
+                    }`} />
+                    <button disabled={!typingSession || typingBusy || (!typingEntries.length && !typingText.trim())} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 text-sm font-black text-white transition hover:bg-cyan-700 disabled:opacity-50">
                       <Zap size={17} />
-                      Submit Typing Score
+                      Finish Early
                     </button>
                   </form>
 
@@ -607,7 +781,7 @@ export default function OpsArena() {
               return (
                 <button key={entry.user?._id || entry.position} type="button" onClick={() => setProfileUser(entry.user)} className="flex w-full items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-cyan-200 hover:bg-cyan-50 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-cyan-900/60 dark:hover:bg-cyan-950/20">
                   <span className="w-7 text-center text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</span>
-                  <GameRankEmblem rank={entry.stats?.rank} size="sm" />
+                  <GameRankEmblem rank={entry.stats?.rank} size="sm" animated stars={entry.stats?.apexStars} />
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-cyan-500 to-pink-500 text-sm font-bold text-white">
                     {avatar ? <img src={avatar} alt={entry.user?.name || 'User'} className="h-full w-full object-cover" /> : entry.user?.name?.charAt(0)?.toUpperCase()}
                   </span>

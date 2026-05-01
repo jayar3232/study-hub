@@ -8,7 +8,10 @@ const RANK_TIERS = [
   { key: 'platinum', name: 'Platinum Lead', shortName: 'Platinum', minXp: 1250 },
   { key: 'epic', name: 'Epic Coordinator', shortName: 'Epic', minXp: 1900 },
   { key: 'mythic', name: 'Mythic Strategist', shortName: 'Mythic', minXp: 2850 },
-  { key: 'legend', name: 'Legend Commander', shortName: 'Legend', minXp: 4200 }
+  { key: 'legend', name: 'Legend Commander', shortName: 'Legend', minXp: 4200 },
+  { key: 'dragon', name: 'Ascendant Project Lead', shortName: 'Ascendant', minXp: 5800 },
+  { key: 'inferno', name: 'Immortal Architect', shortName: 'Immortal', minXp: 7800 },
+  { key: 'celestial', name: 'Celestial Director', shortName: 'Celestial', minXp: 10200 }
 ];
 
 const priorityXp = {

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { CheckCheck, Image as ImageIcon, MoreVertical, Send, Users, Video, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +7,7 @@ import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
+import LoadingSpinner from './LoadingSpinner';
 
 let socket;
 
@@ -319,7 +321,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
   if (loading) {
     return (
       <div className="flex h-[520px] items-center justify-center rounded-2xl border border-gray-200 bg-white/80 text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
-        Loading chat...
+        <LoadingSpinner compact label="Loading chat" />
       </div>
     );
   }
@@ -411,7 +413,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
 
                   <div className={`rounded-[1.35rem] px-4 py-3 shadow-sm ${
                     isMe
-                      ? 'rounded-br-md bg-[#0084ff] text-white shadow-blue-500/20'
+                      ? 'rounded-br-md bg-[#0084ff] text-white shadow-pink-500/20'
                       : 'rounded-bl-md border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-800 dark:text-white'
                   }`}>
                     {renderMessageContent(message)}
@@ -473,23 +475,31 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
           </div>
 
           {selectedMedia ? (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05, y: -1 }}
+              whileTap={{ scale: 0.95 }}
+              animate={uploading ? { x: [0, 4, 0], rotate: [0, -10, 0] } : { x: 0, rotate: 0 }}
+              transition={uploading ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
               onClick={() => sendMediaMessage(selectedMedia, mediaType)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0084ff] text-white shadow-lg shadow-blue-500/20 transition hover:scale-105 disabled:opacity-50"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0084ff] text-white shadow-lg shadow-pink-500/20 transition hover:scale-105 disabled:opacity-50"
               disabled={uploading}
               aria-label="Send media"
             >
               <Send size={19} />
-            </button>
+            </motion.button>
           ) : (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05, y: -1 }}
+              whileTap={{ scale: 0.95 }}
+              animate={uploading ? { x: [0, 4, 0], rotate: [0, -10, 0] } : { x: 0, rotate: 0 }}
+              transition={uploading ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
               onClick={() => sendTextMessage(newMessage)}
               disabled={!newMessage.trim() || uploading}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0084ff] text-white shadow-lg shadow-blue-500/20 transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-45"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0084ff] text-white shadow-lg shadow-pink-500/20 transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-45"
               aria-label="Send message"
             >
               <Send size={19} />
-            </button>
+            </motion.button>
           )}
         </div>
       </div>
