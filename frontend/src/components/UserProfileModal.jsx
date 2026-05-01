@@ -59,6 +59,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   }, [isOpen, profileId, user]);
 
   const avatar = resolveMediaUrl(profile?.avatar);
+  const coverPhoto = resolveMediaUrl(profile?.coverPhoto);
   const initials = useMemo(() => {
     const name = profile?.name || 'User';
     return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
@@ -197,16 +198,22 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
             className="max-h-[90vh] w-full max-w-[420px] overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl"
           >
             <div className="max-h-[90vh] overflow-y-auto">
-              <div className="relative bg-gray-950 p-5 text-white">
+              <div className="relative overflow-hidden bg-gray-950 p-5 text-white">
+              {coverPhoto ? (
+                <img src={coverPhoto} alt="Profile cover" className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.28),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_58%,#172554)]" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/45 to-black/15" />
               <button
                 type="button"
                 onClick={onClose}
-                className="absolute right-3 top-3 rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
+                className="absolute right-3 top-3 z-10 rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
                 aria-label="Close profile"
               >
                 <X size={18} />
               </button>
-              <div className="flex items-end gap-4">
+              <div className="relative z-10 flex items-end gap-4 pt-10">
                 <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white shadow-xl">
                   {avatar ? <img src={avatar} alt={profile?.name || 'User'} className="h-full w-full object-cover" /> : initials}
                 </div>

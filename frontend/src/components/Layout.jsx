@@ -185,7 +185,7 @@ export default function Layout({ children }) {
       className="inline-flex items-center gap-3"
     >
       <span className={`${compact ? 'h-10 w-10 rounded-2xl' : 'h-12 w-12 rounded-[1.35rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-gray-950 shadow-xl shadow-cyan-500/15 ring-1 ring-white/10 dark:bg-white`}>
-        <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="relative h-full w-full object-cover p-1.5" />
+        <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="relative h-full w-full object-cover p-1.5" />
       </span>
       <span className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-normal text-gray-950 dark:text-white`}>
         Work<span className="bg-gradient-to-r from-cyan-400 via-pink-500 to-indigo-500 bg-clip-text text-transparent">Loop</span>
@@ -215,10 +215,10 @@ export default function Layout({ children }) {
     { path: '/groups', icon: Users, label: 'Workspaces' },
     { path: '/messages', icon: MessageCircle, label: 'Messages' },
     { path: '/friends', icon: UserPlus, label: 'Friends' },
+    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena' },
     { path: '/profile', icon: User, label: 'Profile' },
   ];
-  const developerNavItem = { path: '/arena', icon: Target, label: 'Developer Console' };
-  const mobileBottomItems = developerAccess ? [...navItems, developerNavItem] : navItems;
+  const mobileBottomItems = navItems;
 
   const handleLogout = () => {
     logout();
@@ -286,7 +286,6 @@ export default function Layout({ children }) {
           {navItems.map(item => renderNavLink(item, false))}
         </nav>
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-          {developerAccess && renderNavLink(developerNavItem, false)}
           <DndToggle />
           {user && (
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/60">
@@ -427,7 +426,6 @@ export default function Layout({ children }) {
               </div>
               <nav className="p-4 space-y-2">
                 {navItems.map(item => renderNavLink(item, true))}
-                {developerAccess && renderNavLink(developerNavItem, true)}
                 <DndToggle />
                 <button
                   onClick={toggleTheme}
@@ -451,3 +449,4 @@ export default function Layout({ children }) {
     </div>
   );
 }
+

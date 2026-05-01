@@ -124,8 +124,11 @@ const StatCard = ({ icon: Icon, label, value, helper, tone, delay }) => (
     animate="visible"
     transition={{ delay, type: 'spring', damping: 22, stiffness: 240 }}
     whileHover={{ y: -5, scale: 1.01 }}
-    className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 transition dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10"
+    className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60"
   >
+    <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone} opacity-80`} />
+    <div className="pointer-events-none absolute right-0 top-0 h-14 w-14 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_30px_rgba(236,72,153,0.2)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+    <div className="pointer-events-none absolute bottom-0 left-0 h-14 w-14 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_30px_rgba(34,211,238,0.18)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
     <div className="flex items-start justify-between gap-4">
       <div>
         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
@@ -152,22 +155,24 @@ const TaskRow = ({ task, onOpen }) => {
     <motion.button
       type="button"
       onClick={onOpen}
-      whileHover={{ x: 4 }}
-      className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 text-left transition hover:border-pink-200 hover:bg-pink-50/40 dark:border-gray-800 dark:bg-gray-950/60 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+      whileHover={{ x: 5, scale: 1.006 }}
+      whileTap={{ scale: 0.996 }}
+      className="group/row relative flex w-full items-center gap-3 overflow-hidden rounded-xl border border-gray-100 bg-white p-3 text-left transition hover:border-pink-200 hover:bg-pink-50/50 hover:shadow-lg hover:shadow-pink-500/10 dark:border-gray-800 dark:bg-gray-950/60 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
     >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${overdue ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300' : dueSoon ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-cyan-100 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-300'}`}>
+      <span className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-gradient-to-b from-cyan-400 to-pink-500 opacity-0 transition group-hover/row:opacity-100" />
+      <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg ${overdue ? 'bg-rose-100 text-rose-600 shadow-rose-500/10 dark:bg-rose-950/40 dark:text-rose-300' : dueSoon ? 'bg-amber-100 text-amber-600 shadow-amber-500/10 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-cyan-100 text-cyan-600 shadow-cyan-500/10 dark:bg-cyan-950/40 dark:text-cyan-300'}`}>
         {overdue ? <AlertTriangle size={18} /> : <ClipboardCheck size={18} />}
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="relative min-w-0 flex-1">
         <span className="block truncate text-sm font-bold text-gray-950 dark:text-white">{task.description}</span>
         <span className="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">
           {task.group?.name || 'Project'} - {formatShortDate(task.dueDate)}
         </span>
       </span>
-      <span className={`hidden rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 sm:inline-flex ${priorityStyles[task.priority] || priorityStyles.medium}`}>
+      <span className={`relative hidden rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 sm:inline-flex ${priorityStyles[task.priority] || priorityStyles.medium}`}>
         {task.priority || 'medium'}
       </span>
-      <ArrowRight size={16} className="shrink-0 text-gray-400" />
+      <ArrowRight size={16} className="relative shrink-0 text-gray-400 transition group-hover/row:translate-x-1 group-hover/row:text-pink-500" />
     </motion.button>
   );
 };
@@ -456,9 +461,14 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.14 }}
-          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+          whileHover={{ y: -5, scale: 1.006 }}
+          className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
         >
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-yellow-300 via-pink-500 to-cyan-400 opacity-80" />
+          <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+          <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+          <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/45 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+          <div className="relative mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-bold text-gray-950 dark:text-white">Contributor Rankings</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">XP is based on completed assigned tasks across your workspace network.</p>
@@ -472,17 +482,20 @@ export default function Dashboard() {
             {leaderboard.slice(0, 5).map(entry => {
               const avatar = resolveMediaUrl(entry.user?.avatar);
               return (
-                <button
+                <motion.button
                   key={entry.user?._id || entry.position}
                   type="button"
                   onClick={() => setProfileUser(entry.user)}
-                  className="group rounded-xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:-translate-y-1 hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+                  whileHover={{ y: -5, scale: 1.03 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="group/rank relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-pink-200 hover:bg-pink-50 hover:shadow-xl hover:shadow-pink-500/10 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
                 >
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-yellow-300 via-pink-500 to-cyan-400 opacity-0 transition group-hover/rank:opacity-100" />
+                  <div className="relative flex items-center justify-between gap-2">
                     <span className="text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</span>
                     <RankEmblem rank={entry.stats?.rank} size="sm" />
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="relative mt-3 flex items-center gap-2">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
                       {avatar ? <img src={avatar} alt={entry.user?.name || 'User'} className="h-full w-full object-cover" /> : entry.user?.name?.charAt(0)?.toUpperCase()}
                     </div>
@@ -491,7 +504,7 @@ export default function Dashboard() {
                       <p className="truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{entry.stats?.xp || 0} XP</p>
                     </div>
                   </div>
-                </button>
+                </motion.button>
               );
             })}
             {leaderboard.length === 0 && (
@@ -508,9 +521,14 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12 }}
-          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+          whileHover={{ y: -5, scale: 1.006 }}
+          className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
         >
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400 opacity-80" />
+          <div className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[12px_-12px_42px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+          <div className="pointer-events-none absolute bottom-0 left-0 h-20 w-20 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-12px_12px_42px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+          <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+          <div className="relative mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-bold text-gray-950 dark:text-white">Today's Focus</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">High priority, overdue, and upcoming work.</p>
@@ -544,17 +562,28 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.18 }}
-          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+          whileHover={{ y: -5, scale: 1.006 }}
+          className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-cyan-200 hover:shadow-2xl hover:shadow-cyan-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-cyan-900/60"
         >
-          <div className="flex items-start justify-between gap-4">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
+          <div className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-tr-2xl border-r-2 border-t-2 border-cyan-300 opacity-0 shadow-[12px_-12px_42px_rgba(34,211,238,0.22)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+          <div className="pointer-events-none absolute bottom-0 left-0 h-20 w-20 rounded-bl-2xl border-b-2 border-l-2 border-pink-300 opacity-0 shadow-[-12px_12px_42px_rgba(236,72,153,0.18)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+          <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-cyan-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+          <div className="relative flex items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-gray-950 dark:text-white">Operations Snapshot</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">Progress and team scale.</p>
             </div>
-            <Gauge className="text-pink-500" size={24} />
+            <motion.div
+              animate={{ y: [0, -4, 0], rotate: [0, 5, -5, 0] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="rounded-xl bg-gradient-to-br from-cyan-400 to-pink-500 p-3 text-white shadow-lg shadow-cyan-500/20"
+            >
+              <Gauge size={22} />
+            </motion.div>
           </div>
 
-          <div className="mt-6">
+          <div className="relative mt-6">
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="font-semibold text-gray-700 dark:text-gray-200">Task completion</span>
               <span className="font-bold text-gray-950 dark:text-white">{summary.completionRate}%</span>
@@ -569,15 +598,15 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-950/60">
+          <div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="rounded-xl bg-gray-50 p-4 transition hover:-translate-y-0.5 hover:bg-cyan-50 dark:bg-gray-950/60 dark:hover:bg-cyan-950/20">
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
                 <Users size={17} className="text-cyan-500" />
                 Team members reached
               </div>
               <p className="mt-2 text-2xl font-bold text-gray-950 dark:text-white">{summary.totalMembers}</p>
             </div>
-            <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-950/60">
+            <div className="rounded-xl bg-gray-50 p-4 transition hover:-translate-y-0.5 hover:bg-emerald-50 dark:bg-gray-950/60 dark:hover:bg-emerald-950/20">
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
                 <Activity size={17} className="text-emerald-500" />
                 Finished tasks
@@ -595,28 +624,32 @@ export default function Dashboard() {
             title: 'Project Directory',
             detail: 'Create, join, invite, and open team spaces from one clean page.',
             action: 'Open directory',
-            path: '/groups'
+            path: '/groups',
+            tone: 'from-cyan-400 via-pink-500 to-indigo-500'
           },
           {
             icon: MessageCircle,
             title: 'Realtime Inbox',
             detail: 'Check direct messages, media, voice notes, and conversation updates.',
             action: 'Open inbox',
-            path: '/messages'
+            path: '/messages',
+            tone: 'from-pink-400 via-violet-500 to-cyan-400'
           },
           {
             icon: Trophy,
             title: 'Fix Arena',
             detail: 'Submit member reports, review fixes, and play Typing Sprint.',
             action: 'Open arena',
-            path: '/arena'
+            path: '/arena',
+            tone: 'from-yellow-300 via-pink-500 to-cyan-400'
           },
           {
             icon: Settings,
             title: 'Account Controls',
             detail: 'Manage profile, password, avatar, and personal preferences.',
             action: 'Open profile',
-            path: '/profile'
+            path: '/profile',
+            tone: 'from-emerald-300 via-cyan-500 to-pink-500'
           }
         ].map((item, index) => {
           const Icon = item.icon;
@@ -627,14 +660,22 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + index * 0.06 }}
-              whileHover={{ y: -5, scale: 1.01 }}
+              whileHover={{ y: -8, scale: 1.018 }}
               onClick={() => navigate(item.path)}
-              className="group rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-pink-200 hover:shadow-xl hover:shadow-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+              className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
             >
+              <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${item.tone} opacity-80`} />
+              <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+              <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+              <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/50 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
               <div className="flex items-start justify-between gap-4">
-                <div className="rounded-xl bg-gradient-to-br from-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
+                <motion.div
+                  animate={{ y: [0, -5, 0] }}
+                  transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut', delay: index * 0.18 }}
+                  className={`rounded-xl bg-gradient-to-br ${item.tone} p-3 text-white shadow-lg shadow-pink-500/20`}
+                >
                   <Icon size={22} />
-                </div>
+                </motion.div>
                 <ArrowRight size={18} className="text-gray-400 transition group-hover:translate-x-1 group-hover:text-pink-500" />
               </div>
               <h3 className="mt-4 text-lg font-bold text-gray-950 dark:text-white">{item.title}</h3>
@@ -649,38 +690,58 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.26 }}
-        className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+        whileHover={{ y: -4 }}
+        className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
       >
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
+        <div className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[12px_-12px_42px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-20 w-20 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-12px_12px_42px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+        <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+
+        <div className="relative mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <motion.div
+              animate={{ y: [0, -4, 0] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="hidden rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20 sm:block"
+            >
+              <TrendingUp size={21} />
+            </motion.div>
+            <div>
             <h2 className="text-xl font-bold text-gray-950 dark:text-white">Recent Task Movement</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">Latest tasks created across your projects.</p>
+            </div>
           </div>
-          <button
+          <motion.button
+            whileHover={{ y: -2, scale: 1.03 }}
+            whileTap={{ scale: 0.98 }}
             type="button"
             onClick={() => navigate('/groups')}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-pink-200 hover:bg-pink-50 dark:border-gray-700 dark:text-gray-200 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-700 dark:border-gray-700 dark:bg-gray-950/60 dark:text-gray-200 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20 dark:hover:text-pink-200"
           >
             View all
-            <ArrowRight size={15} />
-          </button>
+            <ArrowRight size={15} className="transition group-hover:translate-x-1" />
+          </motion.button>
         </div>
 
         {summary.recentTasks.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-950/50">
+          <div className="relative rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-950/50">
             <TrendingUp className="mx-auto text-pink-500" size={34} />
             <h3 className="mt-3 font-bold text-gray-950 dark:text-white">No task activity yet</h3>
             <p className="mt-1 text-sm text-gray-500">Open the directory when you are ready to set up project tasks.</p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800">
+          <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-white/70 dark:border-gray-800 dark:bg-gray-950/30">
             {summary.recentTasks.map((task, index) => (
-              <button
+              <motion.button
                 key={task._id}
                 type="button"
+                whileHover={{ x: 4, scale: 1.006 }}
+                whileTap={{ scale: 0.996 }}
                 onClick={() => navigate(`/group/${task.group?._id || task.groupId}`)}
-                className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition hover:bg-pink-50/50 dark:hover:bg-pink-950/20 sm:flex-row sm:items-center sm:justify-between ${index ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
+                className={`group/row relative flex w-full flex-col gap-2 px-4 py-3 text-left transition hover:bg-pink-50/70 dark:hover:bg-pink-950/20 sm:flex-row sm:items-center sm:justify-between ${index ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
               >
+                <span className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-gradient-to-b from-cyan-400 to-pink-500 opacity-0 transition group-hover/row:opacity-100" />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-bold text-gray-950 dark:text-white">{task.description}</span>
                   <span className="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">{task.group?.name || 'Project'}</span>
@@ -693,7 +754,7 @@ export default function Dashboard() {
                     {task.priority || 'medium'}
                   </span>
                 </span>
-              </button>
+              </motion.button>
             ))}
           </div>
         )}

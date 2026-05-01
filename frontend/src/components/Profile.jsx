@@ -62,9 +62,11 @@ export default function Profile() {
   const [campus, setCampus] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('');
+  const [coverPhoto, setCoverPhoto] = useState('');
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [groups, setGroups] = useState([]);
   const [rankData, setRankData] = useState(null);
   const [gameData, setGameData] = useState(null);
@@ -80,6 +82,7 @@ export default function Profile() {
     setCampus(user.campus || '');
     setBio(user.bio || '');
     setAvatar(user.avatar || '');
+    setCoverPhoto(user.coverPhoto || '');
     fetchGroups();
     fetchRankings();
     fetchGameSummary();
@@ -162,6 +165,36 @@ export default function Profile() {
     }
   };
 
+  const handleCoverUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Cover photo must be 5MB or smaller');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('coverPhoto', file);
+    setUploadingCover(true);
+    try {
+      const res = await api.post('/users/cover-photo', formData);
+      setCoverPhoto(res.data.coverPhoto);
+      login(localStorage.getItem('token'), res.data.user || { ...user, coverPhoto: res.data.coverPhoto });
+      toast.success('Cover photo updated');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Cover upload failed');
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
   const handleChangePassword = async (event) => {
     event.preventDefault();
     const { currentPassword, newPassword, confirmPassword } = passwordForm;
@@ -204,9 +237,9 @@ export default function Profile() {
   );
 
   const completion = useMemo(() => {
-    const fields = [user?.name, user?.email, user?.course, user?.campus, user?.bio, user?.avatar || avatar];
+    const fields = [user?.name, user?.email, user?.course, user?.campus, user?.bio, user?.avatar || avatar, user?.coverPhoto || coverPhoto];
     return Math.round((fields.filter(Boolean).length / fields.length) * 100);
-  }, [avatar, user]);
+  }, [avatar, coverPhoto, user]);
 
   if (!user) {
     return (
@@ -217,17 +250,36 @@ export default function Profile() {
   }
 
   const avatarSrc = resolveMediaUrl(avatar || user.avatar);
+  const coverSrc = resolveMediaUrl(coverPhoto || user.coverPhoto);
   const memberSince = formatMonthYear(user.createdAt);
   const rankStats = rankData?.me;
-  const gameStats = gameData?.typingStats || gameData?.stats;
+  const gameStats = gameData?.stats || gameData?.typingStats;
   const leaderboard = rankData?.leaderboard || [];
   const currentPosition = rankData?.currentUserRank?.position;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-        <div className="bg-gray-950 p-6 text-white dark:bg-black md:p-8">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
+          {coverSrc ? (
+            <img src={coverSrc} alt="Profile cover" className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.32),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_52%,#172554)]" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/52 to-black/18" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-pink-500 to-emerald-300" />
+          <label className="absolute right-4 top-4 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs font-black uppercase text-white shadow-xl backdrop-blur transition hover:-translate-y-0.5 hover:border-pink-200 hover:bg-pink-500/80">
+            <Camera size={15} />
+            {coverSrc ? 'Change cover' : 'Set cover'}
+            <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} disabled={uploadingCover} />
+          </label>
+          {uploadingCover && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 text-sm font-black text-white backdrop-blur-sm">
+              Uploading cover photo...
+            </div>
+          )}
+
+          <div className="relative z-10 flex min-h-[244px] flex-col justify-end gap-6 md:flex-row md:items-end md:justify-between">
             <div className="flex items-end gap-4">
               <div className="relative">
                 <div className="h-28 w-28 overflow-hidden rounded-xl border-4 border-white/20 bg-gray-800 shadow-xl">
@@ -280,7 +332,7 @@ export default function Profile() {
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
                   <div className="h-full rounded-full bg-pink-400 transition-all" style={{ width: `${completion}%` }} />
                 </div>
-                <p className="mt-2 text-xs text-white/65">Add course, campus, bio, and avatar for a stronger profile.</p>
+                <p className="mt-2 text-xs text-white/65">Add course, campus, bio, avatar, and cover photo for a stronger profile.</p>
               </div>
             </div>
           </div>
@@ -430,7 +482,7 @@ export default function Profile() {
         <aside className="space-y-6">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="mb-4 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
-              <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-12 w-12 rounded-xl bg-white object-cover p-1 dark:bg-gray-900" />
+              <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="h-12 w-12 rounded-xl bg-white object-cover p-1 dark:bg-gray-900" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-black text-gray-950 dark:text-white">North Eastern Mindanao State University</p>
                 <p className="truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{user.campus || 'Campus not set'}</p>
@@ -501,7 +553,8 @@ export default function Profile() {
                 ['Course added', Boolean(user.course)],
                 ['Campus selected', Boolean(user.campus)],
                 ['Bio added', Boolean(user.bio)],
-                ['Avatar uploaded', Boolean(user.avatar || avatar)]
+                ['Avatar uploaded', Boolean(user.avatar || avatar)],
+                ['Cover photo uploaded', Boolean(user.coverPhoto || coverPhoto)]
               ].map(([label, done]) => (
                 <div key={label} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-950">
                   <span className="text-gray-700 dark:text-gray-300">{label}</span>
@@ -515,3 +568,4 @@ export default function Profile() {
     </div>
   );
 }
+

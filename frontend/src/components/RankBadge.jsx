@@ -137,8 +137,15 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
   }
 
   return (
-    <div className={`overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900`}>
-      <div className="flex items-center gap-4">
+    <motion.div
+      whileHover={{ y: -5, scale: 1.01 }}
+      className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+    >
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${palette.gradient} opacity-80`} />
+      <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+      <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+      <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/45 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+      <div className="relative flex items-center gap-4">
         <RankEmblem rank={rank} size="md" animated />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-xs font-black uppercase tracking-normal text-gray-500 dark:text-gray-400">
@@ -153,7 +160,7 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
       </div>
 
       {showProgress && (
-        <div className="mt-4">
+        <div className="relative mt-4">
           <div className="mb-2 flex items-center justify-between text-xs font-bold text-gray-500 dark:text-gray-400">
             <span>{nextRank ? `${stats?.xpToNext || 0} XP to ${nextRank.shortName}` : 'Max rank reached'}</span>
             <span>{stats?.progress ?? 0}%</span>
@@ -168,6 +175,6 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

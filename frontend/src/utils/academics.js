@@ -87,4 +87,4 @@ export const COURSE_OPTIONS = [
   'Doctor of Education major in Educational Management'
 ];
 
-export const SCHOOL_LOGO_SRC = '/nemsu-logo.svg';
+export const SCHOOL_LOGO_SRC = '/updatedlogofinal.png';

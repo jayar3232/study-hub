@@ -66,14 +66,17 @@ const MemberStack = ({ members = [] }) => (
 );
 
 const StatCard = ({ icon: Icon, label, value, helper }) => (
-  <motion.div whileHover={{ y: -4, scale: 1.01 }} className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10">
+  <motion.div whileHover={{ y: -7, scale: 1.018 }} className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60">
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
+    <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+    <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
     <div className="flex items-start justify-between gap-4">
       <div>
         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
         <p className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{value}</p>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
       </div>
-      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }} className="rounded-xl bg-gradient-to-br from-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
+      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }} className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
         <Icon size={22} />
       </motion.div>
     </div>
@@ -259,31 +262,46 @@ export default function MyGroups() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08 }}
-        className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"
+        whileHover={{ y: -4 }}
+        className="group relative grid gap-4 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
+        <div className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[12px_-12px_42px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-20 w-20 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-12px_12px_42px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+        <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="inline-flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white">
-              <PlusCircle size={17} className="text-pink-500" />
-              Create a project space
-            </p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Set up a dedicated room for posts, tasks, files, chat, and shared assets.
-            </p>
+            <div className="flex items-center gap-3">
+              <motion.div
+                animate={{ y: [0, -4, 0], rotate: [0, 1, -1, 0] }}
+                transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+                className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20"
+              >
+                <PlusCircle size={20} />
+              </motion.div>
+              <div>
+                <p className="text-sm font-bold text-gray-950 dark:text-white">Create a project space</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Set up a dedicated room for posts, tasks, files, chat, and shared assets.
+                </p>
+              </div>
+            </div>
           </div>
           <motion.button
-            whileHover={{ y: -2, scale: 1.02 }}
+            whileHover={{ y: -3, scale: 1.035 }}
             whileTap={{ scale: 0.98 }}
             type="button"
             onClick={() => setShowCreate(true)}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-gray-900/10 transition hover:bg-pink-600 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-gray-900/10 transition hover:bg-pink-600 hover:shadow-xl hover:shadow-pink-500/20 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
           >
             <PlusCircle size={18} />
             Create
           </motion.button>
         </div>
 
-        <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/50">
+        <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-3 transition hover:border-cyan-200 hover:bg-cyan-50/60 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-cyan-900/60 dark:hover:bg-cyan-950/20">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-cyan-400 to-pink-500 opacity-70" />
           <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
             <KeyRound size={14} className="text-cyan-500" />
             Join with access code
@@ -302,7 +320,7 @@ export default function MyGroups() {
               type="button"
               onClick={joinGroup}
               disabled={joining}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:-translate-y-0.5 hover:bg-pink-700 hover:shadow-xl hover:shadow-pink-500/25 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {joining ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
               Join
@@ -366,20 +384,30 @@ export default function MyGroups() {
         <StatCard icon={Users} label="Members Reached" value={totalMembers} helper={`${joinedCount} joined as member`} />
       </div>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        whileHover={{ y: -4 }}
+        className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-2xl hover:shadow-cyan-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-cyan-900/60"
+      >
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
+        <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-cyan-300 opacity-0 shadow-[10px_-10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-pink-300 opacity-0 shadow-[-10px_10px_34px_rgba(236,72,153,0.18)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
+        <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-cyan-100/35 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+        <div className="relative grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
           <label className="relative">
             <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search}
               onChange={event => setSearch(event.target.value)}
               placeholder="Search by name, access code, project..."
-              className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950"
+              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition hover:border-cyan-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:border-cyan-900/60 dark:focus:ring-pink-950"
             />
           </label>
           <label className="relative">
             <ListFilter size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select value={filter} onChange={event => setFilter(event.target.value)} className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950">
+            <select value={filter} onChange={event => setFilter(event.target.value)} className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition hover:border-cyan-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:border-cyan-900/60 dark:focus:ring-pink-950">
               <option value="all">All workspaces</option>
               <option value="owned">Owned by me</option>
               <option value="joined">Joined workspaces</option>
@@ -387,17 +415,22 @@ export default function MyGroups() {
           </label>
           <label className="relative">
             <SortAsc size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select value={sort} onChange={event => setSort(event.target.value)} className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950">
+            <select value={sort} onChange={event => setSort(event.target.value)} className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition hover:border-cyan-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:border-cyan-900/60 dark:focus:ring-pink-950">
               <option value="recent">Newest</option>
               <option value="name">Name</option>
               <option value="members">Members</option>
             </select>
           </label>
         </div>
-      </section>
+      </motion.section>
 
-      <section>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.16 }}
+        className="relative"
+      >
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-transparent p-1 transition hover:border-pink-200/40 dark:hover:border-pink-900/30">
           <div>
             <h2 className="text-xl font-bold text-gray-950 dark:text-white">Workspace directory</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">{filteredGroups.length} visible of {groups.length}</p>
@@ -423,12 +456,14 @@ export default function MyGroups() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ delay: index * 0.03 }}
+                    whileHover={{ y: -6, scale: 1.01 }}
                     onClick={() => navigate(`/group/${group._id}`)}
-                    className="group relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.05)] transition hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-[0_16px_45px_rgba(236,72,153,0.16)] dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+                    className="group relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.05)] transition hover:border-pink-200 hover:shadow-[0_22px_60px_rgba(236,72,153,0.2)] dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
                   >
                     <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400 opacity-80" />
                     <div className="pointer-events-none absolute right-0 top-0 h-12 w-12 rounded-tr-xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[8px_-8px_24px_rgba(236,72,153,0.22)] transition group-hover:opacity-100 dark:border-pink-800" />
                     <div className="pointer-events-none absolute bottom-0 left-0 h-12 w-12 rounded-bl-xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-8px_8px_24px_rgba(6,182,212,0.18)] transition group-hover:opacity-100 dark:border-cyan-800" />
+                    <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/35 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
                     <div className="grid md:grid-cols-[120px_minmax(0,1fr)]">
                       <div className="h-32 bg-gray-950 md:hidden">
                         {group.photo ? (
@@ -519,7 +554,7 @@ export default function MyGroups() {
             </AnimatePresence>
           </div>
         )}
-      </section>
+      </motion.section>
 
       <CreateGroupModal
         isOpen={showCreate}
