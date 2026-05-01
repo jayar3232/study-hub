@@ -187,6 +187,14 @@ export default function OpsArena() {
     setSelectedIssueId(selectId || nextIssues[0]?._id || null);
   };
 
+  useEffect(() => {
+    if (loading) return undefined;
+    const timer = window.setInterval(() => {
+      refreshIssues(selectedIssueId).catch(() => {});
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [loading, selectedIssueId]);
+
   const unlockDeveloper = async (event) => {
     event.preventDefault();
     if (!developerPassword.trim()) return;
@@ -219,9 +227,9 @@ export default function OpsArena() {
 
     setSubmittingReport(true);
     try {
-      await api.post('/games/fix-arena/issues', reportForm);
+      const res = await api.post('/games/fix-arena/issues', reportForm);
       setReportForm(initialReportForm);
-      setSelectedIssueId(null);
+      await refreshIssues(res.data?.issueId);
       toast.success('Submitted privately to developers');
     } catch (err) {
       if (err.response?.status === 404) {
@@ -700,13 +708,13 @@ export default function OpsArena() {
         <section className="grid min-w-0 gap-5 2xl:order-1 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
           <div className="min-w-0 rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="border-b border-gray-100 p-5 dark:border-gray-800">
-              <h2 className="text-lg font-black text-gray-950 dark:text-white">{isDeveloper ? 'Developer Inbox' : 'Private Developer Queue'}</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{isDeveloper ? `${issues.length} submitted items` : 'Member submissions are visible to developers only'}</p>
+              <h2 className="text-lg font-black text-gray-950 dark:text-white">{isDeveloper ? 'Developer Inbox' : 'My Submitted Reports'}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{isDeveloper ? `${issues.length} submitted items` : 'Track developer status, approval, and replies'}</p>
             </div>
             <div className="max-h-[680px] overflow-y-auto p-3">
               {issues.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400">
-                  {isDeveloper ? 'No reports yet.' : 'Submit a report and the developer team will review it privately.'}
+                  {isDeveloper ? 'No reports yet.' : 'No submitted reports yet. Send a problem or suggestion to start a private developer thread.'}
                 </div>
               ) : issues.map(issue => {
                 const isActive = getEntityId(issue) === getEntityId(selectedIssue);
@@ -727,7 +735,7 @@ export default function OpsArena() {
                     </div>
                     <p className="line-clamp-2 text-sm font-black text-gray-950 dark:text-white">{issue.title}</p>
                     <p className="mt-1 line-clamp-1 text-xs text-gray-500 dark:text-gray-400">
-                      {issue.type} - {issue.category} - {issue.userId?.name || 'Member'}
+                      {issue.type} - {issue.category} - {isDeveloper ? issue.userId?.name || 'Member' : `${(issue.messages || []).length} thread updates`}
                     </p>
                   </button>
                 );
@@ -808,6 +816,20 @@ export default function OpsArena() {
 
                   <aside className="space-y-4">
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
+                      <p className="text-sm font-black text-gray-950 dark:text-white">Developer decision</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ring-1 ${statusStyles[selectedIssue.status] || statusStyles.new}`}>
+                          {selectedIssue.status}
+                        </span>
+                        <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ring-1 ${severityStyles[selectedIssue.severity] || severityStyles.medium}`}>
+                          {selectedIssue.severity}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                        Status changes and developer replies appear in the communication thread automatically.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
                       <p className="text-sm font-black text-gray-950 dark:text-white">Reporter</p>
                       <button type="button" onClick={() => setProfileUser(selectedIssue.userId)} className="mt-3 flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left transition hover:bg-pink-50 dark:bg-gray-900 dark:hover:bg-pink-950/20">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
@@ -834,9 +856,9 @@ export default function OpsArena() {
               <div className="grid min-h-[480px] place-items-center p-8 text-center">
                 <div>
                   <Lightbulb className="mx-auto text-pink-500" size={38} />
-                  <h2 className="mt-3 text-xl font-black text-gray-950 dark:text-white">{isDeveloper ? 'No selected report' : 'Reports are developer-only'}</h2>
+                  <h2 className="mt-3 text-xl font-black text-gray-950 dark:text-white">{isDeveloper ? 'No selected report' : 'No submitted report selected'}</h2>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {isDeveloper ? 'Select a report to review the details and decide approve or reject.' : 'Members can submit suggestions or bugs, then developers review them privately.'}
+                    {isDeveloper ? 'Select a report to review the details and decide approve or reject.' : 'Submit a suggestion or bug, then you can view its status and conversation with developers here.'}
                   </p>
                 </div>
               </div>
