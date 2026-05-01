@@ -203,7 +203,11 @@ export default function OpsArena() {
       setSelectedIssueId(null);
       toast.success('Submitted privately to developers');
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Submit failed');
+      if (err.response?.status === 404) {
+        toast.error('Backend is not updated yet. Redeploy Render backend first.');
+      } else {
+        toast.error(err.response?.data?.msg || 'Submit failed');
+      }
     } finally {
       setSubmittingReport(false);
     }
@@ -244,7 +248,11 @@ export default function OpsArena() {
       const res = await api.post('/games/typing-sprint/start');
       setTypingSession(res.data);
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Could not start Typing Sprint');
+      if (err.response?.status === 404) {
+        toast.error('Backend is not updated yet. Redeploy Render backend first.');
+      } else {
+        toast.error(err.response?.data?.msg || 'Could not start Typing Sprint');
+      }
     } finally {
       setTypingBusy(false);
     }
@@ -265,7 +273,11 @@ export default function OpsArena() {
       setSummary(summaryRes.data);
       toast.success('Typing score saved');
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Typing Sprint failed');
+      if (err.response?.status === 404) {
+        toast.error('Backend is not updated yet. Redeploy Render backend first.');
+      } else {
+        toast.error(err.response?.data?.msg || 'Typing Sprint failed');
+      }
     } finally {
       setTypingBusy(false);
     }

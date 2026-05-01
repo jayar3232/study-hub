@@ -136,7 +136,6 @@ export default function Friends() {
 
   const people = useMemo(
     () => (summary.people || [])
-      .filter(person => person.friendship?.status !== 'friends')
       .filter(person => matchesSearch(person, query)),
     [summary.people, query]
   );
@@ -243,6 +242,19 @@ export default function Friends() {
       );
     }
 
+    if (relation.status === 'friends') {
+      return (
+        <button
+          type="button"
+          onClick={() => openMessages(person)}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gray-950 px-3 py-2 text-xs font-black text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100"
+        >
+          <MessageCircle size={14} />
+          Message
+        </button>
+      );
+    }
+
     if (relation.status === 'outgoing') {
       return (
         <button
@@ -271,7 +283,7 @@ export default function Friends() {
 
   const tabs = [
     { key: 'friends', label: 'Friends', count: summary.counts?.friends || 0 },
-    { key: 'add', label: 'Add Friend', count: people.length },
+    { key: 'add', label: 'Add Friend', count: summary.counts?.people || people.length },
     { key: 'requests', label: 'Requests', count: (summary.counts?.incoming || 0) + (summary.counts?.outgoing || 0) }
   ];
 

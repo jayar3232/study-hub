@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   const path = proxy ? `/${proxy.join('/')}` : '/';
 
   try {
-    const url = `${BACKEND_URL}${path}`;
+    const url = `${BACKEND_URL}/api${path}`;
 
     console.log(`[PROXY] ${req.method} ${url}`);
 
