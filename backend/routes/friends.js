@@ -7,7 +7,7 @@ const { normalizeCampus, normalizeCourse } = require('../utils/academics');
 
 const router = express.Router();
 
-const userFields = 'name email course campus avatar bio lastSeen createdAt';
+const userFields = 'name email course campus avatar coverPhoto bio lastSeen createdAt';
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 
 const toClientUser = (user) => {
@@ -21,6 +21,7 @@ const toClientUser = (user) => {
     campus: normalizeCampus(user.campus),
     bio: user.bio,
     avatar: user.avatar,
+    coverPhoto: user.coverPhoto,
     lastSeen: user.lastSeen,
     createdAt: user.createdAt
   };

@@ -18,6 +18,12 @@ const ROUND_SIZE = 8;
 const DURATION_SECONDS = 75;
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_ACCESS_PASSWORD || '123!@#';
 
+const clampNumber = (value, min, max, fallback = 0) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+};
+
 const decisionGuide = [
   { key: 'execute', label: 'Execute Now', detail: 'Urgent, high-impact work that should move immediately.' },
   { key: 'schedule', label: 'Schedule Sprint', detail: 'Important work that needs a planned slot.' },
@@ -316,9 +322,74 @@ const scoreSession = (session, submittedAnswers, now) => {
   };
 };
 
+const createCompletedGameSession = async ({
+  userId,
+  gameKey,
+  title,
+  brief,
+  signal,
+  score,
+  accuracy = 0,
+  correctCount = 0,
+  totalCount = 1,
+  maxStreak = 0,
+  elapsedMs = 1000
+}) => {
+  const now = new Date();
+  const challengeId = crypto.randomUUID();
+  const safeElapsedMs = clampNumber(elapsedMs, 1000, 60 * 60 * 1000, 1000);
+
+  const session = new GameSession({
+    userId,
+    gameKey,
+    durationSeconds: Math.max(1, Math.ceil(safeElapsedMs / 1000)),
+    challenges: [{
+      challengeId,
+      title,
+      brief,
+      priority: 'medium',
+      dueInHours: 1,
+      estimateHours: 1,
+      impact: 'medium',
+      signal,
+      correctAnswer: 'score',
+      basePoints: score
+    }],
+    answers: [{
+      challengeId,
+      answer: `score:${score}`,
+      correct: true,
+      points: score
+    }],
+    score,
+    accuracy,
+    correctCount,
+    totalCount,
+    maxStreak,
+    elapsedMs: safeElapsedMs,
+    startedAt: new Date(now.getTime() - safeElapsedMs),
+    expiresAt: now,
+    completedAt: now
+  });
+
+  await session.save();
+  return session;
+};
+
 router.get('/summary/me', auth, async (req, res) => {
   try {
-    const [mySessions, leaderboardSessions, myTypingSessions, typingLeaderboardSessions] = await Promise.all([
+    const [
+      mySessions,
+      leaderboardSessions,
+      myTypingSessions,
+      typingLeaderboardSessions,
+      myBlockSessions,
+      blockLeaderboardSessions,
+      myBugHuntSessions,
+      bugHuntLeaderboardSessions,
+      myFocusFlowSessions,
+      focusFlowLeaderboardSessions
+    ] = await Promise.all([
       GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
       GameSession.find({ completedAt: { $ne: null } })
         .populate('userId', 'name email course avatar')
@@ -328,21 +399,51 @@ router.get('/summary/me', auth, async (req, res) => {
       GameSession.find({ gameKey: 'typing-sprint', completedAt: { $ne: null } })
         .populate('userId', 'name email course avatar')
         .sort({ score: -1 })
+        .limit(300),
+      GameSession.find({ userId: req.user, gameKey: 'block-stack', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'block-stack', completedAt: { $ne: null } })
+        .populate('userId', 'name email course avatar')
+        .sort({ score: -1 })
+        .limit(300),
+      GameSession.find({ userId: req.user, gameKey: 'bug-hunt', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'bug-hunt', completedAt: { $ne: null } })
+        .populate('userId', 'name email course avatar')
+        .sort({ score: -1 })
+        .limit(300),
+      GameSession.find({ userId: req.user, gameKey: 'focus-flow', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'focus-flow', completedAt: { $ne: null } })
+        .populate('userId', 'name email course avatar')
+        .sort({ score: -1 })
         .limit(300)
     ]);
 
     const leaderboard = buildGameLeaderboard(leaderboardSessions);
     const typingLeaderboard = buildGameLeaderboard(typingLeaderboardSessions);
+    const blockLeaderboard = buildGameLeaderboard(blockLeaderboardSessions);
+    const bugHuntLeaderboard = buildGameLeaderboard(bugHuntLeaderboardSessions);
+    const focusFlowLeaderboard = buildGameLeaderboard(focusFlowLeaderboardSessions);
     const myRank = leaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myTypingRank = typingLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myBlockRank = blockLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myBugHuntRank = bugHuntLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myFocusFlowRank = focusFlowLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
 
     res.json({
       stats: buildGameStats(mySessions),
       typingStats: buildGameStats(myTypingSessions),
+      blockStats: buildGameStats(myBlockSessions),
+      bugHuntStats: buildGameStats(myBugHuntSessions),
+      focusFlowStats: buildGameStats(myFocusFlowSessions),
       leaderboard: leaderboard.slice(0, 15),
       typingLeaderboard: typingLeaderboard.slice(0, 15),
+      blockLeaderboard: blockLeaderboard.slice(0, 15),
+      bugHuntLeaderboard: bugHuntLeaderboard.slice(0, 15),
+      focusFlowLeaderboard: focusFlowLeaderboard.slice(0, 15),
       myRank,
       myTypingRank,
+      myBlockRank,
+      myBugHuntRank,
+      myFocusFlowRank,
       ranks: GAME_RANKS,
       decisions: decisionGuide
     });
@@ -390,15 +491,13 @@ router.post('/developers/access', auth, async (req, res) => {
 
 router.get('/fix-arena/issues', auth, async (req, res) => {
   try {
-    const { isDeveloper } = await getDeveloperStatus(req.user);
-    if (!isDeveloper) {
-      return res.json({ issues: [], isDeveloper, developerOnly: true });
-    }
+    const { user, isDeveloper } = await getDeveloperStatus(req.user);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
 
     const issues = await populateIssue(
-      IssueReport.find({}).sort({ updatedAt: -1 }).limit(100)
+      IssueReport.find(isDeveloper ? {} : { userId: req.user }).sort({ updatedAt: -1 }).limit(100)
     );
-    res.json({ issues, isDeveloper, developerOnly: true });
+    res.json({ issues, isDeveloper, developerOnly: isDeveloper });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -441,10 +540,13 @@ router.post('/fix-arena/issues', auth, async (req, res) => {
       }]
     });
 
+    const populatedIssue = await populateIssue(IssueReport.findById(issue._id));
+
     res.status(201).json({
       msg: 'Report submitted to developers',
       issueId: issue._id,
-      status: issue.status
+      status: issue.status,
+      issue: populatedIssue
     });
   } catch (err) {
     console.error('Issue report submit failed:', err);
@@ -479,21 +581,24 @@ router.put('/fix-arena/issues/:issueId/status', auth, async (req, res) => {
 
 router.post('/fix-arena/issues/:issueId/messages', auth, async (req, res) => {
   try {
-    const developer = await requireDeveloper(req, res);
-    if (!developer) return;
+    const { user, isDeveloper } = await getDeveloperStatus(req.user);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
     if (!mongoose.Types.ObjectId.isValid(req.params.issueId)) return res.status(404).json({ msg: 'Report not found' });
     const text = sanitizeText(req.body.text, 1500);
     if (!text) return res.status(400).json({ msg: 'Message is required' });
 
     const issue = await IssueReport.findById(req.params.issueId);
     if (!issue) return res.status(404).json({ msg: 'Report not found' });
+    if (!canAccessIssue(issue, req.user, isDeveloper)) {
+      return res.status(403).json({ msg: 'Not authorized to message this report' });
+    }
 
     issue.messages.push({
       senderId: req.user,
-      role: 'developer',
+      role: isDeveloper ? 'developer' : 'member',
       text
     });
-    if (issue.status === 'new') issue.status = 'reviewing';
+    if (isDeveloper && issue.status === 'new') issue.status = 'reviewing';
     await issue.save();
 
     res.json(await populateIssue(IssueReport.findById(issue._id)));
@@ -585,6 +690,176 @@ router.post('/typing-sprint/:sessionId/submit', auth, async (req, res) => {
         expected
       },
       stats: buildGameStats(myTypingSessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/block-stack/submit', auth, async (req, res) => {
+  try {
+    const score = clampNumber(req.body.score, 0, 100000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
+
+    const moves = clampNumber(req.body.moves, 1, 1000, 1);
+    const linesCleared = clampNumber(req.body.linesCleared, 0, 500);
+    const maxCombo = clampNumber(req.body.maxCombo, 0, 100);
+    const boardFill = clampNumber(req.body.boardFill, 0, 100);
+    const elapsedMs = clampNumber(req.body.durationMs, 1000, 60 * 60 * 1000, 1000);
+    const now = new Date();
+    const challengeId = crypto.randomUUID();
+
+    const session = new GameSession({
+      userId: req.user,
+      gameKey: 'block-stack',
+      durationSeconds: Math.max(1, Math.ceil(elapsedMs / 1000)),
+      challenges: [{
+        challengeId,
+        title: 'WorkGrid Blocks',
+        brief: 'Place work cards, clear sprint lanes, and keep the project board open.',
+        priority: 'medium',
+        dueInHours: 1,
+        estimateHours: 1,
+        impact: 'medium',
+        signal: `Moves: ${moves}. Lines cleared: ${linesCleared}. Board fill: ${boardFill}%.`,
+        correctAnswer: 'score',
+        basePoints: score
+      }],
+      answers: [{
+        challengeId,
+        answer: `score:${score}`,
+        correct: true,
+        points: score
+      }],
+      score,
+      accuracy: boardFill,
+      correctCount: linesCleared,
+      totalCount: moves,
+      maxStreak: maxCombo,
+      elapsedMs,
+      startedAt: new Date(now.getTime() - elapsedMs),
+      expiresAt: now,
+      completedAt: now
+    });
+
+    await session.save();
+
+    const [mySessions, myBlockSessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'block-stack', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.status(201).json({
+      result: {
+        sessionId: session._id,
+        score,
+        moves,
+        linesCleared,
+        maxCombo,
+        boardFill,
+        elapsedMs
+      },
+      stats: buildGameStats(mySessions),
+      blockStats: buildGameStats(myBlockSessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/bug-hunt/submit', auth, async (req, res) => {
+  try {
+    const score = clampNumber(req.body.score, 0, 100000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
+
+    const foundCount = clampNumber(req.body.foundCount, 0, 50);
+    const totalCount = clampNumber(req.body.totalCount, 1, 50, 1);
+    const mistakes = clampNumber(req.body.mistakes, 0, 200);
+    const accuracy = clampNumber(req.body.accuracy, 0, 100);
+    const secondsLeft = clampNumber(req.body.secondsLeft, 0, 300);
+    const elapsedMs = clampNumber((45 - secondsLeft) * 1000, 1000, 45 * 1000, 1000);
+
+    const session = await createCompletedGameSession({
+      userId: req.user,
+      gameKey: 'bug-hunt',
+      title: 'Bug Hunt',
+      brief: 'Find UI and workflow issues in a simulated workspace screen.',
+      signal: `Found ${foundCount}/${totalCount}. Mistakes: ${mistakes}. Seconds left: ${secondsLeft}.`,
+      score,
+      accuracy,
+      correctCount: foundCount,
+      totalCount,
+      maxStreak: foundCount,
+      elapsedMs
+    });
+
+    const [mySessions, myBugHuntSessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'bug-hunt', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.status(201).json({
+      result: {
+        sessionId: session._id,
+        score,
+        foundCount,
+        totalCount,
+        mistakes,
+        accuracy,
+        elapsedMs
+      },
+      stats: buildGameStats(mySessions),
+      bugHuntStats: buildGameStats(myBugHuntSessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/focus-flow/submit', auth, async (req, res) => {
+  try {
+    const score = clampNumber(req.body.score, 0, 100000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
+
+    const hits = clampNumber(req.body.hits, 0, 100);
+    const total = clampNumber(req.body.total, 1, 100, 1);
+    const perfects = clampNumber(req.body.perfects, 0, 100);
+    const bestStreak = clampNumber(req.body.bestStreak, 0, 100);
+    const accuracy = clampNumber(req.body.accuracy, 0, 100);
+    const elapsedMs = clampNumber(total * 1800, 1000, 5 * 60 * 1000, 1000);
+
+    const session = await createCompletedGameSession({
+      userId: req.user,
+      gameKey: 'focus-flow',
+      title: 'Focus Flow',
+      brief: 'Lock the moving signal inside the focus window with accurate timing.',
+      signal: `Hits ${hits}/${total}. Perfect hits: ${perfects}. Best streak: ${bestStreak}.`,
+      score,
+      accuracy,
+      correctCount: hits,
+      totalCount: total,
+      maxStreak: bestStreak,
+      elapsedMs
+    });
+
+    const [mySessions, myFocusFlowSessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'focus-flow', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.status(201).json({
+      result: {
+        sessionId: session._id,
+        score,
+        hits,
+        total,
+        perfects,
+        bestStreak,
+        accuracy,
+        elapsedMs
+      },
+      stats: buildGameStats(mySessions),
+      focusFlowStats: buildGameStats(myFocusFlowSessions)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

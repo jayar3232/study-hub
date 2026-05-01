@@ -12,6 +12,7 @@ const User = require('./models/User');
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 
 const DEFAULT_CLIENT_ORIGINS = [
   'https://study-hub-app-six.vercel.app',

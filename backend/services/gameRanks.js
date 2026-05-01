@@ -1,17 +1,18 @@
 const GAME_RANKS = [
   { key: 'recruit', name: 'Arena Recruit', shortName: 'Recruit', minXp: 0 },
-  { key: 'bronze', name: 'Bronze Tactician', shortName: 'Bronze', minXp: 1200 },
-  { key: 'silver', name: 'Silver Shotcaller', shortName: 'Silver', minXp: 1800 },
-  { key: 'gold', name: 'Gold Strategist', shortName: 'Gold', minXp: 2400 },
-  { key: 'platinum', name: 'Platinum Vanguard', shortName: 'Platinum', minXp: 3000 },
-  { key: 'epic', name: 'Epic Commander', shortName: 'Epic', minXp: 3600 },
-  { key: 'mythic', name: 'Mythic Architect', shortName: 'Mythic', minXp: 4300 },
-  { key: 'apex', name: 'Apex Operator', shortName: 'Apex', minXp: 5200 }
+  { key: 'bronze', name: 'Bronze Tactician', shortName: 'Bronze', minXp: 500 },
+  { key: 'silver', name: 'Silver Shotcaller', shortName: 'Silver', minXp: 1000 },
+  { key: 'gold', name: 'Gold Strategist', shortName: 'Gold', minXp: 1700 },
+  { key: 'platinum', name: 'Platinum Vanguard', shortName: 'Platinum', minXp: 2400 },
+  { key: 'epic', name: 'Epic Commander', shortName: 'Epic', minXp: 3200 },
+  { key: 'mythic', name: 'Mythic Architect', shortName: 'Mythic', minXp: 4100 },
+  { key: 'apex', name: 'Apex Operator', shortName: 'Apex', minXp: 5000 }
 ];
 
 const getId = (value) => String(value?._id || value?.id || value || '');
 
 const SEASON_LENGTH_MONTHS = 2;
+const APEX_STAR_STEP = 3000;
 
 const GAME_REWARDS = {
   recruit: { title: 'Starter Badge', reward: '100 Arena Coins', accent: 'slate' },
@@ -35,7 +36,31 @@ const DEMOTION_MAP = {
   apex: 'mythic'
 };
 
-const getGameRank = (xp = 0) => {
+const getApexStarStats = (xp = 0, starXp = xp) => {
+  const apexRank = GAME_RANKS[GAME_RANKS.length - 1];
+  if (xp < apexRank.minXp) {
+    return {
+      apexStars: 0,
+      apexStarProgress: 0,
+      apexStarXpToNext: apexRank.minXp - xp,
+      glowLevel: 0
+    };
+  }
+
+  const overflow = Math.max(0, starXp - apexRank.minXp);
+  const rawStars = Math.floor(overflow / APEX_STAR_STEP) + 1;
+  const apexStars = Math.min(99, rawStars);
+  const remainder = overflow % APEX_STAR_STEP;
+
+  return {
+    apexStars,
+    apexStarProgress: Math.round((remainder / APEX_STAR_STEP) * 100),
+    apexStarXpToNext: APEX_STAR_STEP - remainder,
+    glowLevel: Math.min(10, apexStars)
+  };
+};
+
+const getGameRank = (xp = 0, starXp = xp) => {
   let current = GAME_RANKS[0];
   let next = null;
 
@@ -51,11 +76,17 @@ const getGameRank = (xp = 0) => {
     ? Math.min(100, Math.round(((xp - current.minXp) / (next.minXp - current.minXp)) * 100))
     : 100;
 
+  const apexStarStats = getApexStarStats(xp, starXp);
+  const currentWithProgress = current.key === 'apex'
+    ? { ...current, ...apexStarStats }
+    : current;
+
   return {
-    current,
+    current: currentWithProgress,
     next,
     progress,
-    xpToNext: next ? Math.max(0, next.minXp - xp) : 0
+    xpToNext: next ? Math.max(0, next.minXp - xp) : 0,
+    ...apexStarStats
   };
 };
 
@@ -108,7 +139,7 @@ const summarizeCompletedSessions = (completed = []) => {
   const fastestMs = completed
     .filter(session => session.elapsedMs > 0)
     .reduce((best, session) => Math.min(best, session.elapsedMs), Number.POSITIVE_INFINITY);
-  const rank = getGameRank(highScore);
+  const rank = getGameRank(highScore, totalScore);
 
   return {
     xp: highScore,
@@ -124,7 +155,11 @@ const summarizeCompletedSessions = (completed = []) => {
     rank: rank.current,
     nextRank: rank.next,
     progress: rank.progress,
-    xpToNext: rank.xpToNext
+    xpToNext: rank.xpToNext,
+    apexStars: rank.apexStars,
+    apexStarProgress: rank.apexStarProgress,
+    apexStarXpToNext: rank.apexStarXpToNext,
+    glowLevel: rank.glowLevel
   };
 };
 
@@ -140,7 +175,8 @@ const buildGameStats = (sessions = [], options = {}) => {
   const lifetimeStats = summarizeCompletedSessions(completed);
   const resetRank = previousStats.totalPlays ? getDemotedRank(previousStats.rank) : GAME_RANKS[0];
   const seasonRankScore = Math.max(seasonStats.highScore, resetRank.minXp);
-  const rank = getGameRank(seasonRankScore);
+  const seasonTotalScore = seasonStats.lifetimeScore;
+  const rank = getGameRank(seasonRankScore, Math.max(seasonTotalScore, seasonRankScore));
 
   return {
     ...seasonStats,
@@ -150,6 +186,11 @@ const buildGameStats = (sessions = [], options = {}) => {
     nextRank: rank.next,
     progress: rank.progress,
     xpToNext: rank.xpToNext,
+    seasonTotalScore,
+    apexStars: rank.apexStars,
+    apexStarProgress: rank.apexStarProgress,
+    apexStarXpToNext: rank.apexStarXpToNext,
+    glowLevel: rank.glowLevel,
     highestRank: lifetimeStats.rank,
     highestScore: lifetimeStats.highScore,
     lifetimeScore: lifetimeStats.lifetimeScore,

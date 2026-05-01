@@ -17,7 +17,9 @@ const { normalizeCampus, normalizeCourse } = require('../utils/academics');
 const router = express.Router();
 
 const avatarUploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
+const coverUploadDir = path.join(__dirname, '..', 'uploads', 'covers');
 fs.mkdirSync(avatarUploadDir, { recursive: true });
+fs.mkdirSync(coverUploadDir, { recursive: true });
 
 const isBcryptHash = (value = '') => /^\$2[aby]\$\d{2}\$/.test(value);
 
@@ -30,6 +32,7 @@ const toClientUser = (user) => ({
   campus: normalizeCampus(user?.campus),
   bio: user?.bio,
   avatar: user?.avatar,
+  coverPhoto: user?.coverPhoto,
   lastSeen: user?.lastSeen,
   isDeveloper: user?.isDeveloper,
   createdAt: user?.createdAt
@@ -58,7 +61,9 @@ const getFriendshipState = (friendship, currentUserId) => {
 };
 
 const localStorage = multer.diskStorage({
-  destination: avatarUploadDir,
+  destination: (req, file, cb) => {
+    cb(null, file.fieldname === 'coverPhoto' ? coverUploadDir : avatarUploadDir);
+  },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase().replace(/[^.\w]/g, '');
     cb(null, `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
@@ -84,6 +89,18 @@ const uploadAvatar = (req, res, next) => {
 
     if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ msg: 'Avatar must be 5MB or smaller' });
+    }
+
+    return res.status(err.status || 400).json({ msg: err.message || 'Upload failed' });
+  });
+};
+
+const uploadCoverPhoto = (req, res, next) => {
+  upload.single('coverPhoto')(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ msg: 'Cover photo must be 5MB or smaller' });
     }
 
     return res.status(err.status || 400).json({ msg: err.message || 'Upload failed' });
@@ -119,7 +136,7 @@ router.put('/profile', auth, async (req, res) => {
       { new: true }
     ).select('-password');
 
-    res.json(user);
+    res.json(toClientUser(user));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -181,6 +198,29 @@ router.post('/avatar', auth, uploadAvatar, async (req, res) => {
   }
 });
 
+router.post('/cover-photo', auth, uploadCoverPhoto, async (req, res) => {
+  try {
+    if (!req.file || req.file.size === 0) {
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ msg: 'Please upload a valid image file' });
+    }
+
+    const uploadedCover = isCloudStorageEnabled
+      ? await uploadBuffer({
+          buffer: req.file.buffer,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          folder: `covers/${req.user}`
+        })
+      : null;
+    const coverPhotoUrl = uploadedCover?.url || `/uploads/covers/${req.file.filename}`;
+    const user = await User.findByIdAndUpdate(req.user, { coverPhoto: coverPhotoUrl }, { new: true }).select('-password');
+    res.json({ coverPhoto: coverPhotoUrl, user: toClientUser(user) });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.get('/search', auth, async (req, res) => {
   try {
     const { q } = req.query;
@@ -191,7 +231,7 @@ router.get('/search', auth, async (req, res) => {
         { name: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } }
       ]
-    }).select('name email course campus avatar lastSeen').limit(10);
+    }).select('name email course campus avatar coverPhoto lastSeen').limit(10);
     res.json(users.map(toClientUser));
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -209,7 +249,7 @@ router.get('/rankings/me', auth, async (req, res) => {
     ];
 
     const [networkUsers, networkTasks, myTasks] = await Promise.all([
-      User.find({ _id: { $in: memberIds } }).select('name email course campus avatar').lean(),
+      User.find({ _id: { $in: memberIds } }).select('name email course campus avatar coverPhoto').lean(),
       Task.find({ assignedTo: { $in: memberIds } })
         .select('assignedTo status priority approvalStatus completedAt dueDate')
         .lean(),
@@ -240,7 +280,7 @@ router.get('/:id/public', auth, async (req, res) => {
     }
 
     const profile = await User.findById(req.params.id)
-      .select('name email course campus bio avatar lastSeen createdAt');
+      .select('name email course campus bio avatar coverPhoto lastSeen createdAt');
 
     if (!profile) return res.status(404).json({ msg: 'User not found' });
 
