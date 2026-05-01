@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const BACKEND_URL = 'https://study-hub-tq9w.onrender.com';
+const BACKEND_URL = (
+  process.env.BACKEND_URL ||
+  process.env.VITE_BACKEND_URL ||
+  process.env.RENDER_BACKEND_URL ||
+  'https://workloop-tybb.onrender.com'
+).replace(/\/+$/, '');
 
 export default async function handler(req, res) {
   const { proxy } = req.query;

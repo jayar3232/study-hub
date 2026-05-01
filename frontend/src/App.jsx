@@ -13,6 +13,7 @@ import Profile from './components/Profile';
 import Messages from './components/Messages';
 import Layout from './components/Layout';
 import OpsArena from './components/OpsArena';
+import Friends from './components/Friends';
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
@@ -28,6 +29,7 @@ function AppRoutes() {
       <Route path="/group/:id/:section" element={isAuthenticated ? <Layout><GroupPage /></Layout> : <Navigate to="/login" />} />
       <Route path="/profile" element={isAuthenticated ? <Layout><Profile /></Layout> : <Navigate to="/login" />} />
       <Route path="/messages" element={isAuthenticated ? <Layout><Messages /></Layout> : <Navigate to="/login" />} />
+      <Route path="/friends" element={isAuthenticated ? <Layout><Friends /></Layout> : <Navigate to="/login" />} />
       <Route path="/arena" element={isAuthenticated ? <Layout><OpsArena /></Layout> : <Navigate to="/login" />} />
     </Routes>
   );

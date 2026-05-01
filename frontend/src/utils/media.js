@@ -1,4 +1,4 @@
-const DEFAULT_REMOTE_BACKEND = 'https://study-hub-tq9w.onrender.com';
+const DEFAULT_REMOTE_BACKEND = 'https://workloop-tybb.onrender.com';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 const REMOTE_FRONTEND_HOST_SUFFIXES = ['.vercel.app'];
 const SAME_ORIGIN_PORTS = new Set(['3000', '4173', '5002']);

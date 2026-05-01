@@ -406,7 +406,11 @@ router.get('/fix-arena/issues', auth, async (req, res) => {
 
 router.post('/fix-arena/issues', auth, async (req, res) => {
   try {
-    const { isDeveloper } = await getDeveloperStatus(req.user);
+    const { user, isDeveloper } = await getDeveloperStatus(req.user);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
     if (isDeveloper) {
       return res.status(403).json({ msg: 'Developers cannot submit member reports' });
     }
@@ -437,9 +441,13 @@ router.post('/fix-arena/issues', auth, async (req, res) => {
       }]
     });
 
-    const populated = await populateIssue(IssueReport.findById(issue._id));
-    res.status(201).json(populated);
+    res.status(201).json({
+      msg: 'Report submitted to developers',
+      issueId: issue._id,
+      status: issue.status
+    });
   } catch (err) {
+    console.error('Issue report submit failed:', err);
     res.status(500).json({ msg: err.message });
   }
 });

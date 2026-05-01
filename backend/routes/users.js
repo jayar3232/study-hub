@@ -10,6 +10,7 @@ const { isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const Group = require('../models/Group');
 const Task = require('../models/Task');
 const GameSession = require('../models/GameSession');
+const Friendship = require('../models/Friendship');
 const { RANK_TIERS, buildLeaderboard, buildRankStats } = require('../services/ranks');
 const { buildGameStats } = require('../services/gameRanks');
 const router = express.Router();
@@ -31,6 +32,28 @@ const toClientUser = (user) => ({
   isDeveloper: user.isDeveloper,
   createdAt: user.createdAt
 });
+
+const getFriendshipState = (friendship, currentUserId) => {
+  if (!friendship) return { status: 'none' };
+
+  const requesterId = String(friendship.requester?._id || friendship.requester || '');
+  const recipientId = String(friendship.recipient?._id || friendship.recipient || '');
+  const currentId = String(currentUserId || '');
+
+  if (friendship.status === 'accepted') {
+    return { status: 'friends', requestId: friendship._id };
+  }
+
+  if (friendship.status === 'pending') {
+    return {
+      status: requesterId === currentId ? 'outgoing' : 'incoming',
+      requestId: friendship._id,
+      otherUserId: requesterId === currentId ? recipientId : requesterId
+    };
+  }
+
+  return { status: 'none' };
+};
 
 const localStorage = multer.diskStorage({
   destination: avatarUploadDir,
@@ -214,7 +237,8 @@ router.get('/:id/public', auth, async (req, res) => {
 
     if (!profile) return res.status(404).json({ msg: 'User not found' });
 
-    const [sharedWorkspaces, rankTasks, gameSessions] = await Promise.all([
+    const isSelf = String(profile._id) === String(req.user);
+    const [sharedWorkspaces, rankTasks, gameSessions, friendship] = await Promise.all([
       Group.countDocuments({
         members: { $all: [req.user, profile._id] }
       }),
@@ -223,14 +247,24 @@ router.get('/:id/public', auth, async (req, res) => {
         .lean(),
       GameSession.find({ userId: profile._id, gameKey: 'typing-sprint', completedAt: { $ne: null } })
         .select('score accuracy wpm correctCount totalCount maxStreak elapsedMs completedAt')
-        .lean()
+        .lean(),
+      isSelf
+        ? Promise.resolve(null)
+        : Friendship.findOne({
+            $or: [
+              { requester: req.user, recipient: profile._id },
+              { requester: profile._id, recipient: req.user }
+            ],
+            status: { $in: ['pending', 'accepted'] }
+          }).select('requester recipient status').lean()
     ]);
 
     res.json({
       ...profile.toObject(),
       sharedWorkspaces,
       rankStats: buildRankStats(rankTasks, profile._id),
-      gameStats: buildGameStats(gameSessions)
+      gameStats: buildGameStats(gameSessions),
+      friendship: isSelf ? { status: 'self' } : getFriendshipState(friendship, req.user)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

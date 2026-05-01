@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellOff, Home, Users, MessageCircle, User, LogOut, Sun, Moon, Menu, X, Volume2, Target } from 'lucide-react';
+import { BellOff, Home, Users, MessageCircle, User, LogOut, Sun, Moon, Menu, X, Volume2, Target, UserPlus } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -29,6 +29,7 @@ export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [groupBadgeCount, setGroupBadgeCount] = useState(0);
+  const [friendBadgeCount, setFriendBadgeCount] = useState(0);
   const [messagePopups, setMessagePopups] = useState([]);
   const [dndEnabled, setDndEnabled] = useState(() => localStorage.getItem('workloop-dnd') === 'true');
   const messageTimersRef = useRef({});
@@ -61,14 +62,16 @@ export default function Layout({ children }) {
     let cancelled = false;
     const loadBadges = async () => {
       try {
-        const [messageRes, inviteRes] = await Promise.all([
+        const [messageRes, inviteRes, friendRes] = await Promise.all([
           api.get('/messages/conversations').catch(() => ({ data: [] })),
-          api.get('/groups/invites/me').catch(() => ({ data: [] }))
+          api.get('/groups/invites/me').catch(() => ({ data: [] })),
+          api.get('/friends/summary').catch(() => ({ data: { incoming: [] } }))
         ]);
         if (cancelled) return;
 
         setUnreadCount((messageRes.data || []).reduce((total, item) => total + (item.unreadCount || 0), 0));
         setGroupBadgeCount((inviteRes.data || []).length);
+        setFriendBadgeCount((friendRes.data?.incoming || []).length);
       } catch (err) {
         console.error('Badge sync failed', err);
       }
@@ -77,13 +80,31 @@ export default function Layout({ children }) {
     loadBadges();
     const interval = setInterval(loadBadges, 30000);
     const groupsHandler = () => loadBadges();
+    const friendsHandler = () => loadBadges();
     window.addEventListener('groupsUpdated', groupsHandler);
+    window.addEventListener('friendsUpdated', friendsHandler);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
       window.removeEventListener('groupsUpdated', groupsHandler);
+      window.removeEventListener('friendsUpdated', friendsHandler);
     };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const socket = getSocket();
+    const refreshFriends = () => {
+      api.get('/friends/summary')
+        .then(res => setFriendBadgeCount((res.data?.incoming || []).length))
+        .catch(() => {});
+      window.dispatchEvent(new CustomEvent('friendsUpdated'));
+    };
+
+    socket.on('friend-request-updated', refreshFriends);
+    return () => socket.off('friend-request-updated', refreshFriends);
   }, [user]);
 
   useEffect(() => {
@@ -166,6 +187,7 @@ export default function Layout({ children }) {
     { path: '/dashboard', icon: Home, label: 'Dashboard' },
     { path: '/groups', icon: Users, label: 'Workspaces' },
     { path: '/messages', icon: MessageCircle, label: 'Messages' },
+    { path: '/friends', icon: UserPlus, label: 'Friends' },
     { path: '/arena', icon: Target, label: 'Fix Arena' },
     { path: '/profile', icon: User, label: 'Profile' },
   ];
@@ -185,7 +207,8 @@ export default function Layout({ children }) {
     const isActive = location.pathname === item.path;
     const isMessages = item.path === '/messages';
     const isGroups = item.path === '/groups';
-    const badgeCount = isMessages ? unreadCount : isGroups ? groupBadgeCount : 0;
+    const isFriends = item.path === '/friends';
+    const badgeCount = isMessages ? unreadCount : isGroups ? groupBadgeCount : isFriends ? friendBadgeCount : 0;
     const activeClasses = isActive
       ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 shadow-sm'
       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
@@ -289,7 +312,8 @@ export default function Layout({ children }) {
             const isActive = location.pathname === item.path;
             const isMessages = item.path === '/messages';
             const isGroups = item.path === '/groups';
-            const badgeCount = isMessages ? unreadCount : isGroups ? groupBadgeCount : 0;
+            const isFriends = item.path === '/friends';
+            const badgeCount = isMessages ? unreadCount : isGroups ? groupBadgeCount : isFriends ? friendBadgeCount : 0;
             return (
               <Link
                 key={item.path}
