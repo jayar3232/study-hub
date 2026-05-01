@@ -22,6 +22,7 @@ import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
 import UserProfileModal from './UserProfileModal';
+import { CAMPUS_OPTIONS } from '../utils/academics';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -48,10 +49,12 @@ const formatSince = (value) => {
 const matchesSearch = (person, query) => {
   const value = query.trim().toLowerCase();
   if (!value) return true;
-  return [person?.name, person?.email, person?.course]
+  return [person?.name, person?.email, person?.course, person?.campus]
     .filter(Boolean)
     .some(field => field.toLowerCase().includes(value));
 };
+
+const matchesCampus = (person, campus) => !campus || person?.campus === campus;
 
 const announceFriendUpdate = () => {
   window.dispatchEvent(new CustomEvent('friendsUpdated'));
@@ -97,6 +100,7 @@ export default function Friends() {
   const [summary, setSummary] = useState(emptySummary);
   const [activeTab, setActiveTab] = useState('friends');
   const [query, setQuery] = useState('');
+  const [campusFilter, setCampusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState('');
   const [profileUser, setProfileUser] = useState(null);
@@ -130,24 +134,31 @@ export default function Friends() {
   }, [loadFriends]);
 
   const friends = useMemo(
-    () => (summary.friends || []).filter(item => matchesSearch(item.user, query)),
-    [summary.friends, query]
+    () => (summary.friends || [])
+      .filter(item => matchesSearch(item.user, query))
+      .filter(item => matchesCampus(item.user, campusFilter)),
+    [summary.friends, query, campusFilter]
   );
 
   const people = useMemo(
     () => (summary.people || [])
-      .filter(person => matchesSearch(person, query)),
-    [summary.people, query]
+      .filter(person => matchesSearch(person, query))
+      .filter(person => matchesCampus(person, campusFilter)),
+    [summary.people, query, campusFilter]
   );
 
   const incoming = useMemo(
-    () => (summary.incoming || []).filter(item => matchesSearch(item.requester, query)),
-    [summary.incoming, query]
+    () => (summary.incoming || [])
+      .filter(item => matchesSearch(item.requester, query))
+      .filter(item => matchesCampus(item.requester, campusFilter)),
+    [summary.incoming, query, campusFilter]
   );
 
   const outgoing = useMemo(
-    () => (summary.outgoing || []).filter(item => matchesSearch(item.recipient, query)),
-    [summary.outgoing, query]
+    () => (summary.outgoing || [])
+      .filter(item => matchesSearch(item.recipient, query))
+      .filter(item => matchesCampus(item.recipient, campusFilter)),
+    [summary.outgoing, query, campusFilter]
   );
 
   const sendRequest = async (person) => {
@@ -349,14 +360,24 @@ export default function Friends() {
             ))}
           </div>
 
-          <div className="relative w-full lg:max-w-sm">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder="Search people"
-              className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:border-pink-500"
-            />
+          <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_210px] lg:max-w-xl">
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                placeholder="Search people, course, campus"
+                className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:border-pink-500"
+              />
+            </div>
+            <select
+              value={campusFilter}
+              onChange={event => setCampusFilter(event.target.value)}
+              className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-700 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:focus:border-pink-500"
+            >
+              <option value="">All campuses</option>
+              {CAMPUS_OPTIONS.map(campus => <option key={campus} value={campus}>{campus}</option>)}
+            </select>
           </div>
         </div>
       </section>
@@ -413,6 +434,7 @@ export default function Friends() {
                           <button type="button" onClick={() => setProfileUser(item.user)} className="block max-w-full text-left">
                             <h3 className="truncate text-lg font-black text-gray-950 dark:text-white">{item.user?.name || 'User'}</h3>
                             <p className="truncate text-sm text-gray-500">{item.user?.email}</p>
+                            <p className="truncate text-xs font-semibold text-gray-400">{[item.user?.course, item.user?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                           </button>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <RelationshipPill status="friends" />
@@ -464,7 +486,7 @@ export default function Friends() {
                       <div className="min-w-0">
                         <h3 className="truncate font-black text-gray-950 dark:text-white">{person.name}</h3>
                         <p className="truncate text-sm text-gray-500">{person.email}</p>
-                        <p className="truncate text-xs font-semibold text-gray-400">{person.course || 'No course added'}</p>
+                        <p className="truncate text-xs font-semibold text-gray-400">{[person.course, person.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                       </div>
                     </button>
                     <div className="flex items-center justify-between gap-3 sm:justify-end">
@@ -497,6 +519,7 @@ export default function Friends() {
                           <button type="button" onClick={() => setProfileUser(item.requester)} className="block max-w-full text-left">
                             <h3 className="truncate font-black text-gray-950 dark:text-white">{item.requester?.name}</h3>
                             <p className="truncate text-sm text-gray-500">{item.requester?.email}</p>
+                            <p className="truncate text-xs font-semibold text-gray-400">{[item.requester?.course, item.requester?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                           </button>
                           <p className="mt-1 text-xs font-semibold text-gray-400">Requested {formatSince(item.createdAt)}</p>
                         </div>
@@ -544,6 +567,7 @@ export default function Friends() {
                           <button type="button" onClick={() => setProfileUser(item.recipient)} className="block max-w-full text-left">
                             <h3 className="truncate font-black text-gray-950 dark:text-white">{item.recipient?.name}</h3>
                             <p className="truncate text-sm text-gray-500">{item.recipient?.email}</p>
+                            <p className="truncate text-xs font-semibold text-gray-400">{[item.recipient?.course, item.recipient?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                           </button>
                           <p className="mt-1 text-xs font-semibold text-gray-400">Sent {formatSince(item.createdAt)}</p>
                         </div>

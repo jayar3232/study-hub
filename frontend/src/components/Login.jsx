@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { ArrowRight, Lock, Mail } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { SCHOOL_LOGO_SRC } from '../utils/academics';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -33,7 +34,13 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 text-gray-950 dark:bg-gray-950 dark:text-white">
       <div className="grid min-h-screen lg:grid-cols-[1fr_0.95fr]">
         <section className="hidden border-r border-gray-200 bg-white px-10 py-12 dark:border-gray-800 dark:bg-gray-900 lg:flex lg:flex-col lg:justify-between">
-          <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">StudyHub</div>
+          <div className="flex items-center gap-3">
+            <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-12 w-12 rounded-2xl bg-gray-100 object-cover p-1 dark:bg-gray-800" />
+            <div>
+              <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">WorkLoop</div>
+              <p className="text-xs font-semibold uppercase text-gray-400">NEMSU workspace</p>
+            </div>
+          </div>
           <div className="max-w-lg">
             <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-pink-500">Study workspace</p>
             <h1 className="text-5xl font-bold leading-tight tracking-normal text-gray-950 dark:text-white">
@@ -60,7 +67,10 @@ export default function Login() {
             className="w-full max-w-md"
           >
             <div className="mb-8 lg:hidden">
-              <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">StudyHub</div>
+              <div className="flex items-center gap-3">
+                <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-10 w-10 rounded-2xl bg-white object-cover p-1 dark:bg-gray-900" />
+                <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">WorkLoop</div>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xl shadow-gray-200/60 dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20 sm:p-8">

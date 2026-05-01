@@ -117,6 +117,7 @@ export default function NewChatModal({ onClose, onSelectUser }) {
                 <div className="min-w-0">
                   <div className="truncate font-semibold text-gray-950 dark:text-white">{userData.name}</div>
                   <div className="truncate text-sm text-gray-500">{userData.email}</div>
+                  <div className="truncate text-xs font-semibold text-gray-400">{[userData.course, userData.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</div>
                 </div>
               </button>
             ))}

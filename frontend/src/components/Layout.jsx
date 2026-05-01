@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
+import { SCHOOL_LOGO_SRC } from '../utils/academics';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -30,6 +31,7 @@ export default function Layout({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [groupBadgeCount, setGroupBadgeCount] = useState(0);
   const [friendBadgeCount, setFriendBadgeCount] = useState(0);
+  const [developerAccess, setDeveloperAccess] = useState(Boolean(user?.isDeveloper));
   const [messagePopups, setMessagePopups] = useState([]);
   const [dndEnabled, setDndEnabled] = useState(() => localStorage.getItem('workloop-dnd') === 'true');
   const messageTimersRef = useRef({});
@@ -55,6 +57,34 @@ export default function Layout({ children }) {
     window.addEventListener('unreadMessages', handler);
     return () => window.removeEventListener('unreadMessages', handler);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setDeveloperAccess(false);
+      return undefined;
+    }
+
+    setDeveloperAccess(Boolean(user?.isDeveloper));
+
+    let cancelled = false;
+    api.get('/games/developers/me')
+      .then(res => {
+        if (!cancelled) setDeveloperAccess(Boolean(res.data?.isDeveloper || user?.isDeveloper));
+      })
+      .catch(() => {
+        if (!cancelled) setDeveloperAccess(Boolean(user?.isDeveloper));
+      });
+
+    const developerHandler = (event) => {
+      setDeveloperAccess(Boolean(event.detail?.isDeveloper));
+    };
+
+    window.addEventListener('developerAccessUpdated', developerHandler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('developerAccessUpdated', developerHandler);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -155,10 +185,7 @@ export default function Layout({ children }) {
       className="inline-flex items-center gap-3"
     >
       <span className={`${compact ? 'h-10 w-10 rounded-2xl' : 'h-12 w-12 rounded-[1.35rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-gray-950 shadow-xl shadow-cyan-500/15 ring-1 ring-white/10 dark:bg-white`}>
-        <span className="absolute -left-2 top-2 h-8 w-8 rounded-full border-[3px] border-cyan-300/90 shadow-[0_0_18px_rgba(34,211,238,0.45)]" />
-        <span className="absolute -right-2 bottom-2 h-8 w-8 rounded-full border-[3px] border-pink-400/90 shadow-[0_0_18px_rgba(236,72,153,0.45)]" />
-        <span className="absolute inset-2 rounded-xl bg-white/10 dark:bg-gray-950/10" />
-        <span className="relative font-black tracking-normal text-white dark:text-gray-950">W</span>
+        <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="relative h-full w-full object-cover p-1.5" />
       </span>
       <span className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-normal text-gray-950 dark:text-white`}>
         Work<span className="bg-gradient-to-r from-cyan-400 via-pink-500 to-indigo-500 bg-clip-text text-transparent">Loop</span>
@@ -188,9 +215,10 @@ export default function Layout({ children }) {
     { path: '/groups', icon: Users, label: 'Workspaces' },
     { path: '/messages', icon: MessageCircle, label: 'Messages' },
     { path: '/friends', icon: UserPlus, label: 'Friends' },
-    { path: '/arena', icon: Target, label: 'Fix Arena' },
     { path: '/profile', icon: User, label: 'Profile' },
   ];
+  const developerNavItem = { path: '/arena', icon: Target, label: 'Developer Console' };
+  const mobileBottomItems = developerAccess ? [...navItems, developerNavItem] : navItems;
 
   const handleLogout = () => {
     logout();
@@ -258,6 +286,7 @@ export default function Layout({ children }) {
           {navItems.map(item => renderNavLink(item, false))}
         </nav>
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+          {developerAccess && renderNavLink(developerNavItem, false)}
           <DndToggle />
           {user && (
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/60">
@@ -308,7 +337,7 @@ export default function Layout({ children }) {
         </main>
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around py-2 z-20">
-          {navItems.map(item => {
+          {mobileBottomItems.map(item => {
             const isActive = location.pathname === item.path;
             const isMessages = item.path === '/messages';
             const isGroups = item.path === '/groups';
@@ -398,6 +427,7 @@ export default function Layout({ children }) {
               </div>
               <nav className="p-4 space-y-2">
                 {navItems.map(item => renderNavLink(item, true))}
+                {developerAccess && renderNavLink(developerNavItem, true)}
                 <DndToggle />
                 <button
                   onClick={toggleTheme}

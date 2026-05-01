@@ -5,6 +5,7 @@ import {
   Activity,
   Award,
   BookOpen,
+  Building2,
   Camera,
   CheckCircle,
   Eye,
@@ -28,6 +29,7 @@ import { useTheme } from '../context/ThemeContext';
 import { resolveMediaUrl } from '../utils/media';
 import RankBadge, { RankEmblem } from './RankBadge';
 import GameRankBadge from './GameRankBadge';
+import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -57,6 +59,7 @@ export default function Profile() {
 
   const [name, setName] = useState('');
   const [course, setCourse] = useState('');
+  const [campus, setCampus] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('');
   const [editing, setEditing] = useState(false);
@@ -74,6 +77,7 @@ export default function Profile() {
 
     setName(user.name || '');
     setCourse(user.course || '');
+    setCampus(user.campus || '');
     setBio(user.bio || '');
     setAvatar(user.avatar || '');
     fetchGroups();
@@ -117,7 +121,7 @@ export default function Profile() {
 
     setSavingProfile(true);
     try {
-      const res = await api.put('/users/profile', { name, course, bio });
+      const res = await api.put('/users/profile', { name, course, campus, bio });
       login(localStorage.getItem('token'), res.data);
       toast.success('Profile updated');
       setEditing(false);
@@ -200,7 +204,7 @@ export default function Profile() {
   );
 
   const completion = useMemo(() => {
-    const fields = [user?.name, user?.email, user?.course, user?.bio, user?.avatar || avatar];
+    const fields = [user?.name, user?.email, user?.course, user?.campus, user?.bio, user?.avatar || avatar];
     return Math.round((fields.filter(Boolean).length / fields.length) * 100);
   }, [avatar, user]);
 
@@ -252,6 +256,7 @@ export default function Profile() {
                 <div className="mt-2 flex flex-wrap gap-3 text-sm text-white/75">
                   <span className="inline-flex items-center gap-1"><Mail size={14} /> {user.email}</span>
                   {user.course && <span className="inline-flex items-center gap-1"><BookOpen size={14} /> {user.course}</span>}
+                  {user.campus && <span className="inline-flex items-center gap-1"><Building2 size={14} /> {user.campus}</span>}
                 </div>
               </div>
             </div>
@@ -275,7 +280,7 @@ export default function Profile() {
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
                   <div className="h-full rounded-full bg-pink-400 transition-all" style={{ width: `${completion}%` }} />
                 </div>
-                <p className="mt-2 text-xs text-white/65">Add course, bio, and avatar for a stronger profile.</p>
+                <p className="mt-2 text-xs text-white/65">Add course, campus, bio, and avatar for a stronger profile.</p>
               </div>
             </div>
           </div>
@@ -371,7 +376,17 @@ export default function Profile() {
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">Course or program</span>
-                <input value={course} onChange={event => setCourse(event.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950" />
+                <select value={course} onChange={event => setCourse(event.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950">
+                  <option value="">Select course</option>
+                  {COURSE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">Campus / branch</span>
+                <select value={campus} onChange={event => setCampus(event.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-pink-950">
+                  <option value="">Select campus</option>
+                  {CAMPUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                </select>
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">Bio</span>
@@ -401,6 +416,10 @@ export default function Profile() {
                 <p className="mt-1 font-semibold text-gray-950 dark:text-white">{user.course || 'Not set'}</p>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
+                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Campus</p>
+                <p className="mt-1 font-semibold text-gray-950 dark:text-white">{user.campus || 'Not set'}</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
                 <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Bio</p>
                 <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">{user.bio || 'No bio yet.'}</p>
               </div>
@@ -410,6 +429,13 @@ export default function Profile() {
 
         <aside className="space-y-6">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div className="mb-4 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
+              <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-12 w-12 rounded-xl bg-white object-cover p-1 dark:bg-gray-900" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-gray-950 dark:text-white">North Eastern Mindanao State University</p>
+                <p className="truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{user.campus || 'Campus not set'}</p>
+              </div>
+            </div>
             <div className="mb-4 flex items-center gap-2">
               <Shield size={20} className="text-pink-600" />
               <div>
@@ -473,6 +499,7 @@ export default function Profile() {
               {[
                 ['Name added', Boolean(user.name)],
                 ['Course added', Boolean(user.course)],
+                ['Campus selected', Boolean(user.campus)],
                 ['Bio added', Boolean(user.bio)],
                 ['Avatar uploaded', Boolean(user.avatar || avatar)]
               ].map(([label, done]) => (

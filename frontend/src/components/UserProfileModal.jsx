@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { Briefcase, Calendar, Clock, Loader2, Mail, MessageCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
@@ -214,6 +214,10 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                   <p className="text-xs font-bold uppercase text-pink-200">Member profile</p>
                   <h2 className="mt-1 break-words text-xl font-black">{profile?.name || (loading ? 'Loading...' : 'User')}</h2>
                   <p className="mt-1 truncate text-sm text-white/70">{profile?.course || 'No course added'}</p>
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-white/55">
+                    <Building2 size={13} />
+                    {profile?.campus || 'Campus not set'}
+                  </p>
                 </div>
               </div>
               </div>

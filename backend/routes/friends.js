@@ -3,10 +3,11 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
+const { normalizeCampus, normalizeCourse } = require('../utils/academics');
 
 const router = express.Router();
 
-const userFields = 'name email course avatar bio lastSeen createdAt';
+const userFields = 'name email course campus avatar bio lastSeen createdAt';
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 
 const toClientUser = (user) => {
@@ -16,7 +17,8 @@ const toClientUser = (user) => {
     id: user._id,
     name: user.name,
     email: user.email,
-    course: user.course,
+    course: normalizeCourse(user.course),
+    campus: normalizeCampus(user.campus),
     bio: user.bio,
     avatar: user.avatar,
     lastSeen: user.lastSeen,

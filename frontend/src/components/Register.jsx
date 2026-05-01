@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { ArrowRight, BookOpen, Lock, Mail, User } from 'lucide-react';
+import { ArrowRight, BookOpen, Building2, Lock, Mail, User } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [course, setCourse] = useState('');
+  const [campus, setCampus] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -20,7 +22,7 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const res = await api.post('/auth/register', { name, email, password, course });
+      const res = await api.post('/auth/register', { name, email, password, course, campus });
       login(res.data.token, res.data.user);
       toast.success('Account created');
       navigate('/dashboard');
@@ -42,13 +44,19 @@ export default function Register() {
             className="w-full max-w-md"
           >
             <div className="mb-8 lg:hidden">
-              <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">StudyHub</div>
+              <div className="flex items-center gap-3">
+                <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-10 w-10 rounded-2xl bg-white object-cover p-1 dark:bg-gray-900" />
+                <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">WorkLoop</div>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xl shadow-gray-200/60 dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20 sm:p-8">
-              <div className="mb-7">
+              <div className="mb-7 flex items-start gap-3">
+                <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-12 w-12 shrink-0 rounded-2xl bg-gray-100 object-cover p-1 dark:bg-gray-800" />
+                <div>
                 <h2 className="text-2xl font-bold tracking-normal text-gray-950 dark:text-white">Create your account</h2>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Start your study workspace in a few details.</p>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">For North Eastern Mindanao State University workspaces.</p>
+                </div>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -101,12 +109,31 @@ export default function Register() {
                   <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Course</span>
                   <div className="relative">
                     <BookOpen size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
+                    <select
                       className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
                       value={course}
                       onChange={event => setCourse(event.target.value)}
-                    />
+                      required
+                    >
+                      <option value="">Select course</option>
+                      {COURSE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Campus / Branch</span>
+                  <div className="relative">
+                    <Building2 size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <select
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-pink-500"
+                      value={campus}
+                      onChange={event => setCampus(event.target.value)}
+                      required
+                    >
+                      <option value="">Select campus</option>
+                      {CAMPUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                    </select>
                   </div>
                 </label>
 
@@ -131,7 +158,13 @@ export default function Register() {
         </main>
 
         <section className="hidden border-l border-gray-200 bg-white px-10 py-12 dark:border-gray-800 dark:bg-gray-900 lg:flex lg:flex-col lg:justify-between">
-          <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">StudyHub</div>
+          <div className="flex items-center gap-3">
+            <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo placeholder" className="h-12 w-12 rounded-2xl bg-gray-100 object-cover p-1 dark:bg-gray-800" />
+            <div>
+              <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">WorkLoop</div>
+              <p className="text-xs font-semibold uppercase text-gray-400">NEMSU workspace</p>
+            </div>
+          </div>
           <div className="max-w-lg">
             <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-pink-500">Collaborative learning</p>
             <h1 className="text-5xl font-bold leading-tight tracking-normal text-gray-950 dark:text-white">

@@ -13,6 +13,7 @@ const GameSession = require('../models/GameSession');
 const Friendship = require('../models/Friendship');
 const { RANK_TIERS, buildLeaderboard, buildRankStats } = require('../services/ranks');
 const { buildGameStats } = require('../services/gameRanks');
+const { normalizeCampus, normalizeCourse } = require('../utils/academics');
 const router = express.Router();
 
 const avatarUploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
@@ -21,16 +22,17 @@ fs.mkdirSync(avatarUploadDir, { recursive: true });
 const isBcryptHash = (value = '') => /^\$2[aby]\$\d{2}\$/.test(value);
 
 const toClientUser = (user) => ({
-  _id: user._id,
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  course: user.course,
-  bio: user.bio,
-  avatar: user.avatar,
-  lastSeen: user.lastSeen,
-  isDeveloper: user.isDeveloper,
-  createdAt: user.createdAt
+  _id: user?._id,
+  id: user?._id,
+  name: user?.name,
+  email: user?.email,
+  course: normalizeCourse(user?.course),
+  campus: normalizeCampus(user?.campus),
+  bio: user?.bio,
+  avatar: user?.avatar,
+  lastSeen: user?.lastSeen,
+  isDeveloper: user?.isDeveloper,
+  createdAt: user?.createdAt
 });
 
 const getFriendshipState = (friendship, currentUserId) => {
@@ -91,7 +93,7 @@ const uploadAvatar = (req, res, next) => {
 router.get('/profile', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user).select('-password');
-    res.json(user);
+    res.json(toClientUser(user));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -99,14 +101,19 @@ router.get('/profile', auth, async (req, res) => {
 
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { name, course, bio } = req.body;
+    const { name, course, campus, bio } = req.body;
     if (!name?.trim()) return res.status(400).json({ msg: 'Name is required' });
+    const normalizedCourse = normalizeCourse(course);
+    const normalizedCampus = normalizeCampus(campus);
+    if (course && !normalizedCourse) return res.status(400).json({ msg: 'Please choose a valid NEMSU course' });
+    if (campus && !normalizedCampus) return res.status(400).json({ msg: 'Please choose a valid NEMSU campus' });
 
     const user = await User.findByIdAndUpdate(
       req.user,
       {
         name: name.trim(),
-        course: course?.trim() || '',
+        course: normalizedCourse,
+        campus: normalizedCampus,
         bio: bio?.trim() || ''
       },
       { new: true }
@@ -184,8 +191,8 @@ router.get('/search', auth, async (req, res) => {
         { name: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } }
       ]
-    }).select('name email avatar lastSeen').limit(10);
-    res.json(users);
+    }).select('name email course campus avatar lastSeen').limit(10);
+    res.json(users.map(toClientUser));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -202,7 +209,7 @@ router.get('/rankings/me', auth, async (req, res) => {
     ];
 
     const [networkUsers, networkTasks, myTasks] = await Promise.all([
-      User.find({ _id: { $in: memberIds } }).select('name email course avatar').lean(),
+      User.find({ _id: { $in: memberIds } }).select('name email course campus avatar').lean(),
       Task.find({ assignedTo: { $in: memberIds } })
         .select('assignedTo status priority approvalStatus completedAt dueDate')
         .lean(),
@@ -233,7 +240,7 @@ router.get('/:id/public', auth, async (req, res) => {
     }
 
     const profile = await User.findById(req.params.id)
-      .select('name email course bio avatar lastSeen createdAt');
+      .select('name email course campus bio avatar lastSeen createdAt');
 
     if (!profile) return res.status(404).json({ msg: 'User not found' });
 
@@ -259,8 +266,12 @@ router.get('/:id/public', auth, async (req, res) => {
           }).select('requester recipient status').lean()
     ]);
 
+    const profileObject = profile.toObject();
+
     res.json({
-      ...profile.toObject(),
+      ...profileObject,
+      course: normalizeCourse(profileObject.course),
+      campus: normalizeCampus(profileObject.campus),
       sharedWorkspaces,
       rankStats: buildRankStats(rankTasks, profile._id),
       gameStats: buildGameStats(gameSessions),

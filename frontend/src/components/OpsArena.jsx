@@ -175,6 +175,7 @@ export default function OpsArena() {
       const res = await api.post('/games/developers/access', { password: developerPassword });
       setDeveloperInfo(res.data);
       setDeveloperPassword('');
+      window.dispatchEvent(new CustomEvent('developerAccessUpdated', { detail: { isDeveloper: true } }));
       toast.success('Developer access granted');
       await refreshIssues();
     } catch (err) {
@@ -347,7 +348,7 @@ export default function OpsArena() {
         {statCards.map(card => <StatCard key={card.label} {...card} />)}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[430px_minmax(0,1fr)]">
+      <section className="grid gap-5 2xl:grid-cols-[380px_minmax(0,1fr)]">
         <div className="space-y-5">
           <section className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="mb-4 flex items-center gap-3">
@@ -422,8 +423,8 @@ export default function OpsArena() {
           </section>
         </div>
 
-        <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
+          <div className="min-w-0 rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="border-b border-gray-100 p-5 dark:border-gray-800">
               <h2 className="text-lg font-black text-gray-950 dark:text-white">{isDeveloper ? 'Developer Inbox' : 'Private Developer Queue'}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">{isDeveloper ? `${issues.length} submitted items` : 'Member submissions are visible to developers only'}</p>
@@ -460,7 +461,7 @@ export default function OpsArena() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
             {selectedIssue ? (
               <>
                 <div className="border-b border-gray-100 p-5 dark:border-gray-800">
@@ -482,7 +483,7 @@ export default function OpsArena() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="grid min-w-0 gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="space-y-4">
                     <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-950/50">
                       <p className="text-sm font-black text-gray-950 dark:text-white">Problem details</p>

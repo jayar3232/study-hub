@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const { normalizeCampus, normalizeCourse } = require('../utils/academics');
 const router = express.Router();
 
 const isBcryptHash = (value = '') => /^\$2[aby]\$\d{2}\$/.test(value);
@@ -12,7 +13,8 @@ const toClientUser = (user) => ({
   id: user._id,
   name: user.name,
   email: user.email,
-  course: user.course,
+  course: normalizeCourse(user.course),
+  campus: normalizeCampus(user.campus),
   bio: user.bio,
   avatar: user.avatar,
   lastSeen: user.lastSeen,
@@ -21,7 +23,7 @@ const toClientUser = (user) => ({
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, course } = req.body;
+    const { name, email, password, course, campus } = req.body;
 
     if (!name?.trim() || !email?.trim() || !password) {
       return res.status(400).json({ msg: 'Name, email, and password are required' });
@@ -32,6 +34,11 @@ router.post('/register', async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedCourse = normalizeCourse(course);
+    const normalizedCampus = normalizeCampus(campus);
+    if (course && !normalizedCourse) return res.status(400).json({ msg: 'Please choose a valid NEMSU course' });
+    if (campus && !normalizedCampus) return res.status(400).json({ msg: 'Please choose a valid NEMSU campus' });
+
     let user = await User.findOne({ email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, 'i') });
     if (user) return res.status(400).json({ msg: 'User already exists' });
 
@@ -39,7 +46,8 @@ router.post('/register', async (req, res) => {
       name: name.trim(),
       email: normalizedEmail,
       password: await bcrypt.hash(password, 10),
-      course
+      course: normalizedCourse,
+      campus: normalizedCampus
     });
     await user.save();
 
