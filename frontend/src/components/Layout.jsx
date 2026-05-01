@@ -27,6 +27,8 @@ const getMessageSnippet = (message) => {
 };
 
 export default function Layout({ children }) {
+  const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [groupBadgeCount, setGroupBadgeCount] = useState(0);
@@ -35,8 +37,6 @@ export default function Layout({ children }) {
   const [messagePopups, setMessagePopups] = useState([]);
   const [dndEnabled, setDndEnabled] = useState(() => localStorage.getItem('workloop-dnd') === 'true');
   const messageTimersRef = useRef({});
-  const { theme, toggleTheme } = useTheme();
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const avatarSrc = resolveMediaUrl(user?.avatar);
