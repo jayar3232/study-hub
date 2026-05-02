@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -10,6 +10,7 @@ import { installGlobalClickSound, playUiSound } from '../utils/sound';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { AppLogoMark, AppWordmark } from './AppLogo';
+import { getNotificationPermissionState, requestNotificationPermission, showAppNotification } from '../utils/notifications';
 
 const APP_NAME = 'StudentHub';
 
@@ -40,6 +41,7 @@ export default function Layout({ children }) {
   const [dndEnabled, setDndEnabled] = useState(() => localStorage.getItem('workloop-dnd') === 'true');
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [notificationPermission, setNotificationPermission] = useState('prompt');
   const [isInstalledApp, setIsInstalledApp] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone === true;
@@ -66,6 +68,16 @@ export default function Layout({ children }) {
   }, [dndEnabled]);
 
   useEffect(() => installGlobalClickSound(), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getNotificationPermissionState().then(state => {
+      if (!cancelled) setNotificationPermission(state);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const updateOnlineState = () => setIsOnline(navigator.onLine);
@@ -218,6 +230,12 @@ export default function Layout({ children }) {
 
       setMessagePopups(prev => [popup, ...prev.filter(item => item.id !== popup.id)].slice(0, 3));
       playUiSound('message', 0.45);
+      showAppNotification({
+        title: getDisplayName(message.from, 'New message'),
+        body: popup.body,
+        tag: `message-${fromId}`,
+        data: { path: '/messages', fromId }
+      });
 
       clearTimeout(messageTimersRef.current[popup.id]);
       messageTimersRef.current[popup.id] = setTimeout(() => {
@@ -307,6 +325,33 @@ export default function Layout({ children }) {
     );
   };
 
+  const enableNotifications = async () => {
+    const state = await requestNotificationPermission();
+    setNotificationPermission(state);
+    if (state === 'granted') {
+      toast.success('Phone notifications enabled');
+    } else if (state === 'denied') {
+      toast.error('Notifications are blocked in your device settings');
+    }
+  };
+
+  const NotificationButton = ({ compact = false }) => {
+    if (notificationPermission === 'granted' || notificationPermission === 'unsupported') return null;
+
+    return (
+      <button
+        type="button"
+        onClick={enableNotifications}
+        className={`${compact ? 'rounded-full p-2' : 'flex w-full items-center gap-3 rounded-xl border border-pink-300/30 bg-pink-500/10 px-4 py-2.5 text-sm font-bold'} text-pink-700 transition hover:-translate-y-0.5 hover:bg-pink-500/15 dark:text-pink-200`}
+        title="Enable phone notifications"
+        aria-label="Enable phone notifications"
+      >
+        <Bell size={compact ? 22 : 19} />
+        {!compact && <span>Enable notifications</span>}
+      </button>
+    );
+  };
+
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard', mobileLabel: 'Home' },
     { path: '/groups', icon: Users, label: 'Workspaces', mobileLabel: 'Spaces' },
@@ -389,6 +434,7 @@ export default function Layout({ children }) {
         </nav>
         <div className="space-y-2 border-t border-white/40 p-3 dark:border-white/10">
           <InstallButton />
+          <NotificationButton />
           <DndToggle />
           <ThemeToggle />
           {user && (
@@ -418,6 +464,7 @@ export default function Layout({ children }) {
         <header className="mobile-topbar sticky top-0 z-20 flex items-center justify-between border-b border-white/45 bg-white/70 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/10 md:hidden">
           <BrandLogo mobile />
           <div className="flex items-center gap-2">
+            <NotificationButton compact />
             <DndToggle compact />
             {user && (
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
@@ -468,18 +515,7 @@ export default function Layout({ children }) {
           {location.pathname.startsWith('/arena') ? (
             <div className="min-h-full">{pageContent}</div>
           ) : (
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0, y: 14, scale: 0.988 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.992 }}
-                transition={{ duration: 0.24, ease: 'easeOut' }}
-                className="min-h-full"
-              >
-                {pageContent}
-              </motion.div>
-            </AnimatePresence>
+            <div className="min-h-full">{pageContent}</div>
           )}
         </main>
 

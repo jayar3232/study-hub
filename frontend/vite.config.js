@@ -26,7 +26,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-192.png', 'pwa-512.png', 'apple-touch-icon.png', 'updatedlogofinal.png'],
+      includeAssets: ['pwa-192.png', 'pwa-512.png', 'apple-touch-icon.png', 'updatedlogofinal.png', 'new-logo.png'],
       manifest: {
         name: 'StudentHub',
         short_name: 'StudentHub',

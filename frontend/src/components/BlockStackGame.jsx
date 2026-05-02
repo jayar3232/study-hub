@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Grid3X3, MousePointerClick, RotateCcw, Save, Sparkles, Trophy, Zap } from 'lucide-react';
 import api from '../services/api';
+import GameOverModal from './GameOverModal';
 
 const BOARD_SIZE = 8;
 
@@ -140,7 +141,7 @@ export function BlockGameLogo({ compact = false }) {
   );
 }
 
-export default function BlockStackGame({ stats, onScoreSaved }) {
+export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
   const boardRef = useRef(null);
   const [board, setBoard] = useState(() => emptyBoard());
   const [pieces, setPieces] = useState(() => createTray());
@@ -588,6 +589,17 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GameOverModal
+        open={gameOver}
+        title="Board locked"
+        score={score}
+        detail={score <= 0 ? 'Clear at least one lane to save a ranked score.' : 'Your WorkGrid run is complete.'}
+        saving={saving}
+        saved={Boolean(savedScore)}
+        onRetry={resetGame}
+        onExit={onExit}
+      />
     </section>
   );
 }

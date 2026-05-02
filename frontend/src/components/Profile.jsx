@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
@@ -10,12 +10,16 @@ import {
   CheckCircle,
   Eye,
   EyeOff,
+  Image as ImageIcon,
+  Loader2,
   Lock,
   LogOut,
   Mail,
   Palette,
+  PlayCircle,
   Save,
   Shield,
+  Trash2,
   Trophy,
   TrendingUp,
   User,
@@ -80,6 +84,10 @@ export default function Profile() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
+  const [stories, setStories] = useState([]);
+  const [storyUploading, setStoryUploading] = useState(false);
+  const [activeStory, setActiveStory] = useState(null);
+  const storyInputRef = useRef(null);
 
   useEffect(() => {
     if (!user) return;
@@ -94,6 +102,7 @@ export default function Profile() {
     fetchGroups();
     fetchRankings();
     fetchGameSummary();
+    fetchStories();
   }, [user]);
 
   useEffect(() => () => {
@@ -124,6 +133,15 @@ export default function Profile() {
       setGameData(res.data);
     } catch (err) {
       console.error('Error fetching game summary:', err);
+    }
+  };
+
+  const fetchStories = async () => {
+    try {
+      const res = await api.get('/stories/active');
+      setStories(res.data || []);
+    } catch (err) {
+      console.error('Error fetching My Day:', err);
     }
   };
 
@@ -214,6 +232,47 @@ export default function Profile() {
     }
   };
 
+  const handleStoryUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const supported = file.type.startsWith('image/') || file.type.startsWith('video/');
+    if (!supported) {
+      toast.error('My Day supports photos and videos only');
+      return;
+    }
+
+    if (file.size > 30 * 1024 * 1024) {
+      toast.error('My Day must be 30MB or smaller');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('media', file);
+    setStoryUploading(true);
+    try {
+      const res = await api.post('/stories', formData);
+      setStories(prev => [res.data, ...prev.filter(story => getEntityId(story) !== getEntityId(res.data))]);
+      toast.success('My Day posted');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'My Day upload failed');
+    } finally {
+      setStoryUploading(false);
+    }
+  };
+
+  const deleteStory = async (storyId) => {
+    try {
+      await api.delete(`/stories/${storyId}`);
+      setStories(prev => prev.filter(story => getEntityId(story) !== storyId));
+      setActiveStory(null);
+      toast.success('My Day deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Delete failed');
+    }
+  };
+
   const handleChangePassword = async (event) => {
     event.preventDefault();
     const { currentPassword, newPassword, confirmPassword } = passwordForm;
@@ -272,6 +331,8 @@ export default function Profile() {
   const gameStats = gameData?.stats || gameData?.typingStats;
   const leaderboard = rankData?.leaderboard || [];
   const currentPosition = rankData?.currentUserRank?.position;
+  const storyItems = stories.filter(story => new Date(story.expiresAt || 0) > new Date());
+  const myStoryCount = storyItems.filter(story => getEntityId(story.userId) === getEntityId(user)).length;
 
   return (
     <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
@@ -373,6 +434,71 @@ export default function Profile() {
             <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Security</p>
             <p className="mt-1 font-semibold text-emerald-600 dark:text-emerald-300">Password protected</p>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/70 bg-white p-4 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+        <input ref={storyInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleStoryUpload} />
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black text-gray-950 dark:text-white">My Day</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Stories expire after 24 hours.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => storyInputRef.current?.click()}
+            disabled={storyUploading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-pink-700 disabled:opacity-60"
+          >
+            {storyUploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+            {myStoryCount ? 'Add more' : 'Post'}
+          </button>
+        </div>
+
+        <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            onClick={() => storyInputRef.current?.click()}
+            className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl border border-dashed border-pink-200 bg-pink-50 text-left dark:border-pink-900/60 dark:bg-pink-950/20"
+          >
+            <div className="absolute inset-0 grid place-items-center">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-pink-600 shadow-lg dark:bg-gray-950 dark:text-pink-300">
+                {storyUploading ? <Loader2 size={22} className="animate-spin" /> : <Camera size={22} />}
+              </div>
+            </div>
+            <div className="absolute inset-x-0 bottom-0 p-3">
+              <p className="text-sm font-black text-gray-950 dark:text-white">Create My Day</p>
+            </div>
+          </button>
+
+          {storyItems.map(story => {
+            const storyUrl = resolveMediaUrl(story.fileUrl);
+            const owner = story.userId || {};
+            return (
+              <button
+                key={getEntityId(story)}
+                type="button"
+                onClick={() => setActiveStory(story)}
+                className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-950 text-left shadow-lg ring-1 ring-gray-200 dark:ring-gray-800"
+              >
+                {story.fileType === 'image' ? (
+                  <img src={storyUrl} alt={story.caption || 'My Day'} className="h-full w-full object-cover" />
+                ) : (
+                  <video src={storyUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/20" />
+                <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-pink-500">
+                  {owner.avatar ? (
+                    <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="grid h-full w-full place-items-center text-xs font-black text-white">{owner.name?.charAt(0)?.toUpperCase() || 'U'}</span>
+                  )}
+                </div>
+                {story.fileType === 'video' && <PlayCircle className="absolute right-2 top-3 text-white" size={22} />}
+                <p className="absolute inset-x-2 bottom-2 line-clamp-2 text-xs font-black text-white">{owner.name || 'Member'}</p>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -587,6 +713,51 @@ export default function Profile() {
           </section>
         </aside>
       </div>
+
+      {activeStory && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm">
+          <div className="relative h-[min(86svh,760px)] w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
+            {activeStory.fileType === 'image' ? (
+              <img src={resolveMediaUrl(activeStory.fileUrl)} alt={activeStory.caption || 'My Day'} className="h-full w-full object-contain" />
+            ) : (
+              <video src={resolveMediaUrl(activeStory.fileUrl)} controls autoPlay playsInline className="h-full w-full object-contain" />
+            )}
+            <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/75 to-transparent p-4">
+              <div className="flex items-center justify-between gap-3 text-white">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black">{activeStory.userId?.name || 'Member'}</p>
+                  <p className="text-xs text-white/65">My Day</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {getEntityId(activeStory.userId) === getEntityId(user) && (
+                    <button
+                      type="button"
+                      onClick={() => deleteStory(getEntityId(activeStory))}
+                      className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-rose-500"
+                      aria-label="Delete My Day"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveStory(null)}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+                    aria-label="Close My Day"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            {activeStory.caption && (
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-sm font-bold text-white">
+                {activeStory.caption}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

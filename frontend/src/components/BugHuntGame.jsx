@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Bug, CheckCircle2, Crosshair, Eye, RotateCcw, Save, Search, Trophy } from 'lucide-react';
 import api from '../services/api';
+import GameOverModal from './GameOverModal';
 
 const ROUND_SECONDS = 45;
 
@@ -79,7 +80,7 @@ export function BugHuntLogo({ compact = false }) {
   );
 }
 
-export default function BugHuntGame({ stats, onScoreSaved }) {
+export default function BugHuntGame({ stats, onScoreSaved, onExit }) {
   const [running, setRunning] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(ROUND_SECONDS);
   const [found, setFound] = useState([]);
@@ -370,6 +371,17 @@ export default function BugHuntGame({ stats, onScoreSaved }) {
           </div>
         </aside>
       </div>
+
+      <GameOverModal
+        open={Boolean(result)}
+        title="Hunt complete"
+        score={result?.score || 0}
+        detail={result ? `Found ${result.foundCount}/${result.totalCount} issues with ${result.accuracy}% accuracy.` : ''}
+        saving={saving}
+        saved={Boolean(result && !saving)}
+        onRetry={resetRound}
+        onExit={onExit}
+      />
     </section>
   );
 }

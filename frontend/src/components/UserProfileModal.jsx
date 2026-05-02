@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, User, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, PlayCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
@@ -22,13 +22,18 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   const [friendship, setFriendship] = useState(user?.friendship || { status: 'none' });
   const [loading, setLoading] = useState(false);
   const [friendAction, setFriendAction] = useState('');
+  const [stories, setStories] = useState([]);
+  const [activeStory, setActiveStory] = useState(null);
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const profileId = userId || getEntityId(user);
   const isSelf = profileId && getEntityId(currentUser) === String(profileId);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setActiveStory(null);
+      return;
+    }
     setProfile(user || null);
     setFriendship(user?.friendship || { status: 'none' });
 
@@ -37,15 +42,20 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     const loadProfile = async () => {
       setLoading(true);
       try {
-        const res = await api.get(`/users/${profileId}/public`);
+        const [res, storiesRes] = await Promise.all([
+          api.get(`/users/${profileId}/public`),
+          api.get(`/stories/user/${profileId}`).catch(() => ({ data: [] }))
+        ]);
         if (!cancelled) {
           setProfile(res.data);
           setFriendship(res.data?.friendship || { status: 'none' });
+          setStories(storiesRes.data || []);
         }
       } catch (err) {
         if (!cancelled && user) {
           setProfile(user);
           setFriendship(user?.friendship || { status: 'none' });
+          setStories([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -265,6 +275,37 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 </div>
               </div>
 
+              {stories.length > 0 && (
+                <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-sm font-black text-gray-950 dark:text-white">My Day</p>
+                    <span className="rounded-full bg-pink-50 px-2 py-1 text-xs font-black text-pink-600 dark:bg-pink-950/30 dark:text-pink-200">{stories.length}</span>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {stories.map(story => {
+                      const storyUrl = resolveMediaUrl(story.fileUrl);
+                      return (
+                        <button
+                          key={getEntityId(story)}
+                          type="button"
+                          onClick={() => setActiveStory(story)}
+                          className="relative h-36 w-24 shrink-0 overflow-hidden rounded-2xl bg-gray-950"
+                        >
+                          {story.fileType === 'image' ? (
+                            <img src={storyUrl} alt={story.caption || 'My Day'} className="h-full w-full object-cover" />
+                          ) : (
+                            <video src={storyUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                          {story.fileType === 'video' && <PlayCircle className="absolute right-2 top-2 text-white" size={20} />}
+                          <p className="absolute inset-x-2 bottom-2 line-clamp-2 text-left text-xs font-black text-white">{story.caption || 'View story'}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <div className="flex items-center gap-3">
                   <RankEmblem rank={profile?.rankStats?.rank} size="sm" animated />
@@ -321,6 +362,37 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
               </div>
             </div>
           </motion.div>
+
+          {activeStory && (
+            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-3" onMouseDown={event => event.stopPropagation()}>
+              <div className="relative h-[min(86svh,720px)] w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
+                {activeStory.fileType === 'image' ? (
+                  <img src={resolveMediaUrl(activeStory.fileUrl)} alt={activeStory.caption || 'My Day'} className="h-full w-full object-contain" />
+                ) : (
+                  <video src={resolveMediaUrl(activeStory.fileUrl)} controls autoPlay playsInline className="h-full w-full object-contain" />
+                )}
+                <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-3 bg-gradient-to-b from-black/75 to-transparent p-4 text-white">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black">{profile?.name || 'Member'}</p>
+                    <p className="text-xs text-white/65">My Day</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStory(null)}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+                    aria-label="Close My Day"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                {activeStory.caption && (
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-sm font-bold text-white">
+                    {activeStory.caption}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </AnimatePresence>

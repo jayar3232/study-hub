@@ -245,16 +245,20 @@ export default function MyGroups() {
               A polished directory for projects, teams, client spaces, and active collaboration.
             </p>
           </div>
-          <motion.button
-            whileHover={{ y: -2, scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-lg shadow-black/10 transition hover:bg-pink-50"
-          >
-            <PlusCircle size={18} />
-            New workspace
-          </motion.button>
+          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-2 text-white backdrop-blur">
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <p className="text-lg font-black">{groups.length}</p>
+              <p className="text-[10px] font-black uppercase text-white/65">Spaces</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <p className="text-lg font-black">{createdCount}</p>
+              <p className="text-[10px] font-black uppercase text-white/65">Owned</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <p className="text-lg font-black">{totalMembers}</p>
+              <p className="text-[10px] font-black uppercase text-white/65">People</p>
+            </div>
+          </div>
         </div>
       </motion.section>
 
@@ -465,9 +469,9 @@ export default function MyGroups() {
                     <div className="pointer-events-none absolute bottom-0 left-0 h-12 w-12 rounded-bl-xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-8px_8px_24px_rgba(6,182,212,0.18)] transition group-hover:opacity-100 dark:border-cyan-800" />
                     <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/35 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
                     <div className="grid md:grid-cols-[120px_minmax(0,1fr)]">
-                      <div className="h-32 bg-gray-950 md:hidden">
+                      <div className="h-56 bg-gray-950 md:hidden">
                         {group.photo ? (
-                          <img src={resolveMediaUrl(group.photo)} alt={group.name} className="h-full w-full object-cover" />
+                          <img src={resolveMediaUrl(group.photo)} alt={group.name} className="h-full w-full object-contain" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: accent }}>
                             <ImageIcon size={30} className="text-white/90" />

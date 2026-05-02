@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
@@ -9,6 +9,7 @@ import {
   Clock,
   Code2,
   Crown,
+  Feather,
   Gamepad2,
   Keyboard,
   Lightbulb,
@@ -25,12 +26,14 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
-import BlockStackGame, { BlockGameLogo } from './BlockStackGame';
-import BugHuntGame, { BugHuntLogo } from './BugHuntGame';
-import FocusFlowGame, { FocusFlowLogo } from './FocusFlowGame';
 import GameRankBadge, { GameRankEmblem } from './GameRankBadge';
 import UserProfileModal from './UserProfileModal';
 import LoadingSpinner from './LoadingSpinner';
+
+const BlockStackGame = lazy(() => import('./BlockStackGame'));
+const BugHuntGame = lazy(() => import('./BugHuntGame'));
+const FocusFlowGame = lazy(() => import('./FocusFlowGame'));
+const FlappyBirdGame = lazy(() => import('./FlappyBirdGame'));
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -121,6 +124,38 @@ const TypingGameLogo = ({ compact = false }) => (
   <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-yellow-500/20 ring-1 ring-yellow-300/20`}>
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(250,204,21,0.5),transparent_34%),radial-gradient(circle_at_78%_75%,rgba(34,211,238,0.36),transparent_35%)]" />
     <Keyboard size={compact ? 24 : 30} className="relative z-10 text-yellow-100 drop-shadow" />
+  </div>
+);
+
+const FlappyGameLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-sky-950 text-white shadow-xl shadow-sky-500/20 ring-1 ring-sky-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(250,204,21,0.5),transparent_34%),radial-gradient(circle_at_80%_74%,rgba(34,211,238,0.38),transparent_35%)]" />
+    <Feather size={compact ? 24 : 30} className="relative z-10 rotate-12 text-yellow-100 drop-shadow" />
+  </div>
+);
+
+const BlockGameLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(34,211,238,0.45),transparent_34%),radial-gradient(circle_at_80%_70%,rgba(236,72,153,0.38),transparent_35%)]" />
+    <div className="relative grid grid-cols-3 gap-1">
+      {Array.from({ length: 9 }).map((_, index) => (
+        <span key={index} className={`h-2.5 w-2.5 rounded-[4px] ${[0, 1, 3, 4, 5, 8].includes(index) ? 'bg-gradient-to-br from-cyan-300 to-pink-500' : 'bg-white/15'}`} />
+      ))}
+    </div>
+  </div>
+);
+
+const BugHuntLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-rose-500/20 ring-1 ring-rose-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_22%,rgba(251,113,133,0.46),transparent_34%),radial-gradient(circle_at_78%_78%,rgba(34,211,238,0.3),transparent_35%)]" />
+    <Bug size={compact ? 25 : 31} className="relative z-10 text-rose-100 drop-shadow" />
+  </div>
+);
+
+const FocusFlowLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-emerald-500/20 ring-1 ring-emerald-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(52,211,153,0.42),transparent_34%),radial-gradient(circle_at_75%_80%,rgba(34,211,238,0.3),transparent_35%)]" />
+    <Target size={compact ? 25 : 31} className="relative z-10 text-emerald-100 drop-shadow" />
   </div>
 );
 
@@ -512,7 +547,7 @@ export default function OpsArena() {
     { icon: AlertTriangle, label: 'Pending Reports', value: issueStats.open, helper: isDeveloper ? 'Developer-only queue' : 'Visible to developers only', tone: 'from-rose-500 to-pink-600' },
     { icon: CheckCircle2, label: 'Approved', value: issueStats.resolved, helper: 'Accepted suggestions or fixes', tone: 'from-emerald-500 to-cyan-600' },
     { icon: Trophy, label: 'Arena Rank Score', value: summary?.stats?.highScore || 0, helper: `${summary?.stats?.totalPlays || 0} saved game runs`, tone: 'from-yellow-400 to-orange-600' },
-    { icon: Zap, label: 'Best Speed', value: `${summary?.typingStats?.bestWpm || 0} WPM`, helper: summary?.typingStats?.fastestMs ? `${formatElapsed(summary.typingStats.fastestMs)} fastest finish` : 'No timed run yet', tone: 'from-cyan-400 to-pink-600' }
+    { icon: Zap, label: 'Flappy Best', value: summary?.flappyStats?.highScore || 0, helper: summary?.flappyStats?.totalPlays ? `${summary.flappyStats.totalPlays} ranked flights` : 'No flight yet', tone: 'from-cyan-400 to-pink-600' }
   ];
 
   const gameCards = [
@@ -527,14 +562,14 @@ export default function OpsArena() {
       accent: 'from-cyan-400 to-pink-500'
     },
     {
-      key: 'typing',
-      title: 'Typing Sprint',
-      label: 'Speed Challenge',
-      description: 'Type project prompts with speed and accuracy.',
+      key: 'flappy',
+      title: 'Flappy Scholar',
+      label: 'Arcade Challenge',
+      description: 'Tap through study gates and keep the scholar flying.',
       status: 'Live',
-      best: summary?.typingStats?.highScore || 0,
-      Logo: TypingGameLogo,
-      accent: 'from-yellow-300 to-cyan-400'
+      best: summary?.flappyStats?.highScore || 0,
+      Logo: FlappyGameLogo,
+      accent: 'from-yellow-300 to-sky-400'
     },
     {
       key: 'bug-hunt',
@@ -604,7 +639,7 @@ export default function OpsArena() {
     {
       key: 'games',
       title: 'Enter Games',
-      description: 'WorkGrid Blocks, Typing Sprint, Bug Hunt, and Focus Flow.',
+      description: 'WorkGrid Blocks, Flappy Scholar, Bug Hunt, and Focus Flow.',
       icon: Gamepad2,
       tone: 'from-cyan-400 to-pink-500',
       meta: `${summary?.stats?.highScore || 0} best score`
@@ -771,8 +806,13 @@ export default function OpsArena() {
 
           <div className="mobile-game-active grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="min-w-0">
+            <Suspense fallback={<LoadingSpinner label="Loading game" />}>
             {activeGame === 'blocks' && (
-              <BlockStackGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} />
+              <BlockStackGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
+            )}
+
+            {activeGame === 'flappy' && (
+              <FlappyBirdGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
 
             {activeGame === 'typing' && (
@@ -825,7 +865,7 @@ export default function OpsArena() {
                               key={typingProgress.prompt}
                               initial={{ opacity: 0, y: 10, scale: 0.96 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
-                              className="mobile-typing-prompt mx-auto mt-2 max-w-3xl rounded-3xl bg-white px-4 py-4 text-left text-xl font-black leading-9 tracking-normal text-gray-950 shadow-sm ring-1 ring-gray-100 dark:bg-gray-900 dark:text-white dark:ring-gray-800 md:text-3xl md:leading-10"
+                              className="mobile-typing-prompt mx-auto mt-2 w-full max-w-none rounded-3xl bg-white px-4 py-4 text-left text-xl font-black leading-9 tracking-normal text-gray-950 shadow-sm ring-1 ring-gray-100 dark:bg-gray-900 dark:text-white dark:ring-gray-800 md:text-3xl md:leading-10"
                             >
                               {renderTypingPrompt()}
                             </motion.div>
@@ -899,12 +939,13 @@ export default function OpsArena() {
             )}
 
             {activeGame === 'bug-hunt' && (
-              <BugHuntGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} />
+              <BugHuntGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
 
             {activeGame === 'focus-flow' && (
-              <FocusFlowGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} />
+              <FocusFlowGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
+            </Suspense>
             </div>
 
             <aside className="grid min-w-0 gap-4 md:grid-cols-2 2xl:block 2xl:space-y-4">

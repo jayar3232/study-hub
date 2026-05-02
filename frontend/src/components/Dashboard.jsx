@@ -33,30 +33,18 @@ import LoadingSpinner from './LoadingSpinner';
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
 const cardVariants = {
-  hidden: { opacity: 0, y: 26, scale: 0.97 },
+  hidden: { opacity: 1, y: 0, scale: 1 },
   visible: { opacity: 1, y: 0, scale: 1 }
 };
 
-const revealViewport = { once: false, amount: 0.16, margin: '0px 0px -80px 0px' };
-
-const panelVariants = {
-  hidden: { opacity: 0, y: 34, scale: 0.975 },
-  visible: { opacity: 1, y: 0, scale: 1 }
-};
-
-const revealTransition = { type: 'spring', damping: 24, stiffness: 160 };
+const panelVariants = cardVariants;
+const revealViewport = { once: true, amount: 0.08 };
+const revealTransition = { duration: 0.12, ease: 'easeOut' };
 
 const RevealSection = ({ children, className = '', delay = 0 }) => (
-  <motion.section
-    variants={panelVariants}
-    initial="hidden"
-    whileInView="visible"
-    viewport={revealViewport}
-    transition={{ ...revealTransition, delay }}
-    className={className}
-  >
+  <section className={className} data-delay={delay}>
     {children}
-  </motion.section>
+  </section>
 );
 
 const parseDate = (value) => {
@@ -141,13 +129,7 @@ const formatDashboardDate = (value) => value.toLocaleDateString(undefined, {
 });
 
 const StatCard = ({ icon: Icon, label, value, helper, tone, delay }) => (
-  <motion.div
-    variants={cardVariants}
-    initial="hidden"
-    whileInView="visible"
-    viewport={revealViewport}
-    transition={{ delay, type: 'spring', damping: 22, stiffness: 240 }}
-    whileHover={{ y: -5, scale: 1.01 }}
+  <div
     className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60"
   >
     <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone} opacity-80`} />
@@ -159,16 +141,14 @@ const StatCard = ({ icon: Icon, label, value, helper, tone, delay }) => (
         <p className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{value}</p>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
       </div>
-      <motion.div
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay }}
+      <div
         className={`rounded-xl bg-gradient-to-br ${tone} p-3 text-white shadow-lg`}
       >
         <Icon size={22} />
-      </motion.div>
+      </div>
     </div>
     <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/45 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
-  </motion.div>
+  </div>
 );
 
 const TaskRow = ({ task, onOpen }) => {
@@ -176,11 +156,9 @@ const TaskRow = ({ task, onOpen }) => {
   const dueSoon = isDueSoon(task);
 
   return (
-    <motion.button
+    <button
       type="button"
       onClick={onOpen}
-      whileHover={{ x: 5, scale: 1.006 }}
-      whileTap={{ scale: 0.996 }}
       className="group/row relative flex w-full items-center gap-3 overflow-hidden rounded-xl border border-gray-100 bg-white p-3 text-left transition hover:border-pink-200 hover:bg-pink-50/50 hover:shadow-lg hover:shadow-pink-500/10 dark:border-gray-800 dark:bg-gray-950/60 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
     >
       <span className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-gradient-to-b from-cyan-400 to-pink-500 opacity-0 transition group-hover/row:opacity-100" />
@@ -197,7 +175,7 @@ const TaskRow = ({ task, onOpen }) => {
         {task.priority || 'medium'}
       </span>
       <ArrowRight size={16} className="relative shrink-0 text-gray-400 transition group-hover/row:translate-x-1 group-hover/row:text-pink-500" />
-    </motion.button>
+    </button>
   );
 };
 
@@ -658,7 +636,7 @@ export default function Dashboard() {
           {
             icon: Trophy,
             title: 'Fix Arena',
-            detail: 'Submit member reports, review fixes, and play Typing Sprint.',
+            detail: 'Submit member reports, review fixes, and play Flappy Scholar.',
             action: 'Open arena',
             path: '/arena',
             tone: 'from-yellow-300 via-pink-500 to-cyan-400'

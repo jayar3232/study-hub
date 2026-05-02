@@ -327,6 +327,30 @@ router.put('/:messageId/pin', auth, async (req, res) => {
   }
 });
 
+router.put('/:messageId', auth, async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ msg: 'Message not found' });
+    if (normalizeId(message.from) !== req.user) return res.status(403).json({ msg: 'Only the sender can edit this message' });
+    if (message.unsent) return res.status(400).json({ msg: 'Cannot edit an unsent message' });
+    if (message.fileUrl && !message.text?.trim()) return res.status(400).json({ msg: 'Only text messages can be edited' });
+
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ msg: 'Message cannot be empty' });
+    if (text.length > 4000) return res.status(400).json({ msg: 'Message is too long' });
+
+    message.text = text;
+    message.editedAt = new Date();
+    await message.save();
+
+    const populatedMessage = await populateMessage(message._id);
+    emitMessageUpdated(req, populatedMessage);
+    res.json(populatedMessage);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.post('/:messageId/react', auth, async (req, res) => {
   try {
     const { emoji } = req.body;

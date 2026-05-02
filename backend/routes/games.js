@@ -489,7 +489,9 @@ router.get('/summary/me', auth, async (req, res) => {
       myBugHuntSessions,
       bugHuntLeaderboardSessions,
       myFocusFlowSessions,
-      focusFlowLeaderboardSessions
+      focusFlowLeaderboardSessions,
+      myFlappySessions,
+      flappyLeaderboardSessions
     ] = await Promise.all([
       GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
       GameSession.find({ completedAt: { $ne: null } })
@@ -515,6 +517,11 @@ router.get('/summary/me', auth, async (req, res) => {
       GameSession.find({ gameKey: 'focus-flow', completedAt: { $ne: null } })
         .populate('userId', 'name email course avatar')
         .sort({ score: -1 })
+        .limit(300),
+      GameSession.find({ userId: req.user, gameKey: 'flappy-bird', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'flappy-bird', completedAt: { $ne: null } })
+        .populate('userId', 'name email course avatar')
+        .sort({ score: -1 })
         .limit(300)
     ]);
 
@@ -523,11 +530,13 @@ router.get('/summary/me', auth, async (req, res) => {
     const blockLeaderboard = buildGameLeaderboard(blockLeaderboardSessions);
     const bugHuntLeaderboard = buildGameLeaderboard(bugHuntLeaderboardSessions);
     const focusFlowLeaderboard = buildGameLeaderboard(focusFlowLeaderboardSessions);
+    const flappyLeaderboard = buildGameLeaderboard(flappyLeaderboardSessions);
     const myRank = leaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myTypingRank = typingLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBlockRank = blockLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBugHuntRank = bugHuntLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myFocusFlowRank = focusFlowLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myFlappyRank = flappyLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
 
     res.json({
       stats: buildGameStats(mySessions),
@@ -535,16 +544,19 @@ router.get('/summary/me', auth, async (req, res) => {
       blockStats: buildGameStats(myBlockSessions),
       bugHuntStats: buildGameStats(myBugHuntSessions),
       focusFlowStats: buildGameStats(myFocusFlowSessions),
+      flappyStats: buildGameStats(myFlappySessions),
       leaderboard: leaderboard.slice(0, 15),
       typingLeaderboard: typingLeaderboard.slice(0, 15),
       blockLeaderboard: blockLeaderboard.slice(0, 15),
       bugHuntLeaderboard: bugHuntLeaderboard.slice(0, 15),
       focusFlowLeaderboard: focusFlowLeaderboard.slice(0, 15),
+      flappyLeaderboard: flappyLeaderboard.slice(0, 15),
       myRank,
       myTypingRank,
       myBlockRank,
       myBugHuntRank,
       myFocusFlowRank,
+      myFlappyRank,
       ranks: GAME_RANKS,
       decisions: decisionGuide
     });
@@ -824,7 +836,7 @@ router.post('/typing-sprint/:sessionId/submit', auth, async (req, res) => {
 
 router.post('/block-stack/submit', auth, async (req, res) => {
   try {
-    const score = clampNumber(req.body.score, 0, 100000);
+    const score = clampNumber(req.body.score, 0, 1000000);
     if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
 
     const moves = clampNumber(req.body.moves, 1, 1000, 1);
@@ -895,7 +907,7 @@ router.post('/block-stack/submit', auth, async (req, res) => {
 
 router.post('/bug-hunt/submit', auth, async (req, res) => {
   try {
-    const score = clampNumber(req.body.score, 0, 100000);
+    const score = clampNumber(req.body.score, 0, 1000000);
     if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
 
     const foundCount = clampNumber(req.body.foundCount, 0, 50);
@@ -944,15 +956,16 @@ router.post('/bug-hunt/submit', auth, async (req, res) => {
 
 router.post('/focus-flow/submit', auth, async (req, res) => {
   try {
-    const score = clampNumber(req.body.score, 0, 100000);
+    const score = clampNumber(req.body.score, 0, 1000000);
     if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
 
-    const hits = clampNumber(req.body.hits, 0, 100);
-    const total = clampNumber(req.body.total, 1, 100, 1);
-    const perfects = clampNumber(req.body.perfects, 0, 100);
-    const bestStreak = clampNumber(req.body.bestStreak, 0, 100);
+    const hits = clampNumber(req.body.hits, 0, 1000);
+    const total = clampNumber(req.body.total, 1, 1000, 1);
+    const perfects = clampNumber(req.body.perfects, 0, 1000);
+    const bestStreak = clampNumber(req.body.bestStreak, 0, 1000);
     const accuracy = clampNumber(req.body.accuracy, 0, 100);
-    const elapsedMs = clampNumber(total * 1800, 1000, 5 * 60 * 1000, 1000);
+    const misses = clampNumber(req.body.misses, 0, 1000);
+    const elapsedMs = clampNumber(req.body.elapsedMs || (total * 1800), 1000, 20 * 60 * 1000, 1000);
 
     const session = await createCompletedGameSession({
       userId: req.user,
@@ -981,11 +994,56 @@ router.post('/focus-flow/submit', auth, async (req, res) => {
         total,
         perfects,
         bestStreak,
+        misses,
         accuracy,
         elapsedMs
       },
       stats: buildGameStats(mySessions),
       focusFlowStats: buildGameStats(myFocusFlowSessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/flappy-bird/submit', auth, async (req, res) => {
+  try {
+    const score = clampNumber(req.body.score, 0, 1000000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
+
+    const pipesPassed = clampNumber(req.body.pipesPassed, 0, 1000);
+    const elapsedMs = clampNumber(req.body.elapsedMs, 1000, 20 * 60 * 1000, 1000);
+    const accuracy = clampNumber(70 + Math.min(30, pipesPassed * 2), 0, 100);
+
+    const session = await createCompletedGameSession({
+      userId: req.user,
+      gameKey: 'flappy-bird',
+      title: 'Flappy Scholar',
+      brief: 'Tap through study gates and keep the scholar flying.',
+      signal: `Passed ${pipesPassed} gates. Flight time: ${(elapsedMs / 1000).toFixed(1)}s.`,
+      score,
+      accuracy,
+      correctCount: pipesPassed,
+      totalCount: Math.max(1, pipesPassed),
+      maxStreak: pipesPassed,
+      elapsedMs
+    });
+
+    const [mySessions, myFlappySessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'flappy-bird', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.status(201).json({
+      result: {
+        sessionId: session._id,
+        score,
+        pipesPassed,
+        accuracy,
+        elapsedMs
+      },
+      stats: buildGameStats(mySessions),
+      flappyStats: buildGameStats(myFlappySessions)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

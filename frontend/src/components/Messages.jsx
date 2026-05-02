@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft,
+  AtSign,
+  Bell,
+  BellOff,
   CheckCheck,
+  ChevronRight,
+  Edit3,
   Download,
   FileText,
   Image as ImageIcon,
+  Info,
   Loader2,
   MessageCircle,
   Mic,
@@ -14,21 +19,24 @@ import {
   Pin,
   PinOff,
   Plus,
+  Palette,
   Reply,
   Search,
   Send,
+  Settings,
   Smile,
+  Star,
   StickyNote,
   Square,
   Trash2,
   User,
+  Users,
   Video,
   Volume2,
   VolumeX,
   X
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
-import EmojiPicker from 'emoji-picker-react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
@@ -79,14 +87,46 @@ const getMessageSnippet = (message) => {
   return 'Message';
 };
 
-const messageVariants = {
-  hidden: { opacity: 0, y: 12, scale: 0.96 },
-  visible: { opacity: 1, y: 0, scale: 1 },
-  sent: {
-    opacity: 1,
-    y: [10, -3, 0],
-    scale: [0.96, 1.035, 1],
-    filter: ['brightness(1.08)', 'brightness(1.18)', 'brightness(1)']
+const readStoredIdSet = (key) => {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    return new Set(JSON.parse(window.localStorage.getItem(key) || '[]').map(String));
+  } catch {
+    return new Set();
+  }
+};
+
+const readStoredObject = (key) => {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(key) || '{}') || {};
+  } catch {
+    return {};
+  }
+};
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '✅'];
+
+const CHAT_THEMES = {
+  default: {
+    label: 'StudentHub',
+    own: 'from-pink-600 to-slate-800',
+    accent: 'text-pink-600 dark:text-pink-300'
+  },
+  blue: {
+    label: 'Focus Blue',
+    own: 'from-blue-600 to-cyan-600',
+    accent: 'text-blue-600 dark:text-blue-300'
+  },
+  violet: {
+    label: 'Violet',
+    own: 'from-violet-600 to-fuchsia-600',
+    accent: 'text-violet-600 dark:text-violet-300'
+  },
+  emerald: {
+    label: 'Emerald',
+    own: 'from-emerald-600 to-teal-600',
+    accent: 'text-emerald-600 dark:text-emerald-300'
   }
 };
 
@@ -95,10 +135,21 @@ export default function Messages() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState([]);
   const [conversationSearch, setConversationSearch] = useState('');
+  const [conversationFilter, setConversationFilter] = useState('all');
+  const [favoriteConversationIds, setFavoriteConversationIds] = useState(() => readStoredIdSet('studenthub-favorite-chats'));
+  const [mutedConversationIds, setMutedConversationIds] = useState(() => readStoredIdSet('studenthub-muted-chats'));
+  const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet('studenthub-pinned-chats'));
+  const [conversationNicknames, setConversationNicknames] = useState(() => readStoredObject('studenthub-chat-nicknames'));
+  const [conversationThemes, setConversationThemes] = useState(() => readStoredObject('studenthub-chat-themes'));
   const [selectedUser, setSelectedUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [messageSearch, setMessageSearch] = useState('');
+  const [messageSearchIndex, setMessageSearchIndex] = useState(0);
+  const [selectedMessageInfo, setSelectedMessageInfo] = useState(null);
+  const [unreadDividerMessageId, setUnreadDividerMessageId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -139,9 +190,64 @@ export default function Messages() {
   const typingUsersTimeoutRef = useRef({});
   const selectedUserRef = useRef(null);
   const messageRefs = useRef({});
+  const reactionPressTimerRef = useRef(null);
 
   const currentUserId = getEntityId(user);
   const targetUserId = searchParams.get('user');
+
+  const toggleStoredId = useCallback((storageKey, setter, rawId) => {
+    const id = getEntityId(rawId);
+    if (!id) return;
+
+    setter(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(storageKey, JSON.stringify([...next]));
+      }
+
+      return next;
+    });
+  }, []);
+
+  const toggleFavoriteConversation = useCallback((rawId) => {
+    toggleStoredId('studenthub-favorite-chats', setFavoriteConversationIds, rawId);
+  }, [toggleStoredId]);
+
+  const toggleMuteConversation = useCallback((rawId) => {
+    toggleStoredId('studenthub-muted-chats', setMutedConversationIds, rawId);
+  }, [toggleStoredId]);
+
+  const togglePinnedConversation = useCallback((rawId) => {
+    toggleStoredId('studenthub-pinned-chats', setPinnedConversationIds, rawId);
+  }, [toggleStoredId]);
+
+  const updateStoredObject = useCallback((storageKey, setter, rawId, value) => {
+    const id = getEntityId(rawId);
+    if (!id) return;
+
+    setter(prev => {
+      const next = { ...prev };
+      if (!value) delete next[id];
+      else next[id] = value;
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(storageKey, JSON.stringify(next));
+      }
+
+      return next;
+    });
+  }, []);
+
+  const updateConversationNickname = useCallback((rawId, value) => {
+    updateStoredObject('studenthub-chat-nicknames', setConversationNicknames, rawId, value.trim());
+  }, [updateStoredObject]);
+
+  const updateConversationTheme = useCallback((rawId, value) => {
+    updateStoredObject('studenthub-chat-themes', setConversationThemes, rawId, value === 'default' ? '' : value);
+  }, [updateStoredObject]);
 
   const clearTargetUserParam = useCallback(() => {
     setSearchParams(prev => {
@@ -154,6 +260,8 @@ export default function Messages() {
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
+
+  useEffect(() => () => clearReactionPressTimer(), []);
 
   const scrollToBottom = useCallback((behavior = 'smooth') => {
     requestAnimationFrame(() => {
@@ -252,8 +360,16 @@ export default function Messages() {
     setLoading(true);
     try {
       const res = await api.get(`/messages/${id}`);
-      setMessages(res.data);
-      rememberLastSeen(res.data.flatMap(message => [message.from, message.to]));
+      const loadedMessages = res.data || [];
+      setMessages(loadedMessages);
+      const firstUnreadIncoming = loadedMessages.find(message => (
+        getEntityId(message.from) === id
+        && getEntityId(message.to) === currentUserId
+        && !message.read
+        && !message.unsent
+      ));
+      setUnreadDividerMessageId(getEntityId(firstUnreadIncoming));
+      rememberLastSeen(loadedMessages.flatMap(message => [message.from, message.to]));
       await markChatAsRead(id);
       scrollToBottom('auto');
     } catch (err) {
@@ -261,7 +377,7 @@ export default function Messages() {
     } finally {
       setLoading(false);
     }
-  }, [markChatAsRead, scrollToBottom]);
+  }, [currentUserId, markChatAsRead, scrollToBottom]);
 
   useEffect(() => {
     const load = async () => {
@@ -438,12 +554,14 @@ export default function Messages() {
         scrollToBottom();
 
         if (fromId !== currentUserId) {
-          if (soundEnabled) playUiSound('message', 0.5);
+          if (soundEnabled && !mutedConversationIds.has(fromId)) playUiSound('message', 0.5);
           markChatAsRead(fromId);
         }
       } else if (toId === currentUserId && fromId !== currentUserId) {
-        if (soundEnabled) playUiSound('message', 0.5);
-        toast.success(`New message from ${getDisplayName(message.from, 'someone')}`);
+        if (!mutedConversationIds.has(fromId)) {
+          if (soundEnabled) playUiSound('message', 0.5);
+          toast.success(`New message from ${getDisplayName(message.from, 'someone')}`);
+        }
       }
     };
 
@@ -539,6 +657,7 @@ export default function Messages() {
     currentUserId,
     fetchConversations,
     markChatAsRead,
+    mutedConversationIds,
     scrollToBottom,
     soundEnabled
   ]);
@@ -552,6 +671,10 @@ export default function Messages() {
     }
 
     setReplyingTo(null);
+    setEditingMessage(null);
+    setMessageSearch('');
+    setMessageSearchIndex(0);
+    setSelectedMessageInfo(null);
     setEmojiPickerMessageId(null);
     setActionMenuMessageId(null);
     setShowPinnedPanel(false);
@@ -631,6 +754,44 @@ export default function Messages() {
       setSending(false);
       setUploadProgress(0);
     }
+  };
+
+  const handleEditMessage = async () => {
+    const messageId = getEntityId(editingMessage);
+    const text = newMessage.trim();
+    if (!messageId || !text || sending) return;
+
+    setSending(true);
+    try {
+      const res = await api.put(`/messages/${messageId}`, { text });
+      setMessages(prev => prev.map(message => getEntityId(message) === messageId ? res.data : message));
+      setEditingMessage(null);
+      setNewMessage('');
+      setActionMenuMessageId(null);
+      fetchConversations();
+      toast.success('Message edited');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to edit message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const submitComposer = () => {
+    if (editingMessage) {
+      handleEditMessage();
+      return;
+    }
+    sendMessage();
+  };
+
+  const startEditMessage = (message) => {
+    setEditingMessage(message);
+    setReplyingTo(null);
+    clearAttachment();
+    setNewMessage(message.text || '');
+    setActionMenuMessageId(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const handleSaveNote = async (event) => {
@@ -794,7 +955,7 @@ export default function Messages() {
   const handleDeleteConversation = async () => {
     const selectedId = getEntityId(selectedUser);
     if (!selectedId) return;
-    if (!window.confirm(`Delete conversation with ${selectedUser.name}? This only removes it for you.`)) return;
+    if (!window.confirm(`Delete conversation with ${selectedDisplayName}? This only removes it for you.`)) return;
 
     try {
       await api.delete(`/messages/conversation/${selectedId}`);
@@ -837,6 +998,39 @@ export default function Messages() {
     }
   };
 
+  const isTouchReactionMode = () => (
+    typeof window !== 'undefined'
+    && window.matchMedia?.('(pointer: coarse)').matches
+  );
+
+  const clearReactionPressTimer = () => {
+    if (reactionPressTimerRef.current) {
+      clearTimeout(reactionPressTimerRef.current);
+      reactionPressTimerRef.current = null;
+    }
+  };
+
+  const startReactionPress = (messageId) => {
+    if (!isTouchReactionMode()) return;
+    clearReactionPressTimer();
+    reactionPressTimerRef.current = setTimeout(() => {
+      setActionMenuMessageId(null);
+      setEmojiPickerMessageId(messageId);
+      playUiSound('click', 0.1);
+    }, 430);
+  };
+
+  const jumpToMessage = (messageId) => {
+    const id = getEntityId(messageId);
+    if (!id) return;
+    setFocusedMessageId(id);
+    setShowPinnedPanel(false);
+    requestAnimationFrame(() => {
+      messageRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    setTimeout(() => setFocusedMessageId(null), 1800);
+  };
+
   const formatMessageTime = (date) => {
     const msgDate = new Date(date);
     const now = new Date();
@@ -875,21 +1069,44 @@ export default function Messages() {
     setTimeout(() => setFocusedMessageId(null), 1800);
   };
 
+  const unreadTotal = useMemo(
+    () => conversations.reduce((total, conversation) => total + (conversation.unreadCount || 0), 0),
+    [conversations]
+  );
+
   const filteredConversations = useMemo(() => {
     const query = conversationSearch.trim().toLowerCase();
-    if (!query) return conversations;
 
-    return conversations.filter(({ user: conversationUser, lastMessage }) => {
+    return conversations.filter(({ user: conversationUser, lastMessage, unreadCount }) => {
+      const conversationId = getEntityId(conversationUser);
+      if (conversationFilter === 'unread' && !unreadCount) return false;
+      if (conversationFilter === 'favorites' && !favoriteConversationIds.has(conversationId)) return false;
+      if (conversationFilter === 'muted' && !mutedConversationIds.has(conversationId)) return false;
+      if (conversationFilter === 'pinned' && !pinnedConversationIds.has(conversationId)) return false;
+      if (!query) return true;
+
       return (
         conversationUser?.name?.toLowerCase().includes(query) ||
         conversationUser?.email?.toLowerCase().includes(query) ||
         lastMessage?.toLowerCase().includes(query)
       );
+    }).sort((a, b) => {
+      const aPinned = pinnedConversationIds.has(getEntityId(a.user));
+      const bPinned = pinnedConversationIds.has(getEntityId(b.user));
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      return new Date(b.lastTime || 0) - new Date(a.lastTime || 0);
     });
-  }, [conversationSearch, conversations]);
+  }, [conversationFilter, conversationSearch, conversations, favoriteConversationIds, mutedConversationIds, pinnedConversationIds]);
 
   const selectedUserId = getEntityId(selectedUser);
   const selectedIsOnline = selectedUserId ? onlineUsers.has(selectedUserId) : false;
+  const selectedIsFavorite = selectedUserId ? favoriteConversationIds.has(selectedUserId) : false;
+  const selectedIsMuted = selectedUserId ? mutedConversationIds.has(selectedUserId) : false;
+  const selectedIsPinned = selectedUserId ? pinnedConversationIds.has(selectedUserId) : false;
+  const selectedNickname = selectedUserId ? conversationNicknames[selectedUserId] || '' : '';
+  const selectedDisplayName = selectedNickname || selectedUser?.name || 'User';
+  const selectedThemeKey = selectedUserId ? conversationThemes[selectedUserId] || 'default' : 'default';
+  const selectedTheme = CHAT_THEMES[selectedThemeKey] || CHAT_THEMES.default;
   const selectedLastSeen = selectedUserId ? lastSeenByUser[selectedUserId] || selectedUser?.lastSeen : null;
   const offlineText = selectedLastSeen
     ? `Offline ${formatDistanceToNow(new Date(selectedLastSeen), { addSuffix: true })}`
@@ -901,6 +1118,50 @@ export default function Messages() {
       : selectedIsOnline
         ? 'Online now'
         : offlineText;
+
+  const conversationFilters = useMemo(() => ([
+    { id: 'all', label: 'All', count: conversations.length },
+    { id: 'pinned', label: 'Pinned', count: pinnedConversationIds.size },
+    { id: 'unread', label: 'Unread', count: unreadTotal },
+    { id: 'favorites', label: 'Favorites', count: favoriteConversationIds.size },
+    { id: 'muted', label: 'Muted', count: mutedConversationIds.size }
+  ]), [conversations.length, favoriteConversationIds.size, mutedConversationIds.size, pinnedConversationIds.size, unreadTotal]);
+
+  const messageSearchMatches = useMemo(() => {
+    const query = messageSearch.trim().toLowerCase();
+    if (!query) return [];
+    return messages
+      .filter(message => !message.unsent && getMessageSnippet(message).toLowerCase().includes(query))
+      .map(message => getEntityId(message))
+      .filter(Boolean);
+  }, [messageSearch, messages]);
+
+  useEffect(() => {
+    setMessageSearchIndex(0);
+  }, [messageSearch, selectedUserId]);
+
+  const goToSearchMatch = (direction = 0) => {
+    if (!messageSearchMatches.length) return;
+    const nextIndex = direction === 0
+      ? messageSearchIndex
+      : (messageSearchIndex + direction + messageSearchMatches.length) % messageSearchMatches.length;
+    setMessageSearchIndex(nextIndex);
+    jumpToMessage(messageSearchMatches[nextIndex]);
+  };
+
+  const sharedMediaItems = useMemo(() => (
+    messages
+      .filter(message => message.fileUrl && ['image', 'video'].includes(message.fileType))
+      .slice(-8)
+      .reverse()
+  ), [messages]);
+
+  const sharedFileItems = useMemo(() => (
+    messages
+      .filter(message => message.fileUrl && !['image', 'video'].includes(message.fileType))
+      .slice(-5)
+      .reverse()
+  ), [messages]);
 
   useEffect(() => {
     if (!selectedUserId || !socket) return undefined;
@@ -971,14 +1232,17 @@ export default function Messages() {
     const replySender = replySenderId === currentUserId ? 'You' : getDisplayName(message.replyTo.from, selectedUser?.name || 'User');
 
     return (
-      <div className={`mb-1 rounded-xl border-l-2 px-3 py-2 text-xs ${
+      <button
+        type="button"
+        onClick={() => jumpToMessage(message.replyTo)}
+        className={`mb-1 block w-full rounded-xl border-l-2 px-3 py-2 text-left text-xs ${
         isMe
           ? 'border-white/70 bg-white/15 text-white/90'
           : 'border-pink-400 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
       }`}>
         <div className="font-semibold">{replySender}</div>
         <div className="line-clamp-2 opacity-80">{getMessageSnippet(message.replyTo)}</div>
-      </div>
+      </button>
     );
   };
 
@@ -1064,181 +1328,215 @@ export default function Messages() {
   }
 
   return (
-    <div className="mobile-chat-shell mobile-messenger-shell overflow-hidden border border-slate-200/80 bg-white/92 shadow-2xl shadow-slate-300/25 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/88 dark:shadow-black/20">
-      <div className="flex h-full flex-col">
-        <div className={`${selectedUser ? 'hidden md:block' : ''} relative overflow-hidden border-b border-slate-200/80 bg-white/92 px-4 py-3 text-slate-950 dark:border-gray-800 dark:bg-gray-950/92 dark:text-white sm:px-5 sm:py-4`}>
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="relative z-10 flex flex-wrap items-center justify-between gap-3"
-          >
-            <div>
-              <h2 className="text-xl font-bold tracking-normal md:text-2xl">Messages</h2>
-              <p className="hidden text-sm text-slate-500 dark:text-gray-400 sm:block">Realtime chats, online status, and seen receipts</p>
+    <div className="messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20">
+      <div className="flex h-full min-h-0">
+        <aside className="messages-tools-rail hidden w-60 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
+          <div className="flex items-center gap-3 px-1 py-2">
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-gray-900 dark:ring-gray-800">
+              <img src="/new-logo.png" alt="StudentHub" className="h-full w-full object-cover" />
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600 backdrop-blur dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
-              <span className={`h-2.5 w-2.5 rounded-full ${
-                socketConnected
-                  ? 'bg-emerald-300 shadow-[0_0_0_4px_rgba(110,231,183,0.18)]'
-                  : 'bg-amber-300 shadow-[0_0_0_4px_rgba(252,211,77,0.18)]'
-              }`} />
-              {socketConnected ? `${onlineUsers.size} online` : 'Connecting'}
+            <div className="min-w-0">
+              <p className="truncate text-lg font-black text-slate-950 dark:text-white">StudentHub</p>
+              <p className="truncate text-[10px] font-black uppercase text-slate-400">Messenger</p>
             </div>
-          </motion.div>
-          <div className="absolute -right-10 -top-20 h-40 w-40 rounded-full bg-pink-500/8 blur-2xl dark:bg-pink-400/10" />
-        </div>
+          </div>
 
-        <div className="flex min-h-0 flex-1">
-          <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list w-full flex-col border-r border-slate-200/80 bg-white/90 dark:border-gray-800 dark:bg-gray-950/80 md:w-[21rem] md:max-w-sm md:flex`}>
-            <div className="border-b border-gray-200/80 p-4 dark:border-gray-800">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageCircle size={20} className="text-pink-600 dark:text-pink-300" />
-                  <h3 className="font-semibold text-gray-950 dark:text-white">Chats</h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setSoundEnabled(value => !value)}
-                    className="rounded-full p-2 text-gray-500 transition hover:bg-slate-100 hover:text-pink-600 dark:hover:bg-gray-800 dark:hover:text-pink-300"
-                    aria-label={soundEnabled ? 'Mute message sound' : 'Enable message sound'}
-                  >
-                    {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                  </button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowModal(true)}
-                    className="rounded-full bg-slate-950 p-2 text-white shadow-lg shadow-slate-950/20 transition hover:bg-pink-700 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
-                    aria-label="Start new chat"
-                  >
-                    <Plus size={18} />
-                  </motion.button>
-                </div>
-              </div>
+          <nav className="mt-6 space-y-1">
+            {[
+              { label: 'Chats', icon: MessageCircle, active: true, count: unreadTotal },
+              { label: 'Mentions', icon: AtSign, count: 0 },
+              { label: 'All Contacts', icon: Users, count: conversations.length },
+              { label: 'Favorites', icon: Star, count: favoriteConversationIds.size },
+              { label: 'Pinned', icon: Pin, count: pinnedMessages.length },
+              { label: 'Settings', icon: Settings }
+            ].map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    if (item.label === 'Favorites') setConversationFilter('favorites');
+                    if (item.label === 'Pinned') setShowPinnedPanel(value => !value);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold ${
+                    item.active
+                      ? 'bg-white text-pink-600 shadow-sm ring-1 ring-slate-200 dark:bg-gray-900 dark:text-pink-300 dark:ring-gray-800'
+                      : 'text-slate-600 hover:bg-white/80 hover:text-slate-950 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Icon size={19} />
+                  <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+                  {item.count > 0 && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-gray-800 dark:text-gray-300">
+                      {item.count > 99 ? '99+' : item.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
 
-              <form onSubmit={handleSaveNote} className="mb-3 rounded-2xl border border-pink-100 bg-pink-50/70 p-3 dark:border-pink-900/50 dark:bg-pink-950/20">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                    <StickyNote size={16} className="text-pink-600 dark:text-pink-300" />
-                    Your note
-                  </span>
-                  <span className="text-[11px] font-semibold text-pink-700 dark:text-pink-300">2 days</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={noteText}
-                    onChange={event => setNoteText(event.target.value.slice(0, 140))}
-                    placeholder="Feeling focused today..."
-                    className="min-w-0 flex-1 rounded-full border border-white bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  />
-                  <button
-                    type="submit"
-                    disabled={savingNote || !noteText.trim()}
-                    className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-45 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
-                  >
-                    Post
-                  </button>
-                </div>
-                {myNote && (
-                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-300">
-                    <span className="line-clamp-1">Live: {myNote.text}</span>
-                    <button type="button" onClick={handleClearNote} disabled={savingNote} className="font-semibold text-rose-500 hover:text-rose-600">
-                      Clear
-                    </button>
-                  </div>
-                )}
-              </form>
-
-              <div className="relative">
-                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={conversationSearch}
-                  onChange={event => setConversationSearch(event.target.value)}
-                  placeholder="Search messages"
-                  className="w-full rounded-full border border-gray-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
-                />
-              </div>
+          <form onSubmit={handleSaveNote} className="mt-auto rounded-3xl border border-slate-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-2 text-sm font-black text-slate-950 dark:text-white">
+                <StickyNote size={16} className="text-pink-600 dark:text-pink-300" />
+                Your note
+              </span>
+              <span className="text-[11px] font-bold text-slate-400">2 days</span>
             </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {filteredConversations.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center px-6 text-center text-gray-500">
-                  <motion.div
-                    animate={{ y: [0, -6, 0] }}
-                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                    className="mb-3 rounded-full bg-pink-50 p-4 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300"
-                  >
-                    <MessageCircle size={34} />
-                  </motion.div>
-                  <p className="font-medium text-gray-700 dark:text-gray-200">No conversations yet</p>
-                  <p className="mt-1 text-sm">Tap the plus button to start one.</p>
-                </div>
-              ) : (
-                <AnimatePresence initial={false}>
-                  {filteredConversations.map((conversation) => {
-                    const otherUser = conversation.user;
-                    const otherUserId = getEntityId(otherUser);
-                    const isOnline = onlineUsers.has(otherUserId);
-                    const isTyping = typingUsers.has(otherUserId);
-                    const isActive = selectedUserId === otherUserId;
-                    const activeNote = userNotes[otherUserId];
-
-                    return (
-                      <motion.button
-                        key={otherUserId}
-                        layout
-                        initial={{ opacity: 0, x: -12 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -12 }}
-                        whileHover={{ x: 2 }}
-                        onClick={() => setSelectedUser(otherUser)}
-                        className={`mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${
-                          isActive
-                            ? 'bg-pink-50 shadow-sm ring-1 ring-pink-100 dark:bg-pink-950/30 dark:ring-pink-900/50'
-                            : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
-                        }`}
-                      >
-                        <div className="relative shrink-0">
-                          {renderAvatar(otherUser)}
-                          <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
-                            isOnline ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.16)]' : 'bg-gray-300 dark:bg-gray-600'
-                          }`} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <div className="truncate font-semibold text-gray-950 dark:text-white">{otherUser.name}</div>
-                              {isOnline && (
-                                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300">
-                                  Online
-                                </span>
-                              )}
-                            </div>
-                            <div className="shrink-0 text-xs text-gray-400">{formatMessageTime(conversation.lastTime)}</div>
-                          </div>
-                          <div className="mt-1 flex items-center justify-between gap-2">
-                            <p className={`truncate text-sm ${isTyping ? 'font-semibold text-pink-600 dark:text-pink-300' : conversation.unreadCount ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
-                              {isTyping ? 'Typing...' : conversation.lastMessage}
-                            </p>
-                            {conversation.unreadCount > 0 && (
-                              <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-pink-600 px-1.5 text-xs font-bold text-white">
-                                {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
-                              </span>
-                            )}
-                          </div>
-                          {activeNote && (
-                            <p className="mt-1 line-clamp-1 rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-pink-700 dark:bg-gray-950/70 dark:text-pink-300">
-                              Note: {activeNote.text}
-                            </p>
-                          )}
-                        </div>
-                      </motion.button>
-                    );
-                  })}
-                </AnimatePresence>
+            <input
+              value={noteText}
+              onChange={event => setNoteText(event.target.value.slice(0, 140))}
+              placeholder="Share a quick note..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+            />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <button
+                type="submit"
+                disabled={savingNote || !noteText.trim()}
+                className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white disabled:opacity-45 dark:bg-white dark:text-gray-950"
+              >
+                Post
+              </button>
+              {myNote && (
+                <button type="button" onClick={handleClearNote} disabled={savingNote} className="text-xs font-black text-rose-500">
+                  Clear
+                </button>
               )}
             </div>
-          </aside>
+          </form>
+        </aside>
+
+        <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[23rem] md:max-w-none md:flex xl:w-[24rem]`}>
+          <div className="border-b border-gray-200/80 p-4 dark:border-gray-800">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-black tracking-normal text-gray-950 dark:text-white">Chats</h2>
+                <p className="text-sm text-slate-500 dark:text-gray-400">
+                  {socketConnected ? `${onlineUsers.size} online now` : 'Connecting to live chat'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSoundEnabled(value => !value)}
+                  className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-pink-600 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-pink-300"
+                  aria-label={soundEnabled ? 'Mute message sound' : 'Enable message sound'}
+                >
+                  {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(true)}
+                  className="grid h-10 w-10 place-items-center rounded-2xl bg-pink-600 text-white shadow-sm hover:bg-pink-700"
+                  aria-label="Start new chat"
+                >
+                  <Plus size={19} />
+                </button>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={conversationSearch}
+                onChange={event => setConversationSearch(event.target.value)}
+                placeholder="Search conversations"
+                className="w-full rounded-2xl border border-gray-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
+              />
+            </div>
+
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {conversationFilters.map(filter => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  onClick={() => setConversationFilter(filter.id)}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-black ${
+                    conversationFilter === filter.id
+                      ? 'bg-pink-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {filter.label}
+                  {filter.count > 0 && <span className="rounded-full bg-white/18 px-1.5">{filter.count > 99 ? '99+' : filter.count}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {filteredConversations.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center text-gray-500">
+                <div className="mb-3 rounded-full bg-pink-50 p-4 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300">
+                  <MessageCircle size={34} />
+                </div>
+                <p className="font-bold text-gray-700 dark:text-gray-200">No conversations found</p>
+                <p className="mt-1 text-sm">Start a chat or try another filter.</p>
+              </div>
+            ) : (
+              filteredConversations.map((conversation) => {
+                const otherUser = conversation.user;
+                const otherUserId = getEntityId(otherUser);
+                const isOnline = onlineUsers.has(otherUserId);
+                const isTyping = typingUsers.has(otherUserId);
+                const isActive = selectedUserId === otherUserId;
+                const activeNote = userNotes[otherUserId];
+                const isFavorite = favoriteConversationIds.has(otherUserId);
+                const isMuted = mutedConversationIds.has(otherUserId);
+                const isPinned = pinnedConversationIds.has(otherUserId);
+                const displayName = conversationNicknames[otherUserId] || otherUser.name;
+
+                return (
+                  <button
+                    key={otherUserId}
+                    type="button"
+                    onClick={() => setSelectedUser(otherUser)}
+                    className={`mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
+                      isActive
+                        ? 'bg-pink-50 ring-1 ring-pink-100 dark:bg-pink-950/30 dark:ring-pink-900/50'
+                        : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
+                    }`}
+                  >
+                    <div className="relative shrink-0">
+                      {renderAvatar(otherUser, 'h-12 w-12', 22)}
+                      <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
+                        isOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+                      }`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="truncate font-bold text-gray-950 dark:text-white">{displayName}</div>
+                          {isPinned && <Pin size={13} className="shrink-0 fill-pink-500 text-pink-500" />}
+                          {isFavorite && <Star size={13} className="shrink-0 fill-yellow-400 text-yellow-400" />}
+                          {isMuted && <BellOff size={13} className="shrink-0 text-slate-400" />}
+                        </div>
+                        <div className="shrink-0 text-xs text-gray-400">{formatMessageTime(conversation.lastTime)}</div>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <p className={`truncate text-sm ${isTyping ? 'font-semibold text-pink-600 dark:text-pink-300' : conversation.unreadCount ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                          {isTyping ? 'Typing...' : conversation.lastMessage}
+                        </p>
+                        {conversation.unreadCount > 0 && (
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-pink-600 px-1.5 text-xs font-bold text-white">
+                            {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                      {activeNote && (
+                        <p className="mt-1 line-clamp-1 rounded-full bg-slate-50 px-2 py-1 text-xs font-medium text-pink-700 dark:bg-gray-900 dark:text-pink-300">
+                          Note: {activeNote.text}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </aside>
 
           {selectedUser ? (
             <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
@@ -1257,7 +1555,7 @@ export default function Messages() {
                   }`} />
                 </button>
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="min-w-0 flex-1 text-left" title="View profile">
-                  <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedUser.name}</div>
+                  <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedDisplayName}</div>
                   <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-pink-600 dark:text-pink-300' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
@@ -1266,6 +1564,19 @@ export default function Messages() {
                       Note: {userNotes[selectedUserId].text}
                     </div>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => togglePinnedConversation(selectedUserId)}
+                  className={`relative rounded-full p-2 transition ${
+                    selectedIsPinned
+                      ? 'bg-pink-50 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300'
+                      : 'text-gray-500 hover:bg-pink-50 hover:text-pink-600 dark:hover:bg-pink-950/30'
+                  }`}
+                  aria-label={selectedIsPinned ? 'Unpin chat' : 'Pin chat'}
+                  title={selectedIsPinned ? 'Unpin chat' : 'Pin chat'}
+                >
+                  <Pin size={18} />
                 </button>
                 <button
                   onClick={() => setShowPinnedPanel(value => !value)}
@@ -1291,14 +1602,44 @@ export default function Messages() {
                 </button>
               </header>
 
-              <AnimatePresence>
-                {showPinnedPanel && pinnedMessages.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    className="border-b border-yellow-200 bg-yellow-50/95 px-4 py-3 shadow-sm dark:border-yellow-900/60 dark:bg-yellow-950/20"
-                  >
+              <div className="border-b border-gray-200/80 bg-white/94 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/92">
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={messageSearch}
+                      onChange={event => setMessageSearch(event.target.value)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          goToSearchMatch(event.shiftKey ? -1 : 1);
+                        }
+                      }}
+                      placeholder="Search in conversation"
+                      className="h-10 w-full rounded-2xl border border-gray-200 bg-slate-50 pl-9 pr-3 text-sm font-semibold text-gray-900 outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    />
+                  </div>
+                  {messageSearch && (
+                    <div className="flex items-center gap-1">
+                      <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500 dark:bg-gray-800 dark:text-gray-300 sm:inline-flex">
+                        {messageSearchMatches.length ? `${messageSearchIndex + 1}/${messageSearchMatches.length}` : '0'}
+                      </span>
+                      <button type="button" onClick={() => goToSearchMatch(-1)} className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300" aria-label="Previous search result">
+                        <ArrowLeft size={16} />
+                      </button>
+                      <button type="button" onClick={() => goToSearchMatch(1)} className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300" aria-label="Next search result">
+                        <ArrowLeft size={16} className="rotate-180" />
+                      </button>
+                      <button type="button" onClick={() => setMessageSearch('')} className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300" aria-label="Clear search">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {showPinnedPanel && pinnedMessages.length > 0 && (
+                  <div className="border-b border-yellow-200 bg-yellow-50/95 px-4 py-3 shadow-sm dark:border-yellow-900/60 dark:bg-yellow-950/20">
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 text-sm font-bold text-yellow-800 dark:text-yellow-200">
                         <Pin size={15} />
@@ -1332,9 +1673,8 @@ export default function Messages() {
                         );
                       })}
                     </div>
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
 
               <div className="mobile-message-thread min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-5">
                 {loading ? (
@@ -1347,28 +1687,32 @@ export default function Messages() {
                   </div>
                 ) : (
                   <>
-                    <AnimatePresence initial={false}>
+                    <>
                       {messages.map((message) => {
                         const messageId = getEntityId(message);
                         const isMe = getEntityId(message.from) === currentUserId;
                         const sender = isMe ? user : selectedUser;
                         const reactions = message.reactions || [];
                         const isLatestOwn = messageId === latestOwnMessageId;
+                        const isSearchMatch = messageSearchMatches.includes(messageId);
+                        const showUnreadDivider = unreadDividerMessageId && unreadDividerMessageId === messageId;
 
                         return (
-                          <motion.div
-                            key={messageId}
-                            ref={(node) => {
-                              if (node) messageRefs.current[messageId] = node;
-                              else delete messageRefs.current[messageId];
-                            }}
-                            variants={messageVariants}
-                            initial="hidden"
-                            animate={isMe && isLatestOwn ? 'sent' : 'visible'}
-                            exit="hidden"
-                            transition={isMe && isLatestOwn ? { duration: 0.42, ease: 'easeOut' } : { type: 'spring', damping: 24, stiffness: 260 }}
-                            className={`mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
-                          >
+                          <React.Fragment key={messageId}>
+                            {showUnreadDivider && (
+                              <div className="my-4 flex items-center gap-3">
+                                <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
+                                <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-600 dark:bg-pink-950/40 dark:text-pink-200">New messages</span>
+                                <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
+                              </div>
+                            )}
+                            <div
+                              ref={(node) => {
+                                if (node) messageRefs.current[messageId] = node;
+                                else delete messageRefs.current[messageId];
+                              }}
+                              className={`mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId || isSearchMatch ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
+                            >
                             {!isMe && (
                               <div className="mr-2 mt-5 shrink-0">
                                 {renderAvatar(sender, 'h-8 w-8', 16)}
@@ -1377,19 +1721,34 @@ export default function Messages() {
 
                             <div className={`max-w-[82%] md:max-w-[68%] ${isMe ? 'items-end' : 'items-start'}`}>
                               <div className={`mb-1 px-1 text-xs text-gray-500 ${isMe ? 'text-right' : 'text-left'}`}>
-                                {isMe ? 'You' : sender.name}
+                                {isMe ? 'You' : selectedDisplayName}
                               </div>
 
-                              <div className={`relative rounded-3xl px-4 py-3 shadow-sm transition duration-200 group-hover:shadow-md ${
+                              <div
+                                onTouchStart={() => !message.unsent && startReactionPress(messageId)}
+                                onTouchEnd={clearReactionPressTimer}
+                                onTouchMove={clearReactionPressTimer}
+                                onTouchCancel={clearReactionPressTimer}
+                                onContextMenu={(event) => {
+                                  if (!isTouchReactionMode() || message.unsent) return;
+                                  event.preventDefault();
+                                  setActionMenuMessageId(null);
+                                  setEmojiPickerMessageId(messageId);
+                                }}
+                                  className={`message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${
                                 isMe
-                                  ? 'rounded-br-lg bg-gradient-to-br from-pink-600 to-slate-800 text-white shadow-pink-500/15'
+                                  ? `own-message-bubble rounded-br-lg bg-gradient-to-br ${selectedTheme.own} text-white shadow-pink-500/15`
                                   : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
-                              } ${isMe && isLatestOwn ? 'ring-2 ring-pink-300/40 shadow-xl shadow-pink-500/20' : ''}`}>
+                              } ${isMe && isLatestOwn ? 'ring-2 ring-pink-300/40 shadow-xl shadow-pink-500/20' : ''}`}
+                              >
                                 <ReplyPreview message={message} isMe={isMe} />
                                 <div className="space-y-2">
                                   <MessageAttachment message={message} isMe={isMe} />
                                   {message.text && !message.unsent && (
                                     <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{message.text}</p>
+                                  )}
+                                  {message.editedAt && !message.unsent && (
+                                    <span className={`text-[11px] font-semibold ${isMe ? 'text-white/65' : 'text-gray-400'}`}>Edited</span>
                                   )}
                                   {message.pinned && !message.unsent && (
                                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
@@ -1407,7 +1766,7 @@ export default function Messages() {
                                       <button
                                         key={`${reaction.emoji}-${index}`}
                                         onClick={() => handleRemoveReaction(messageId, reaction.emoji)}
-                                        className="transition hover:scale-125"
+                                        className="hover:opacity-80"
                                       >
                                         {reaction.emoji}
                                       </button>
@@ -1416,7 +1775,7 @@ export default function Messages() {
                                 )}
                               </div>
 
-                              <div className={`mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`mobile-message-actions mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <span className="text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
                                 <MessageStatus message={message} isLatestOwn={isLatestOwn} />
                                 {!message.unsent && (
@@ -1440,15 +1799,25 @@ export default function Messages() {
                                         <Smile size={14} />
                                       </button>
                                       {emojiPickerMessageId === messageId && (
-                                        <div className={`absolute bottom-7 z-30 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl shadow-2xl ${isMe ? 'right-0' : 'left-0'}`}>
-                                          <EmojiPicker
-                                            onEmojiClick={(emoji) => handleReaction(messageId, emoji.emoji)}
-                                            width={300}
-                                            height={340}
-                                            lazyLoadEmojis
-                                            skinTonesDisabled
-                                            previewConfig={{ showPreview: false }}
-                                          />
+                                        <div className={`mobile-reaction-picker absolute bottom-7 z-30 w-72 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-gray-700 dark:bg-gray-900 ${isMe ? 'right-0' : 'left-0'}`}>
+                                          <div className="mb-1 flex items-center justify-between px-1">
+                                            <span className="text-xs font-black uppercase text-gray-400">React</span>
+                                            <button type="button" onClick={() => setEmojiPickerMessageId(null)} className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" aria-label="Close reactions">
+                                              <ArrowLeft size={15} />
+                                            </button>
+                                          </div>
+                                          <div className="grid grid-cols-4 gap-1">
+                                            {QUICK_REACTIONS.map(emoji => (
+                                              <button
+                                                key={emoji}
+                                                type="button"
+                                                onClick={() => handleReaction(messageId, emoji)}
+                                                className="grid h-11 place-items-center rounded-xl text-2xl hover:bg-gray-100 dark:hover:bg-gray-800"
+                                              >
+                                                {emoji}
+                                              </button>
+                                            ))}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -1472,6 +1841,23 @@ export default function Messages() {
                                   {actionMenuMessageId === messageId && (
                                     <div className={`absolute bottom-7 z-30 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white text-sm shadow-xl dark:border-gray-700 dark:bg-gray-800 ${isMe ? 'right-0' : 'left-0'}`}>
                                       <button
+                                        onClick={() => {
+                                          setSelectedMessageInfo(message);
+                                          setActionMenuMessageId(null);
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                                      >
+                                        <Info size={15} /> Message info
+                                      </button>
+                                      {isMe && message.text && !message.unsent && (
+                                        <button
+                                          onClick={() => startEditMessage(message)}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                                        >
+                                          <Edit3 size={15} /> Edit message
+                                        </button>
+                                      )}
+                                      <button
                                         onClick={() => handleRemoveForMe(messageId)}
                                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
                                       >
@@ -1490,19 +1876,14 @@ export default function Messages() {
                                 </div>
                               </div>
                             </div>
-                          </motion.div>
+                            </div>
+                          </React.Fragment>
                         );
                       })}
-                    </AnimatePresence>
+                    </>
 
-                    <AnimatePresence>
-                      {otherUserTyping && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          className="mb-4 flex items-end gap-2"
-                        >
+                    {otherUserTyping && (
+                        <div className="mb-4 flex items-end gap-2">
                           {renderAvatar(selectedUser, 'h-8 w-8', 16)}
                           <div className="flex items-center gap-1 rounded-3xl rounded-bl-lg border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                             {[0, 1, 2].map(dot => (
@@ -1513,9 +1894,8 @@ export default function Messages() {
                               />
                             ))}
                           </div>
-                        </motion.div>
+                        </div>
                       )}
-                    </AnimatePresence>
 
                     <div ref={messagesEndRef} />
                   </>
@@ -1523,17 +1903,30 @@ export default function Messages() {
               </div>
 
               <footer className="message-composer-footer border-t border-gray-200/80 bg-white/95 p-2 backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 sm:p-3">
-                <AnimatePresence>
-                  {replyingTo && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 8 }}
-                      className="mb-2 flex items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 px-3 py-2 dark:border-pink-900/60 dark:bg-pink-950/20"
-                    >
+                {editingMessage && (
+                    <div className="mb-2 flex items-center justify-between rounded-2xl border border-cyan-100 bg-cyan-50 px-3 py-2 dark:border-cyan-900/60 dark:bg-cyan-950/20">
+                      <div className="min-w-0 text-sm">
+                        <div className="font-semibold text-cyan-700 dark:text-cyan-300">Editing message</div>
+                        <p className="truncate text-xs text-gray-500">{getMessageSnippet(editingMessage)}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingMessage(null);
+                          setNewMessage('');
+                        }}
+                        className="rounded-full p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-900"
+                        aria-label="Cancel edit"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                {replyingTo && (
+                    <div className="mb-2 flex items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 px-3 py-2 dark:border-pink-900/60 dark:bg-pink-950/20">
                       <div className="min-w-0 text-sm">
                         <div className="font-semibold text-pink-700 dark:text-pink-300">
-                          Replying to {getEntityId(replyingTo.from) === currentUserId ? 'yourself' : getDisplayName(replyingTo.from, selectedUser.name)}
+                          Replying to {getEntityId(replyingTo.from) === currentUserId ? 'yourself' : getDisplayName(replyingTo.from, selectedDisplayName)}
                         </div>
                         <p className="truncate text-xs text-gray-500">{getMessageSnippet(replyingTo)}</p>
                       </div>
@@ -1544,18 +1937,11 @@ export default function Messages() {
                       >
                         <X size={16} />
                       </button>
-                    </motion.div>
+                    </div>
                   )}
-                </AnimatePresence>
 
-                <AnimatePresence>
-                  {selectedAttachment && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 8 }}
-                      className="mb-2 rounded-2xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800"
-                    >
+                {selectedAttachment && (
+                    <div className="mb-2 rounded-2xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           {selectedAttachment.fileType === 'image' && attachmentPreview && <img src={attachmentPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
@@ -1576,9 +1962,8 @@ export default function Messages() {
                           <div className="h-full rounded-full bg-pink-600 transition-all" style={{ width: `${uploadProgress}%` }} />
                         </div>
                       )}
-                    </motion.div>
+                    </div>
                   )}
-                </AnimatePresence>
 
                 {recording && (
                   <div className="mb-2 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
@@ -1598,7 +1983,7 @@ export default function Messages() {
 
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={sending || recording}
+                    disabled={sending || recording || Boolean(editingMessage)}
                     className="message-composer-action"
                     aria-label="Send picture"
                   >
@@ -1606,7 +1991,7 @@ export default function Messages() {
                   </button>
                   <button
                     onClick={() => videoInputRef.current?.click()}
-                    disabled={sending || recording}
+                    disabled={sending || recording || Boolean(editingMessage)}
                     className="message-composer-action"
                     aria-label="Send video"
                   >
@@ -1614,7 +1999,7 @@ export default function Messages() {
                   </button>
                   <button
                     onClick={recording ? stopRecording : startRecording}
-                    disabled={sending}
+                    disabled={sending || Boolean(editingMessage)}
                     className={`message-composer-action ${
                       recording
                         ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300'
@@ -1636,45 +2021,197 @@ export default function Messages() {
                     onKeyDown={event => {
                       if (event.key === 'Enter' && !sending && !recording) {
                         event.preventDefault();
-                        sendMessage();
+                        submitComposer();
                       }
                     }}
                     placeholder="Aa"
                     className="message-composer-input"
                     disabled={sending || recording}
                   />
-                  <motion.button
-                    whileHover={{ scale: 1.05, y: -1 }}
-                    whileTap={{ scale: 0.95 }}
-                    animate={sending ? { x: [0, 5, 0], rotate: [0, -12, 0], scale: [1, 1.08, 1] } : { x: 0, rotate: 0, scale: 1 }}
-                    transition={sending ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
-                    onClick={() => sendMessage()}
+                  <button
+                    onClick={submitComposer}
                     disabled={(!newMessage.trim() && !selectedAttachment) || sending || recording}
                     className="message-composer-send"
                     aria-label="Send message"
                   >
                     {sending ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
-                  </motion.button>
+                  </button>
                 </div>
               </footer>
             </section>
           ) : (
             <section className="hidden flex-1 items-center justify-center bg-slate-50/90 p-8 text-center dark:bg-gray-950/70 md:flex">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="max-w-sm"
-              >
+              <div className="max-w-sm">
                 <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-pink-100 to-cyan-100 text-pink-600 dark:from-pink-950/40 dark:to-cyan-950/40 dark:text-pink-300">
                   <MessageCircle size={38} />
                 </div>
                 <h3 className="text-xl font-bold text-gray-950 dark:text-white">Pick a conversation</h3>
                 <p className="mt-2 text-sm text-gray-500">Messages update live here once you open a chat.</p>
-              </motion.div>
+              </div>
             </section>
           )}
+
+          {selectedUser && (
+            <aside className="messages-details-panel hidden w-[18.5rem] shrink-0 flex-col border-l border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 xl:flex">
+              <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
+                <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
+                  <span className="relative block">
+                    {renderAvatar(selectedUser, 'h-20 w-20', 32)}
+                    <span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white dark:border-gray-950 ${
+                      selectedIsOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+                    }`} />
+                  </span>
+                </button>
+                <h3 className="mt-3 truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>
+                <p className={`text-sm font-semibold ${selectedIsOnline ? 'text-emerald-500' : 'text-slate-500 dark:text-gray-400'}`}>
+                  {otherUserTyping ? 'Typing...' : presenceText}
+                </p>
+                {userNotes[selectedUserId] && (
+                  <p className="mx-auto mt-3 line-clamp-2 rounded-2xl bg-pink-50 px-3 py-2 text-sm font-semibold text-pink-700 dark:bg-pink-950/30 dark:text-pink-200">
+                    {userNotes[selectedUserId].text}
+                  </p>
+                )}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => togglePinnedConversation(selectedUserId)}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    <Pin size={18} className={`mb-2 ${selectedIsPinned ? 'fill-pink-500 text-pink-500' : 'text-pink-500'}`} />
+                    {selectedIsPinned ? 'Pinned' : 'Pin chat'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleMuteConversation(selectedUserId)}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    {selectedIsMuted ? <BellOff size={18} className="mb-2 text-pink-500" /> : <Bell size={18} className="mb-2 text-pink-500" />}
+                    {selectedIsMuted ? 'Muted' : 'Alerts on'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavoriteConversation(selectedUserId)}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    <Star size={18} className={`mb-2 ${selectedIsFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-pink-500'}`} />
+                    {selectedIsFavorite ? 'Favorite' : 'Add star'}
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+                  <label className="text-xs font-black uppercase text-slate-400">Nickname</label>
+                  <input
+                    value={selectedNickname}
+                    onChange={event => updateConversationNickname(selectedUserId, event.target.value)}
+                    placeholder={selectedUser?.name || 'Friend'}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
+                </div>
+
+                <div className="mt-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+                  <label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400">
+                    <Palette size={14} />
+                    Chat theme
+                  </label>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {Object.entries(CHAT_THEMES).map(([key, theme]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => updateConversationTheme(selectedUserId, key)}
+                        className={`rounded-2xl border p-2 text-left text-xs font-black ${
+                          selectedThemeKey === key
+                            ? 'border-pink-300 bg-white text-slate-950 dark:bg-gray-950 dark:text-white'
+                            : 'border-transparent bg-white/70 text-slate-500 dark:bg-gray-950/60 dark:text-gray-400'
+                        }`}
+                      >
+                        <span className={`mb-1 block h-4 rounded-full bg-gradient-to-r ${theme.own}`} />
+                        {theme.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <button type="button" onClick={() => setProfileUser(selectedUser)} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 dark:text-gray-200 dark:hover:bg-gray-900">
+                    <Info size={18} className="text-pink-500" />
+                    View profile
+                    <ChevronRight size={16} className="ml-auto text-slate-400" />
+                  </button>
+                  <button type="button" onClick={() => setShowPinnedPanel(value => !value)} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 dark:text-gray-200 dark:hover:bg-gray-900">
+                    <Pin size={18} className="text-yellow-500" />
+                    Pinned messages
+                    <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-gray-800 dark:text-gray-300">{pinnedMessages.length}</span>
+                  </button>
+                  <button type="button" onClick={handleDeleteConversation} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30">
+                    <Trash2 size={18} />
+                    Delete conversation
+                  </button>
+                </div>
+
+                <section className="mt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-sm font-black text-slate-950 dark:text-white">Media</h4>
+                    <span className="text-xs font-bold text-slate-400">{sharedMediaItems.length}</span>
+                  </div>
+                  {sharedMediaItems.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {sharedMediaItems.slice(0, 6).map(message => {
+                        const mediaUrl = resolveMediaUrl(message.fileUrl);
+                        return (
+                          <button
+                            key={getEntityId(message)}
+                            type="button"
+                            onClick={() => setMediaPreview({ type: message.fileType, url: mediaUrl, name: message.fileName || 'Media' })}
+                            className="aspect-square overflow-hidden rounded-2xl bg-slate-100 dark:bg-gray-900"
+                            aria-label="Open shared media"
+                          >
+                            {message.fileType === 'image' ? (
+                              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="grid h-full w-full place-items-center text-pink-500">
+                                <Video size={22} />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">Shared photos and videos will appear here.</p>
+                  )}
+                </section>
+
+                <section className="mt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-sm font-black text-slate-950 dark:text-white">Files and voice</h4>
+                    <span className="text-xs font-bold text-slate-400">{sharedFileItems.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {sharedFileItems.length > 0 ? sharedFileItems.map(message => (
+                      <a
+                        key={getEntityId(message)}
+                        href={resolveMediaUrl(message.fileUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                      >
+                        {message.fileType === 'audio' ? <Mic size={18} className="text-pink-500" /> : <FileText size={18} className="text-pink-500" />}
+                        <span className="min-w-0 flex-1 truncate">{message.fileName || (message.fileType === 'audio' ? 'Voice message' : 'Attachment')}</span>
+                        <Download size={15} className="text-slate-400" />
+                      </a>
+                    )) : (
+                      <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">No files shared yet.</p>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </aside>
+          )}
         </div>
-      </div>
 
       {showModal && (
         <NewChatModal
@@ -1691,6 +2228,74 @@ export default function Messages() {
         user={profileUser}
         onClose={() => setProfileUser(null)}
       />
+
+      {selectedMessageInfo && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="mobile-bottom-sheet w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-gray-800 dark:bg-gray-950 sm:rounded-3xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase text-pink-500">Message details</p>
+                <h3 className="text-xl font-black text-slate-950 dark:text-white">Message info</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedMessageInfo(null)}
+                className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                aria-label="Close message info"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-sm">
+              <div className="rounded-2xl bg-slate-50 p-3 dark:bg-gray-900">
+                <p className="text-xs font-black uppercase text-slate-400">From</p>
+                <p className="mt-1 font-bold text-slate-950 dark:text-white">
+                  {getEntityId(selectedMessageInfo.from) === currentUserId ? 'You' : getDisplayName(selectedMessageInfo.from, selectedDisplayName)}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-gray-900">
+                  <p className="text-xs font-black uppercase text-slate-400">Sent</p>
+                  <p className="mt-1 font-bold text-slate-950 dark:text-white">{formatMessageTime(selectedMessageInfo.createdAt)}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-gray-900">
+                  <p className="text-xs font-black uppercase text-slate-400">Status</p>
+                  <p className="mt-1 font-bold text-slate-950 dark:text-white">
+                    {selectedMessageInfo.unsent ? 'Unsent' : selectedMessageInfo.read ? 'Seen' : 'Delivered'}
+                  </p>
+                </div>
+              </div>
+              {selectedMessageInfo.editedAt && (
+                <div className="rounded-2xl bg-cyan-50 p-3 text-cyan-800 dark:bg-cyan-950/30 dark:text-cyan-100">
+                  Edited {formatMessageTime(selectedMessageInfo.editedAt)}
+                </div>
+              )}
+              {selectedMessageInfo.fileUrl && (
+                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-gray-900">
+                  <p className="text-xs font-black uppercase text-slate-400">Attachment</p>
+                  <p className="mt-1 truncate font-bold text-slate-950 dark:text-white">{selectedMessageInfo.fileName || selectedMessageInfo.fileType || 'File'}</p>
+                  {selectedMessageInfo.fileSize > 0 && <p className="text-xs text-slate-500">{formatBytes(selectedMessageInfo.fileSize)}</p>}
+                </div>
+              )}
+              <div className="rounded-2xl bg-slate-50 p-3 dark:bg-gray-900">
+                <p className="text-xs font-black uppercase text-slate-400">Reactions</p>
+                {selectedMessageInfo.reactions?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedMessageInfo.reactions.map((reaction, index) => (
+                      <span key={`${reaction.emoji}-${index}`} className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-slate-700 ring-1 ring-slate-200 dark:bg-gray-950 dark:text-gray-200 dark:ring-gray-800">
+                        {reaction.emoji} {getDisplayName(reaction.userId, 'Member')}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">No reactions yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <MediaViewer media={mediaPreview} onClose={() => setMediaPreview(null)} />
     </div>

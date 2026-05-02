@@ -1,80 +1,109 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Users, FileText, CheckSquare, Upload, ArrowRight } from 'lucide-react';
+import { ArrowRight, CheckCircle2, MessageCircle, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { AppLogoMark, AppWordmark } from './AppLogo';
 
 export default function Landing() {
   const navigate = useNavigate();
 
-  const features = [
-    { icon: Users, title: 'Study Groups', desc: 'Create or join study groups with a unique code' },
-    { icon: FileText, title: 'Announcements', desc: 'Share posts, like and comment with classmates' },
-    { icon: CheckSquare, title: 'Task Manager', desc: 'Collaborative to-do lists for group projects' },
-    { icon: Upload, title: 'File Sharing', desc: 'Upload and download notes, PDFs, images' },
+  const highlights = [
+    { icon: MessageCircle, label: 'Realtime chat', detail: 'Messages, media, voice notes, and alerts.' },
+    { icon: Users, label: 'Project spaces', detail: 'Teams, tasks, files, and shared updates.' },
+    { icon: ShieldCheck, label: 'Private reports', detail: 'Member feedback with developer replies.' }
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-indigo-800 to-blue-700">
-      {/* Hero Section */}
-      <div className="container mx-auto px-6 py-16">
-        <motion.div
-          initial={{ opacity: 0, y: -50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center"
-        >
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-4">
-            StudyHub
-          </h1>
-          <p className="text-xl text-indigo-200 mb-8">
-            Collaborate smarter, not harder
-          </p>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => navigate('/login')}
-            className="bg-white text-indigo-700 px-8 py-3 rounded-full font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 mx-auto"
-          >
-            Get Started <ArrowRight size={20} />
-          </motion.button>
-        </motion.div>
-
-        {/* Features Grid */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.6 }}
-          className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-20"
-        >
-          {features.map((feature, idx) => (
-            <motion.div
-              key={idx}
-              whileHover={{ y: -10 }}
-              className="bg-white/10 backdrop-blur-lg rounded-xl p-6 text-white border border-white/20"
-            >
-              <feature.icon className="w-12 h-12 mb-4 text-blue-300" />
-              <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-              <p className="text-indigo-200">{feature.desc}</p>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* CTA */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="text-center mt-20"
-        >
-          <p className="text-indigo-200 mb-4">Already have an account?</p>
+    <main className="min-h-screen overflow-hidden bg-slate-950 text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(236,72,153,0.24),transparent_30%),radial-gradient(circle_at_88%_10%,rgba(34,211,238,0.18),transparent_34%),linear-gradient(135deg,#020617,#0f172a_55%,#111827)]" />
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-6 sm:px-8">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AppLogoMark size="md" />
+            <AppWordmark size="md" />
+          </div>
           <button
+            type="button"
             onClick={() => navigate('/login')}
-            className="border border-white text-white px-6 py-2 rounded-full hover:bg-white hover:text-indigo-700 transition"
+            className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-black text-white transition hover:bg-white/15"
           >
-            Sign In
+            Sign in
           </button>
-        </motion.div>
+        </header>
+
+        <section className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-black uppercase text-cyan-100">
+              <Sparkles size={14} />
+              NEMSU workspace network
+            </div>
+            <h1 className="mt-5 max-w-3xl text-4xl font-black leading-tight tracking-normal sm:text-6xl">
+              Chat, collaborate, and manage student projects in one polished hub.
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/70 sm:text-lg">
+              StudentHub keeps group work, realtime messages, reports, rankings, and shared media organized for teams that need a clean mobile-first workspace.
+            </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => navigate('/login')}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-black text-slate-950 shadow-xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-pink-50"
+              >
+                Get started
+                <ArrowRight size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/register')}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-6 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/15"
+              >
+                Create account
+              </button>
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-pink-500/18 via-cyan-400/10 to-violet-500/16 blur-2xl" />
+            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/25 backdrop-blur">
+              <div className="rounded-[1.5rem] bg-slate-950/80 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase text-pink-200">Today</p>
+                    <h2 className="mt-1 text-2xl font-black">Project Pulse</h2>
+                  </div>
+                  <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-black text-emerald-200">Live</span>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {highlights.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.label} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.06] p-3">
+                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-pink-500 to-cyan-500 text-white">
+                          <Icon size={20} />
+                        </div>
+                        <div>
+                          <p className="font-black">{item.label}</p>
+                          <p className="text-sm text-white/55">{item.detail}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4">
+                  <div className="flex items-center gap-2 text-sm font-black text-cyan-100">
+                    <CheckCircle2 size={17} />
+                    Mobile-ready workspace
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-white/62">
+                    Designed for classmates who switch between phone, laptop, group chat, and project rooms every day.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

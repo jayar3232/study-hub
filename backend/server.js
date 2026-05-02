@@ -95,6 +95,7 @@ app.use('/api/notes', require('./routes/notes'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/games', require('./routes/games'));
 app.use('/api/friends', require('./routes/friends'));
+app.use('/api/stories', require('./routes/stories'));
 
 const notifications = require('./routes/notifications');
 app.use('/api/notifications', notifications.router);

@@ -3,8 +3,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Activity, CheckCircle2, Gauge, Play, RotateCcw, Save, Sparkles, Target, Trophy, Zap } from 'lucide-react';
 import api from '../services/api';
+import GameOverModal from './GameOverModal';
 
-const TOTAL_ROUNDS = 12;
+const MAX_MISSES = 5;
 const TARGET_WIDTH = 18;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -29,9 +30,10 @@ export function FocusFlowLogo({ compact = false }) {
   );
 }
 
-export default function FocusFlowGame({ stats, onScoreSaved }) {
+export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
   const [running, setRunning] = useState(false);
-  const [round, setRound] = useState(0);
+  const [locks, setLocks] = useState(0);
+  const [misses, setMisses] = useState(0);
   const [position, setPosition] = useState(0);
   const [direction, setDirection] = useState(1);
   const [targetCenter, setTargetCenter] = useState(50);
@@ -43,12 +45,14 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
   const [feedback, setFeedback] = useState(null);
   const [result, setResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [startedAt, setStartedAt] = useState(() => Date.now());
   const animationRef = useRef(null);
   const lastFrameRef = useRef(null);
   const positionRef = useRef(0);
   const targetCenterRef = useRef(50);
 
-  const progress = useMemo(() => Math.round((round / TOTAL_ROUNDS) * 100), [round]);
+  const attemptsLeft = Math.max(0, MAX_MISSES - misses);
+  const speedLevel = Math.max(1, Math.floor((hits + misses) / 5) + 1);
 
   const nextTarget = () => {
     const next = 18 + Math.round(Math.random() * 64);
@@ -58,7 +62,8 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
 
   const resetGame = () => {
     setRunning(true);
-    setRound(0);
+    setLocks(0);
+    setMisses(0);
     setPosition(0);
     positionRef.current = 0;
     setDirection(1);
@@ -69,6 +74,7 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
     setBestStreak(0);
     setFeedback(null);
     setResult(null);
+    setStartedAt(Date.now());
     nextTarget();
     lastFrameRef.current = null;
   };
@@ -93,19 +99,23 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
 
   const finishGame = (nextState = {}) => {
     setRunning(false);
-    const finalRound = nextState.round ?? round;
+    const finalLocks = nextState.locks ?? locks;
+    const finalMisses = nextState.misses ?? misses;
     const finalScore = nextState.score ?? score;
     const finalHits = nextState.hits ?? hits;
     const finalPerfects = nextState.perfects ?? perfects;
     const finalBestStreak = nextState.bestStreak ?? bestStreak;
-    const accuracy = Math.round((finalHits / Math.max(1, finalRound)) * 100);
+    const totalAttempts = Math.max(1, finalLocks);
+    const accuracy = Math.round((finalHits / totalAttempts) * 100);
     const payload = {
       score: finalScore,
       hits: finalHits,
-      total: TOTAL_ROUNDS,
+      total: totalAttempts,
       perfects: finalPerfects,
       bestStreak: finalBestStreak,
-      accuracy
+      accuracy,
+      misses: finalMisses,
+      elapsedMs: Date.now() - startedAt
     };
     setResult(payload);
     saveScore(payload);
@@ -120,7 +130,7 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
       lastFrameRef.current = time;
 
       setPosition(current => {
-        const speed = 0.045 + (round * 0.004);
+        const speed = 0.045 + (Math.min(36, hits + misses) * 0.0036);
         let next = current + (direction * delta * speed);
         if (next >= 100) {
           next = 100;
@@ -140,7 +150,7 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [direction, round, running]);
+  }, [direction, hits, misses, running]);
 
   const lockFocus = () => {
     if (!running) return;
@@ -148,7 +158,8 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
     const livePosition = positionRef.current;
     const liveTarget = targetCenterRef.current || targetCenter;
     const hitResult = calculateHit(livePosition, liveTarget);
-    const nextRound = round + 1;
+    const nextLocks = locks + 1;
+    const nextMisses = misses + (hitResult.hit ? 0 : 1);
     const nextStreak = hitResult.hit ? streak + 1 : 0;
     const nextBestStreak = Math.max(bestStreak, nextStreak);
     const gained = hitResult.hit
@@ -158,7 +169,8 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
     const nextHits = hits + (hitResult.hit ? 1 : 0);
     const nextPerfects = perfects + (hitResult.perfect ? 1 : 0);
 
-    setRound(nextRound);
+    setLocks(nextLocks);
+    setMisses(nextMisses);
     setScore(nextScore);
     setHits(nextHits);
     setPerfects(nextPerfects);
@@ -172,9 +184,10 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
     });
     window.setTimeout(() => setFeedback(null), 850);
 
-    if (nextRound >= TOTAL_ROUNDS) {
+    if (nextMisses >= MAX_MISSES) {
       finishGame({
-        round: nextRound,
+        locks: nextLocks,
+        misses: nextMisses,
         score: nextScore,
         hits: nextHits,
         perfects: nextPerfects,
@@ -196,7 +209,7 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
             <div>
               <p className="text-xs font-black uppercase text-emerald-200">Timing Challenge</p>
               <h2 className="text-2xl font-black tracking-normal">Focus Flow</h2>
-              <p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Lock the moving signal inside the focus window. Streaks and perfect hits build the highest score.</p>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Lock the moving signal inside the focus window. It gets faster over time, and five misses ends the run.</p>
             </div>
           </div>
           <button type="button" onClick={resetGame} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/15">
@@ -211,9 +224,9 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
           <div className="grid gap-3 sm:grid-cols-4">
             {[
               ['Score', score],
-              ['Round', `${round}/${TOTAL_ROUNDS}`],
+              ['Attempts', `${attemptsLeft}/${MAX_MISSES}`],
               ['Hits', hits],
-              ['Streak', `x${bestStreak}`]
+              ['Speed', `Lv ${speedLevel}`]
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-center shadow-lg shadow-black/10">
                 <p className="text-[11px] font-black uppercase text-white/45">{label}</p>
@@ -230,7 +243,7 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
               <div>
                 <div className="mb-3 flex items-center justify-between text-xs font-black uppercase text-white/45">
                   <span>Focus Track</span>
-                  <span>{progress}% complete</span>
+                  <span>{attemptsLeft} attempts left</span>
                 </div>
                 <div className="relative h-24 rounded-3xl border border-white/10 bg-white/[0.06] p-4">
                   <div className="absolute left-4 right-4 top-1/2 h-3 -translate-y-1/2 rounded-full bg-white/10">
@@ -298,6 +311,10 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
                 <p className="text-2xl font-black">x{streak}</p>
               </div>
               <div className="rounded-2xl bg-white/[0.05] p-3">
+                <p className="text-xs font-black uppercase text-white/40">Misses left</p>
+                <p className="text-2xl font-black">{attemptsLeft}</p>
+              </div>
+              <div className="rounded-2xl bg-white/[0.05] p-3">
                 <p className="text-xs font-black uppercase text-white/40">Perfect hits</p>
                 <p className="text-2xl font-black">{perfects}</p>
               </div>
@@ -322,6 +339,17 @@ export default function FocusFlowGame({ stats, onScoreSaved }) {
           </div>
         </aside>
       </div>
+
+      <GameOverModal
+        open={Boolean(result)}
+        title="Flow ended"
+        score={result?.score || 0}
+        detail={result ? `${result.hits}/${result.total} locks landed before attempts ran out.` : ''}
+        saving={saving}
+        saved={Boolean(result && !saving)}
+        onRetry={resetGame}
+        onExit={onExit}
+      />
     </section>
   );
 }
