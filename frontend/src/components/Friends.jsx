@@ -307,13 +307,11 @@ export default function Friends() {
           <div className="absolute -bottom-16 left-1/2 h-40 w-40 rounded-full border-[18px] border-pink-400/20" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex items-center gap-4">
-              <motion.div
-                animate={{ y: [0, -4, 0], rotate: [0, 1, -1, 0] }}
-                transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+              <div
                 className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-white text-gray-950 shadow-xl"
               >
                 <Users size={30} />
-              </motion.div>
+              </div>
               <div>
                 <p className="text-sm font-black uppercase text-pink-200">StudentHub Network</p>
                 <h1 className="mt-1 text-3xl font-black tracking-normal sm:text-4xl">Friends</h1>

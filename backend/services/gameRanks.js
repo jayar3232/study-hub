@@ -18,12 +18,20 @@ const GAME_RANKS = [
 const getId = (value) => String(value?._id || value?.id || value || '');
 
 const SEASON_LENGTH_MONTHS = 2;
-const APEX_STAR_STEP = 2400;
-const MAX_APEX_STARS = 500;
+const APEX_STAR_STEP = 900;
+const MAX_APEX_STARS = 1000;
 
 const APEX_STAR_RANKS = [
-  { minStars: 150, key: 'mythical-legend', name: 'Mythical Legend', shortName: 'Mythical Legend' },
-  { minStars: 100, key: 'mythical-vanguard', name: 'Mythical Vanguard', shortName: 'Mythical Vanguard' }
+  { minStars: 1000, key: 'sovereign-origin', name: 'Sovereign Origin', shortName: 'Origin' },
+  { minStars: 900, key: 'celestial-monarch', name: 'Celestial Monarch', shortName: 'Monarch' },
+  { minStars: 800, key: 'radiant-overlord', name: 'Radiant Overlord', shortName: 'Overlord' },
+  { minStars: 700, key: 'eternal-legend', name: 'Eternal Legend', shortName: 'Eternal' },
+  { minStars: 600, key: 'mythic-immortal', name: 'Mythic Immortal', shortName: 'Immortal' },
+  { minStars: 500, key: 'mythic-ascendant', name: 'Mythic Ascendant', shortName: 'Ascendant' },
+  { minStars: 400, key: 'mythic-guardian', name: 'Mythic Guardian', shortName: 'Guardian' },
+  { minStars: 300, key: 'mythic-warden', name: 'Mythic Warden', shortName: 'Warden' },
+  { minStars: 200, key: 'mythical-legend', name: 'Mythical Legend', shortName: 'Legend' },
+  { minStars: 100, key: 'mythical-vanguard', name: 'Mythical Vanguard', shortName: 'Vanguard' }
 ];
 
 const GAME_REWARDS = {
@@ -42,7 +50,15 @@ const GAME_REWARDS = {
   celestial: { title: 'Celestial Spark', reward: 'Spark aura unlock', accent: 'amber' },
   apex: { title: 'Sovereign Legacy', reward: 'Apex sovereign title', accent: 'emerald' },
   'mythical-vanguard': { title: 'Vanguard Wings', reward: 'Red-orange wing aura', accent: 'orange' },
-  'mythical-legend': { title: 'Legend Wings', reward: 'Blue-violet sparkle aura', accent: 'violet' }
+  'mythical-legend': { title: 'Legend Wings', reward: 'Blue-violet sparkle aura', accent: 'violet' },
+  'mythic-warden': { title: 'Warden Frame', reward: '300-star profile border', accent: 'pink' },
+  'mythic-guardian': { title: 'Guardian Frame', reward: '400-star profile border', accent: 'sky' },
+  'mythic-ascendant': { title: 'Ascendant Frame', reward: '500-star profile border', accent: 'fuchsia' },
+  'mythic-immortal': { title: 'Immortal Frame', reward: '600-star profile border', accent: 'red' },
+  'eternal-legend': { title: 'Eternal Frame', reward: '700-star profile border', accent: 'violet' },
+  'radiant-overlord': { title: 'Radiant Frame', reward: '800-star profile border', accent: 'amber' },
+  'celestial-monarch': { title: 'Monarch Frame', reward: '900-star profile border', accent: 'cyan' },
+  'sovereign-origin': { title: 'Origin Frame', reward: '1000-star profile border', accent: 'yellow' }
 };
 
 const DEMOTION_MAP = {
@@ -61,7 +77,15 @@ const DEMOTION_MAP = {
   celestial: 'inferno',
   apex: 'celestial',
   'mythical-vanguard': 'apex',
-  'mythical-legend': 'apex'
+  'mythical-legend': 'apex',
+  'mythic-warden': 'apex',
+  'mythic-guardian': 'apex',
+  'mythic-ascendant': 'apex',
+  'mythic-immortal': 'apex',
+  'eternal-legend': 'apex',
+  'radiant-overlord': 'apex',
+  'celestial-monarch': 'apex',
+  'sovereign-origin': 'apex'
 };
 
 const getApexStarRank = (stars = 0) => APEX_STAR_RANKS.find(rank => stars >= rank.minStars) || null;
@@ -87,8 +111,10 @@ const getApexStarStats = (xp = 0, starXp = xp) => {
     apexStars,
     apexStarProgress: atMaxStars ? 100 : Math.round((remainder / APEX_STAR_STEP) * 100),
     apexStarXpToNext: atMaxStars ? 0 : APEX_STAR_STEP - remainder,
-    glowLevel: Math.min(15, apexStars),
-    maxApexStars: MAX_APEX_STARS
+    glowLevel: Math.min(30, Math.floor(apexStars / 20)),
+    maxApexStars: MAX_APEX_STARS,
+    profileBorderTier: Math.min(10, Math.floor(apexStars / 100)),
+    nextProfileBorderAt: apexStars >= MAX_APEX_STARS ? 0 : (Math.floor(apexStars / 100) + 1) * 100
   };
 };
 
@@ -192,7 +218,10 @@ const summarizeCompletedSessions = (completed = []) => {
     apexStars: rank.apexStars,
     apexStarProgress: rank.apexStarProgress,
     apexStarXpToNext: rank.apexStarXpToNext,
-    glowLevel: rank.glowLevel
+    glowLevel: rank.glowLevel,
+    maxApexStars: rank.maxApexStars,
+    profileBorderTier: rank.profileBorderTier,
+    nextProfileBorderAt: rank.nextProfileBorderAt
   };
 };
 
@@ -224,6 +253,9 @@ const buildGameStats = (sessions = [], options = {}) => {
     apexStarProgress: rank.apexStarProgress,
     apexStarXpToNext: rank.apexStarXpToNext,
     glowLevel: rank.glowLevel,
+    maxApexStars: rank.maxApexStars,
+    profileBorderTier: rank.profileBorderTier,
+    nextProfileBorderAt: rank.nextProfileBorderAt,
     highestRank: lifetimeStats.rank,
     highestScore: lifetimeStats.highScore,
     lifetimeScore: lifetimeStats.lifetimeScore,

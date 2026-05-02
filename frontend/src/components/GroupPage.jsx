@@ -117,7 +117,6 @@ const roleLabels = {
 const sectionRoutes = {
   overview: '',
   posts: 'posts',
-  tasks: 'tasks',
   files: 'files',
   memories: 'assets',
   activity: 'updates',
@@ -130,8 +129,8 @@ const routeToSection = {
   overview: 'overview',
   posts: 'posts',
   announcements: 'posts',
-  calendar: 'tasks',
-  tasks: 'tasks',
+  calendar: 'overview',
+  tasks: 'overview',
   files: 'files',
   assets: 'memories',
   media: 'memories',
@@ -2057,9 +2056,8 @@ export default function GroupPage() {
   const needsApprovalTasks = useMemo(() => tasks.filter(task => task.approvalStatus === 'pending' || task.approvalStatus === 'changes_requested'), [tasks]);
 
   const tabs = [
-    { key: 'overview', label: 'Overview', route: '', icon: Activity, count: dueSoonTasks.length + pinnedPosts.length, description: 'Command center for urgent updates, pinned announcements, and project health.' },
+    { key: 'overview', label: 'Overview', route: '', icon: Activity, count: pinnedPosts.length + files.length + memories.length, description: 'Command center for updates, files, assets, and realtime team conversation.' },
     { key: 'posts', label: 'Announcements', route: 'posts', icon: FileText, count: posts.length, description: 'Important workspace updates, decisions, reactions, and shared post media.' },
-    { key: 'tasks', label: 'Tasks', route: 'tasks', icon: CheckCircle, count: taskStats.open, description: 'A focused task board with filters, assignments, deadlines, and approvals.' },
     { key: 'files', label: 'Files', route: 'files', icon: Upload, count: files.length, description: 'Upload, preview, download, and manage workspace documents.' },
     { key: 'memories', label: 'Project Assets', route: 'assets', icon: Images, count: memories.length, description: 'A dedicated gallery for photos, videos, screenshots, and visual references.' },
     { key: 'chat', label: 'Team Chat', route: 'chat', icon: MessageCircle, description: 'Realtime conversation for the members of this workspace.' },
@@ -2078,7 +2076,6 @@ export default function GroupPage() {
   const workspaceModules = tabs.filter(tab => tab.key !== 'overview');
   const moduleDetails = {
     posts: `${posts.length} announcements and decisions`,
-    tasks: `${taskStats.open} open, ${taskStats.overdue} overdue`,
     files: `${files.length} shared documents`,
     memories: `${memories.length} photos and videos`,
     chat: 'Realtime workspace conversation',
@@ -2086,7 +2083,7 @@ export default function GroupPage() {
     activity: `${activities.length} recent events`,
     settings: canModerate ? 'Manage identity and invitations' : 'View workspace settings'
   };
-  const featuredModules = ['tasks', 'posts', 'files', 'memories'];
+  const featuredModules = ['posts', 'chat', 'files', 'memories'];
   const compactModules = workspaceModules.filter(tab => !featuredModules.includes(tab.key));
   const focusedQuickLinks = workspaceModules.filter(tab => tab.key !== activeTab).slice(0, 5);
   const currentSectionCount = typeof activeSection.count === 'number' ? activeSection.count : null;
@@ -2095,12 +2092,6 @@ export default function GroupPage() {
       label: 'New post',
       icon: PlusCircle,
       onClick: () => setShowCreatePost(true),
-      primary: true
-    },
-    activeTab === 'tasks' && {
-      label: 'Add task',
-      icon: PlusCircle,
-      onClick: () => setShowCreateTask(true),
       primary: true
     },
     activeTab !== 'chat' && {
@@ -2112,7 +2103,7 @@ export default function GroupPage() {
 
   const quickStats = [
     { label: 'Members', value: groupMembers.length || group.members?.length || 0 },
-    { label: 'Open tasks', value: taskStats.open },
+    { label: 'Announcements', value: posts.length },
     { label: 'Files', value: files.length },
     { label: 'Media', value: memories.length }
   ];
@@ -2283,7 +2274,7 @@ export default function GroupPage() {
               <p className="text-xs font-bold uppercase text-pink-600 dark:text-pink-300">Workspace home</p>
               <h2 className="mt-1 text-xl font-bold text-gray-950 dark:text-white">Open the right workspace area</h2>
             </div>
-            <p className="max-w-xl text-sm text-gray-500 dark:text-gray-400">Each area opens as a focused page so tasks, files, chat, and media do not compete for attention.</p>
+            <p className="max-w-xl text-sm text-gray-500 dark:text-gray-400">Each area opens as a focused page so announcements, files, chat, and project assets stay easy to find.</p>
           </div>
           <div className="mobile-module-grid grid gap-3 lg:grid-cols-4">
             {featuredModules.map(key => {
@@ -2346,9 +2337,9 @@ export default function GroupPage() {
             <section className="space-y-4">
               <div className="grid gap-3 md:grid-cols-4">
                 <MetricCard icon={FileText} label="Announcements" value={posts.length} tone="blue" />
-                <MetricCard icon={CheckCircle} label="Open tasks" value={taskStats.open} tone="emerald" />
-                <MetricCard icon={BadgeCheck} label="Needs approval" value={needsApprovalTasks.length} tone="amber" />
-                <MetricCard icon={Upload} label="Assets" value={files.length + memories.length} tone="gray" />
+                <MetricCard icon={MessageCircle} label="Team chat" value={groupMembers.length || group.members?.length || 0} tone="emerald" />
+                <MetricCard icon={Upload} label="Files" value={files.length} tone="amber" />
+                <MetricCard icon={Images} label="Assets" value={memories.length} tone="gray" />
               </div>
 
               <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
@@ -2377,49 +2368,53 @@ export default function GroupPage() {
               <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="font-semibold text-gray-950 dark:text-white">Project board preview</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">A quick scan of work by status.</p>
+                    <h2 className="font-semibold text-gray-950 dark:text-white">Workspace shortcuts</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Jump straight to the parts members use most.</p>
                   </div>
-                  <button type="button" onClick={() => setActiveTab('tasks')} className="text-sm font-semibold text-pink-600 hover:text-pink-700 dark:text-pink-300">Open board</button>
+                  <button type="button" onClick={() => setActiveTab('chat')} className="text-sm font-semibold text-pink-600 hover:text-pink-700 dark:text-pink-300">Open chat</button>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
-                  {taskColumns.map(column => (
-                    <div key={column.key} className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950">
-                      <div className="mb-2 flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">{column.title}</h3>
-                        <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-gray-500 dark:bg-gray-900">{column.items.length}</span>
-                      </div>
-                      <div className="space-y-2">
-                        {column.items.slice(0, 3).map(task => (
-                          <BoardTaskCard
-                            key={task._id}
-                            task={task}
-                            onOpen={() => {
-                              setActiveTab('tasks');
-                              setExpandedTaskId(task._id);
-                            }}
-                            onStatusChange={(taskId, status) => handleUpdateTask(taskId, { status }).catch(() => {})}
-                          />
-                        ))}
-                        {column.items.length === 0 && <p className="rounded-lg bg-white px-3 py-3 text-sm text-gray-500 dark:bg-gray-900 dark:text-gray-400">No tasks.</p>}
-                      </div>
-                    </div>
-                  ))}
+                  {[
+                    { key: 'chat', title: 'Team Chat', detail: 'Discuss updates, reply, react, pin decisions, and send media.', icon: MessageCircle },
+                    { key: 'files', title: 'File Library', detail: 'Preview shared documents without digging through posts.', icon: Upload },
+                    { key: 'memories', title: 'Project Assets', detail: 'Collect photos, videos, screenshots, and visual references.', icon: Images }
+                  ].map(item => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setActiveTab(item.key)}
+                        className="group min-h-36 rounded-xl border border-gray-100 bg-gray-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-pink-200 hover:bg-white hover:shadow-lg hover:shadow-pink-500/10 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-pink-900/60 dark:hover:bg-gray-900"
+                      >
+                        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gray-950 text-white transition group-hover:bg-pink-600 dark:bg-white dark:text-gray-950">
+                          <Icon size={20} />
+                        </span>
+                        <h3 className="mt-4 font-bold text-gray-950 dark:text-white">{item.title}</h3>
+                        <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{item.detail}</p>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
             </section>
 
             <aside className="space-y-4">
               <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <h3 className="font-semibold text-gray-950 dark:text-white">Due soon</h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Tasks due in the next 3 days.</p>
+                <h3 className="font-semibold text-gray-950 dark:text-white">Latest activity</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Recent uploads and announcements in this workspace.</p>
                 <div className="mt-3 space-y-2">
-                  {dueSoonTasks.length === 0 ? (
-                    <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">Nothing urgent right now.</p>
-                  ) : dueSoonTasks.map(task => (
-                    <button key={task._id} type="button" onClick={() => { setActiveTab('tasks'); setExpandedTaskId(task._id); }} className="w-full rounded-lg border border-gray-100 p-3 text-left transition hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:hover:border-pink-900 dark:hover:bg-pink-950/20">
-                      <p className="line-clamp-1 text-sm font-semibold text-gray-950 dark:text-white">{task.description}</p>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatShortDate(task.dueDate)} - {task.assignedTo?.name || 'Unassigned'}</p>
+                  {activities.length === 0 ? (
+                    <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">No activity yet.</p>
+                  ) : activities.slice(0, 5).map(activity => (
+                    <button
+                      key={activity._id || `${activity.type}-${activity.createdAt}`}
+                      type="button"
+                      onClick={() => setActiveTab(activity.type === 'post' ? 'posts' : ['file', 'memory'].includes(activity.type) ? 'files' : 'activity')}
+                      className="w-full rounded-lg border border-gray-100 p-3 text-left transition hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:hover:border-pink-900 dark:hover:bg-pink-950/20"
+                    >
+                      <p className="line-clamp-1 text-sm font-semibold text-gray-950 dark:text-white">{activity.title || activity.description || 'Workspace update'}</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatShortDate(activity.createdAt, 'Recently')}</p>
                     </button>
                   ))}
                 </div>
@@ -2528,9 +2523,9 @@ export default function GroupPage() {
             </div>
 
             <aside className="space-y-4">
-              <MetricCard icon={CheckCircle} label="Open tasks" value={taskStats.open} tone="blue" />
-              <MetricCard icon={AlertCircle} label="Overdue" value={taskStats.overdue} tone="amber" />
               <MetricCard icon={Upload} label="Shared files" value={fileStats.total} tone="emerald" />
+              <MetricCard icon={Images} label="Project assets" value={memories.length} tone="blue" />
+              <MetricCard icon={Users} label="Members" value={groupMembers.length || group.members?.length || 0} tone="amber" />
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">Recent members</p>
                 <div className="mt-3 space-y-3">

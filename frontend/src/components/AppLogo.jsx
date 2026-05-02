@@ -13,7 +13,7 @@ const wordSizes = {
   lg: 'text-4xl',
 };
 
-export function AppLogoMark({ size = 'md', animated = true, className = '' }) {
+export function AppLogoMark({ size = 'md', animated = false, className = '' }) {
   return (
     <span
       className={`${markSizes[size] || markSizes.md} app-logo-mark relative inline-flex shrink-0 items-center justify-center overflow-hidden bg-white font-black text-white shadow-xl shadow-violet-500/20 ring-1 ring-violet-100 dark:bg-slate-950 dark:ring-white/10 ${animated ? 'app-logo-mark--float' : ''} ${className}`}
@@ -42,7 +42,7 @@ export function AppWordmark({ size = 'md', subtitle = true, tone = 'default', cl
   );
 }
 
-export default function AppLogo({ size = 'md', wordSize = 'md', subtitle = true, animated = true, tone = 'default', className = '' }) {
+export default function AppLogo({ size = 'md', wordSize = 'md', subtitle = true, animated = false, tone = 'default', className = '' }) {
   return (
     <span className={`inline-flex min-w-0 items-center gap-3 ${className}`}>
       <AppLogoMark size={size} animated={animated} />

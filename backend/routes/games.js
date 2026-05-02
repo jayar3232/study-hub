@@ -490,8 +490,8 @@ router.get('/summary/me', auth, async (req, res) => {
       bugHuntLeaderboardSessions,
       myFocusFlowSessions,
       focusFlowLeaderboardSessions,
-      myFlappySessions,
-      flappyLeaderboardSessions
+      myJetFighterSessions,
+      jetFighterLeaderboardSessions
     ] = await Promise.all([
       GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
       GameSession.find({ completedAt: { $ne: null } })
@@ -518,8 +518,8 @@ router.get('/summary/me', auth, async (req, res) => {
         .populate('userId', 'name email course avatar')
         .sort({ score: -1 })
         .limit(300),
-      GameSession.find({ userId: req.user, gameKey: 'flappy-bird', completedAt: { $ne: null } }).lean(),
-      GameSession.find({ gameKey: 'flappy-bird', completedAt: { $ne: null } })
+      GameSession.find({ userId: req.user, gameKey: 'jet-fighter', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'jet-fighter', completedAt: { $ne: null } })
         .populate('userId', 'name email course avatar')
         .sort({ score: -1 })
         .limit(300)
@@ -530,13 +530,13 @@ router.get('/summary/me', auth, async (req, res) => {
     const blockLeaderboard = buildGameLeaderboard(blockLeaderboardSessions);
     const bugHuntLeaderboard = buildGameLeaderboard(bugHuntLeaderboardSessions);
     const focusFlowLeaderboard = buildGameLeaderboard(focusFlowLeaderboardSessions);
-    const flappyLeaderboard = buildGameLeaderboard(flappyLeaderboardSessions);
+    const jetFighterLeaderboard = buildGameLeaderboard(jetFighterLeaderboardSessions);
     const myRank = leaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myTypingRank = typingLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBlockRank = blockLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBugHuntRank = bugHuntLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myFocusFlowRank = focusFlowLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
-    const myFlappyRank = flappyLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myJetFighterRank = jetFighterLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
 
     res.json({
       stats: buildGameStats(mySessions),
@@ -544,19 +544,19 @@ router.get('/summary/me', auth, async (req, res) => {
       blockStats: buildGameStats(myBlockSessions),
       bugHuntStats: buildGameStats(myBugHuntSessions),
       focusFlowStats: buildGameStats(myFocusFlowSessions),
-      flappyStats: buildGameStats(myFlappySessions),
+      jetFighterStats: buildGameStats(myJetFighterSessions),
       leaderboard: leaderboard.slice(0, 15),
       typingLeaderboard: typingLeaderboard.slice(0, 15),
       blockLeaderboard: blockLeaderboard.slice(0, 15),
       bugHuntLeaderboard: bugHuntLeaderboard.slice(0, 15),
       focusFlowLeaderboard: focusFlowLeaderboard.slice(0, 15),
-      flappyLeaderboard: flappyLeaderboard.slice(0, 15),
+      jetFighterLeaderboard: jetFighterLeaderboard.slice(0, 15),
       myRank,
       myTypingRank,
       myBlockRank,
       myBugHuntRank,
       myFocusFlowRank,
-      myFlappyRank,
+      myJetFighterRank,
       ranks: GAME_RANKS,
       decisions: decisionGuide
     });
@@ -1044,6 +1044,54 @@ router.post('/flappy-bird/submit', auth, async (req, res) => {
       },
       stats: buildGameStats(mySessions),
       flappyStats: buildGameStats(myFlappySessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/jet-fighter/submit', auth, async (req, res) => {
+  try {
+    const score = clampNumber(req.body.score, 0, 1000000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
+
+    const kills = clampNumber(req.body.kills, 0, 5000);
+    const level = clampNumber(req.body.level, 1, 50, 1);
+    const lives = clampNumber(req.body.lives, 0, 10, 0);
+    const elapsedMs = clampNumber(req.body.elapsedMs, 1000, 30 * 60 * 1000, 1000);
+    const accuracy = clampNumber(58 + Math.min(35, kills * 2) + Math.min(7, level), 0, 100);
+
+    const session = await createCompletedGameSession({
+      userId: req.user,
+      gameKey: 'jet-fighter',
+      title: 'Jet Fighter',
+      brief: 'Defended the workspace launch lane from incoming drones.',
+      signal: `Cleared ${kills} drones, reached level ${level}, and survived ${(elapsedMs / 1000).toFixed(1)}s.`,
+      score,
+      accuracy,
+      correctCount: kills,
+      totalCount: Math.max(1, kills + Math.max(0, 3 - lives)),
+      maxStreak: kills,
+      elapsedMs
+    });
+
+    const [mySessions, myJetFighterSessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'jet-fighter', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.status(201).json({
+      result: {
+        sessionId: session._id,
+        score,
+        kills,
+        level,
+        lives,
+        accuracy,
+        elapsedMs
+      },
+      stats: buildGameStats(mySessions),
+      jetFighterStats: buildGameStats(myJetFighterSessions)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

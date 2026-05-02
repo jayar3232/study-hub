@@ -8,7 +8,7 @@ export default function Landing() {
 
   const highlights = [
     { icon: MessageCircle, label: 'Realtime chat', detail: 'Messages, media, voice notes, and alerts.' },
-    { icon: Users, label: 'Project spaces', detail: 'Teams, tasks, files, and shared updates.' },
+    { icon: Users, label: 'Project spaces', detail: 'Teams, files, chat, and shared updates.' },
     { icon: ShieldCheck, label: 'Private reports', detail: 'Member feedback with developer replies.' }
   ];
 

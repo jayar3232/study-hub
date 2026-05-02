@@ -994,52 +994,87 @@
       display: block;
     }
 
-    .mobile-game-active .block-tray-panel,
-    .mobile-game-active section aside > div:first-child {
+    .mobile-game-active .block-tray-panel {
       position: sticky;
       bottom: calc(5.25rem + env(safe-area-inset-bottom));
       z-index: 15;
       margin-inline: -0.15rem;
+      padding: 0.65rem !important;
       border-radius: 1.25rem !important;
       background: rgba(15, 23, 42, 0.92) !important;
       box-shadow: 0 18px 55px rgba(0, 0, 0, 0.35);
       backdrop-filter: blur(18px);
     }
 
-    .mobile-game-active .block-tray-list,
-    .mobile-game-active section aside > div:first-child > div:last-child {
+    .mobile-game-active .block-tray-list {
       display: flex !important;
-      gap: 0.55rem !important;
+      gap: 0.45rem !important;
       overflow-x: auto;
+      overflow-y: hidden;
       padding-bottom: 0.1rem;
       scrollbar-width: none;
     }
 
-    .mobile-game-active .block-tray-list::-webkit-scrollbar,
-    .mobile-game-active section aside > div:first-child > div:last-child::-webkit-scrollbar {
+    .mobile-game-active .block-tray-list::-webkit-scrollbar {
       display: none;
     }
 
     .mobile-game-active .block-tray-piece {
-      flex: 0 0 6.75rem !important;
-      min-height: 3.2rem !important;
-      padding: 0.48rem !important;
+      flex: none !important;
+      width: 7.45rem !important;
+      min-height: 4.35rem !important;
+      padding: 0.5rem !important;
     }
 
     .mobile-game-active .block-tray-piece p {
-      font-size: 0.68rem !important;
-      line-height: 0.95rem !important;
+      font-size: 0.64rem !important;
+      line-height: 0.85rem !important;
     }
 
-    .mobile-game-active .block-tray-piece [class*="grid-cols-4"] {
-      transform: scale(0.56);
-      transform-origin: right center;
+    .mobile-game-active .block-tray-piece > div {
+      align-items: flex-start !important;
+      flex-direction: column !important;
+      gap: 0.35rem !important;
     }
 
-    .mobile-game-active section aside > div:first-child button:not(.block-tray-piece) {
-      flex: 0 0 10rem;
-      min-height: 4.2rem;
+    .mobile-game-active .block-piece-preview {
+      border-radius: 0.65rem !important;
+      gap: 0.12rem !important;
+      padding: 0.35rem !important;
+      transform: none !important;
+      transform-origin: center;
     }
+
+    .mobile-game-active .block-piece-cell {
+      height: 0.3rem !important;
+      width: 0.3rem !important;
+      border-radius: 0.13rem !important;
+    }
+  }
+}
+
+.media-viewer-stage {
+  min-height: 0;
+}
+
+@media (min-width: 768px) {
+  .media-viewer-frame {
+    height: auto;
+    max-height: calc(100svh - 1.5rem);
+  }
+
+  .media-viewer-stage {
+    border-radius: 1.75rem;
+    max-height: calc(100svh - 8.5rem);
+    background:
+      radial-gradient(circle at 18% 15%, rgba(236, 72, 153, 0.08), transparent 28%),
+      rgba(2, 6, 23, 0.24);
+  }
+
+  .media-viewer-image,
+  .media-viewer-video {
+    max-height: calc(100svh - 8.5rem);
+    max-width: calc(100vw - 4rem);
   }
 }
 
@@ -1120,4 +1155,19 @@
 }
 .animate-float {
   animation: float 5s ease-in-out infinite;
+}
+
+/* Keep the app calm: only loading spinners and rank emblems should keep motion. */
+.float,
+.float-slow,
+.pulse-ring,
+.rainbow-text,
+.app-logo-mark--float,
+.app-logo-sweep,
+.animate-gradient-shift,
+.animate-bounce-gentle,
+.animate-spin-rainbow,
+.animate-float,
+.animate-float-slow {
+  animation: none !important;
 }

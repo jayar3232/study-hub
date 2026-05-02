@@ -182,12 +182,12 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
   };
 
   const renderPiecePreview = (piece, sizeClass = 'h-3 w-3') => (
-    <div className="grid grid-cols-4 gap-0.5 rounded-xl bg-gray-950/60 p-1.5">
+    <div className="block-piece-preview grid grid-cols-4 gap-0.5 rounded-xl bg-gray-950/60 p-1.5">
       {Array.from({ length: 16 }).map((_, cellIndex) => {
         const row = Math.floor(cellIndex / 4);
         const col = cellIndex % 4;
         const active = piece.cells.some(([pieceRow, pieceCol]) => pieceRow === row && pieceCol === col);
-        return <span key={cellIndex} className={`${sizeClass} rounded-[3px] ${active ? `bg-gradient-to-br ${piece.tone} shadow-[0_0_10px_rgba(255,255,255,0.16)]` : 'bg-white/10'}`} />;
+        return <span key={cellIndex} className={`block-piece-cell ${sizeClass} rounded-[3px] ${active ? `bg-gradient-to-br ${piece.tone} shadow-[0_0_10px_rgba(255,255,255,0.16)]` : 'bg-white/10'}`} />;
       })}
     </div>
   );

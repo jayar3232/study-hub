@@ -292,7 +292,7 @@ router.get('/:id/public', auth, async (req, res) => {
       Task.find({ assignedTo: profile._id })
         .select('assignedTo status priority approvalStatus completedAt dueDate')
         .lean(),
-      GameSession.find({ userId: profile._id, gameKey: 'typing-sprint', completedAt: { $ne: null } })
+      GameSession.find({ userId: profile._id, completedAt: { $ne: null } })
         .select('score accuracy wpm correctCount totalCount maxStreak elapsedMs completedAt')
         .lean(),
       isSelf

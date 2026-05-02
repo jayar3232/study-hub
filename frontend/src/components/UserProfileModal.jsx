@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, PlayCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,10 +6,11 @@ import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
 import { useNavigate } from 'react-router-dom';
 import RankBadge, { RankEmblem } from './RankBadge';
-import GameRankBadge, { GameRankEmblem } from './GameRankBadge';
+import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
 import { useAuth } from '../context/AuthContext';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
 
 const formatMemberSince = (value) => {
   if (!value) return 'Recently joined';
@@ -87,6 +87,22 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   const closeModal = (event) => {
     event?.stopPropagation?.();
     onClose?.();
+  };
+
+  const syncStory = (updatedStory) => {
+    setStories(prev => prev.map(story => getEntityId(story) === getEntityId(updatedStory) ? updatedStory : story));
+    setActiveStory(prev => getEntityId(prev) === getEntityId(updatedStory) ? updatedStory : prev);
+    window.dispatchEvent(new CustomEvent('storiesUpdated'));
+  };
+
+  const reactToStory = async (story, emoji) => {
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/react`, { emoji });
+      syncStory(res.data);
+      toast.success('Reaction sent');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Reaction failed');
+    }
   };
 
   useEffect(() => {
@@ -210,18 +226,14 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     );
   };
 
+  if (!isOpen) return null;
+
   return (
-    <AnimatePresence>
-      {isOpen && (
         <div
           className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onMouseDown={closeModal}
         >
-          <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 18, scale: 0.96 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+          <div
             className="mobile-stalk-modal h-[92svh] max-h-[92svh] w-full overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:h-auto sm:max-h-[88vh] sm:max-w-[720px] sm:rounded-3xl"
             onMouseDown={event => event.stopPropagation()}
           >
@@ -242,7 +254,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 <ArrowLeft size={24} strokeWidth={2.8} />
               </button>
               <div className="relative z-10 flex items-end gap-3 pt-12">
-                <div className="flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white shadow-xl sm:h-20 sm:w-20">
+                <div className={`flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white sm:h-20 sm:w-20 ${getProfileFrameClass(profile?.gameStats)} ${stories.length ? 'ring-blue-400 shadow-blue-500/35' : ''}`}>
                   {avatar ? <img src={avatar} alt={profile?.name || 'User'} className="h-full w-full object-cover" /> : initials}
                 </div>
                 <div className="min-w-0 pb-1">
@@ -361,7 +373,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
               </div>
               </div>
             </div>
-          </motion.div>
+          </div>
 
           {activeStory && (
             <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-3" onMouseDown={event => event.stopPropagation()}>
@@ -385,16 +397,40 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                     <X size={18} />
                   </button>
                 </div>
-                {activeStory.caption && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-sm font-bold text-white">
-                    {activeStory.caption}
+                <div className="absolute inset-x-0 bottom-0 space-y-3 bg-gradient-to-t from-black/86 via-black/55 to-transparent p-4 text-white">
+                  {activeStory.caption && (
+                    <p className="text-sm font-bold">{activeStory.caption}</p>
+                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex gap-2">
+                      {STORY_REACTIONS.map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => reactToStory(activeStory, emoji)}
+                          className="grid h-10 w-10 place-items-center rounded-full bg-white/12 text-lg backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/22"
+                          aria-label={`React ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    {(activeStory.reactions || []).length > 0 && (
+                      <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 py-2 text-xs font-black backdrop-blur">
+                        {Object.entries((activeStory.reactions || []).reduce((summary, reaction) => {
+                          if (!reaction?.emoji) return summary;
+                          summary[reaction.emoji] = (summary[reaction.emoji] || 0) + 1;
+                          return summary;
+                        }, {})).slice(0, 3).map(([emoji, count]) => (
+                          <span key={emoji}>{emoji} {count}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )}
         </div>
-      )}
-    </AnimatePresence>
   );
 }

@@ -111,7 +111,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
           onClick={onClose}
         >
           <motion.div
-            className="flex h-full w-full max-w-6xl flex-col"
+            className="media-viewer-frame flex h-full w-full max-w-[min(96vw,92rem)] flex-col"
             initial={{ scale: 0.98, y: 10 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.98, y: 10 }}
@@ -145,7 +145,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
             </div>
 
             <div
-              className="relative grid min-h-0 flex-1 touch-none select-none place-items-center overflow-hidden rounded-3xl bg-black"
+              className="media-viewer-stage relative grid min-h-0 flex-1 touch-none select-none place-items-center overflow-hidden rounded-3xl bg-black/55 md:flex-none"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerEnd}
@@ -168,7 +168,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
                   onLoadedMetadata={() => setIsMediaLoading(false)}
                   onCanPlay={() => setIsMediaLoading(false)}
                   onError={() => setIsMediaLoading(false)}
-                  className="max-h-full max-w-full rounded-2xl bg-black object-contain"
+                  className="media-viewer-video max-h-full max-w-full rounded-2xl bg-black object-contain"
                 />
               ) : (
                 <img
@@ -178,7 +178,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
                   draggable={false}
                   onLoad={() => setIsMediaLoading(false)}
                   onError={() => setIsMediaLoading(false)}
-                  className="max-h-full max-w-full rounded-2xl object-contain transition-transform duration-75"
+                  className="media-viewer-image max-h-full max-w-full rounded-2xl object-contain transition-transform duration-75"
                   style={{ transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})` }}
                 />
               )}

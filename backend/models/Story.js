@@ -10,6 +10,11 @@ const StorySchema = new mongoose.Schema({
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
   storageProvider: { type: String, enum: ['local', 'supabase'], default: 'local' },
+  reactions: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    emoji: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
   expiresAt: { type: Date, required: true },
   createdAt: { type: Date, default: Date.now, index: true }
 });

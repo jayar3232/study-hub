@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Story = require('../models/Story');
 const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { createNotification } = require('../services/notifications');
 const router = express.Router();
 
 const storyUploadDir = path.join(__dirname, '..', 'uploads', 'stories');
@@ -54,11 +55,13 @@ const uploadStory = (req, res, next) => {
 };
 
 const activeStoryQuery = () => ({ expiresAt: { $gt: new Date() } });
+const populateStory = (query) => query
+  .populate('userId', 'name avatar course campus')
+  .populate('reactions.userId', 'name avatar');
 
 router.get('/active', auth, async (req, res) => {
   try {
-    const stories = await Story.find(activeStoryQuery())
-      .populate('userId', 'name avatar course campus')
+    const stories = await populateStory(Story.find(activeStoryQuery()))
       .sort({ createdAt: -1 })
       .limit(150);
     res.json(stories);
@@ -73,8 +76,7 @@ router.get('/user/:userId', auth, async (req, res) => {
       return res.status(400).json({ msg: 'Invalid user' });
     }
 
-    const stories = await Story.find({ ...activeStoryQuery(), userId: req.params.userId })
-      .populate('userId', 'name avatar course campus')
+    const stories = await populateStory(Story.find({ ...activeStoryQuery(), userId: req.params.userId }))
       .sort({ createdAt: -1 });
     res.json(stories);
   } catch (err) {
@@ -117,12 +119,60 @@ router.post('/', auth, uploadStory, async (req, res) => {
 
     await story.save();
     await story.populate('userId', 'name avatar course campus');
+    await story.populate('reactions.userId', 'name avatar');
+    req.app.get('io')?.emit('story-updated', story);
     res.status(201).json(story);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {
       await deleteObject(uploadedFile.path).catch(() => {});
     }
     res.status(err.status || 500).json({ msg: err.message });
+  }
+});
+
+router.post('/:storyId/react', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.storyId)) {
+      return res.status(404).json({ msg: 'Story not found' });
+    }
+
+    const emoji = String(req.body.emoji || '').trim().slice(0, 8);
+    if (!emoji) return res.status(400).json({ msg: 'Emoji is required' });
+
+    const story = await Story.findOne({ _id: req.params.storyId, ...activeStoryQuery() });
+    if (!story) return res.status(404).json({ msg: 'Story not found' });
+
+    const existingIndex = (story.reactions || []).findIndex(reaction => String(reaction.userId) === String(req.user));
+    if (existingIndex >= 0 && story.reactions[existingIndex].emoji === emoji) {
+      story.reactions.splice(existingIndex, 1);
+    } else if (existingIndex >= 0) {
+      story.reactions[existingIndex].emoji = emoji;
+      story.reactions[existingIndex].createdAt = new Date();
+    } else {
+      story.reactions.push({ userId: req.user, emoji });
+    }
+
+    await story.save();
+    await story.populate('userId', 'name avatar course campus');
+    await story.populate('reactions.userId', 'name avatar');
+
+    if (String(story.userId?._id || story.userId) !== String(req.user)) {
+      await createNotification({
+        io: req.app.get('io'),
+        userId: story.userId?._id || story.userId,
+        actorId: req.user,
+        type: 'reaction',
+        title: 'Someone reacted to your My Day',
+        body: `${emoji} ${story.caption || 'My Day'}`,
+        href: `/profile`,
+        meta: { storyId: story._id, emoji }
+      });
+    }
+
+    req.app.get('io')?.emit('story-updated', story);
+    res.json(story);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
   }
 });
 
@@ -142,6 +192,7 @@ router.delete('/:storyId', auth, async (req, res) => {
       fs.unlink(localPath, () => {});
     }
 
+    req.app.get('io')?.emit('story-deleted', { storyId: story._id, userId: story.userId });
     res.json({ msg: 'Story deleted' });
   } catch (err) {
     res.status(500).json({ msg: err.message });

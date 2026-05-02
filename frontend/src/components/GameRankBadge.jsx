@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Crown, Star, Target, Trophy, Zap } from 'lucide-react';
 
@@ -120,6 +120,62 @@ const palettes = {
     soft: 'bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-100',
     glow: 'rgba(139,92,246,0.98)',
     spark: 'bg-cyan-100'
+  },
+  'mythic-warden': {
+    gradient: 'from-pink-200 via-rose-500 to-slate-950',
+    ring: 'ring-pink-200/90 dark:ring-pink-400/80',
+    soft: 'bg-pink-50 text-pink-800 dark:bg-pink-950/40 dark:text-pink-100',
+    glow: 'rgba(236,72,153,0.98)',
+    spark: 'bg-pink-100'
+  },
+  'mythic-guardian': {
+    gradient: 'from-sky-100 via-cyan-500 to-blue-950',
+    ring: 'ring-sky-200/90 dark:ring-sky-400/80',
+    soft: 'bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-100',
+    glow: 'rgba(14,165,233,0.98)',
+    spark: 'bg-sky-100'
+  },
+  'mythic-ascendant': {
+    gradient: 'from-fuchsia-200 via-purple-600 to-slate-950',
+    ring: 'ring-fuchsia-200/90 dark:ring-fuchsia-400/80',
+    soft: 'bg-fuchsia-50 text-fuchsia-800 dark:bg-fuchsia-950/40 dark:text-fuchsia-100',
+    glow: 'rgba(217,70,239,0.98)',
+    spark: 'bg-fuchsia-100'
+  },
+  'mythic-immortal': {
+    gradient: 'from-amber-100 via-red-500 to-black',
+    ring: 'ring-red-200/90 dark:ring-red-400/80',
+    soft: 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-100',
+    glow: 'rgba(239,68,68,1)',
+    spark: 'bg-amber-100'
+  },
+  'eternal-legend': {
+    gradient: 'from-violet-100 via-indigo-500 to-black',
+    ring: 'ring-violet-200/90 dark:ring-violet-400/80',
+    soft: 'bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-100',
+    glow: 'rgba(99,102,241,1)',
+    spark: 'bg-violet-100'
+  },
+  'radiant-overlord': {
+    gradient: 'from-yellow-100 via-orange-400 to-fuchsia-950',
+    ring: 'ring-yellow-200/90 dark:ring-yellow-400/80',
+    soft: 'bg-yellow-50 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-100',
+    glow: 'rgba(250,204,21,1)',
+    spark: 'bg-yellow-100'
+  },
+  'celestial-monarch': {
+    gradient: 'from-cyan-100 via-fuchsia-500 to-indigo-950',
+    ring: 'ring-cyan-200/90 dark:ring-cyan-400/80',
+    soft: 'bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-100',
+    glow: 'rgba(34,211,238,1)',
+    spark: 'bg-cyan-100'
+  },
+  'sovereign-origin': {
+    gradient: 'from-white via-yellow-300 to-fuchsia-950',
+    ring: 'ring-yellow-100 dark:ring-yellow-300/90',
+    soft: 'bg-yellow-50 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-100',
+    glow: 'rgba(255,255,255,1)',
+    spark: 'bg-white'
   }
 };
 
@@ -145,15 +201,42 @@ const rankPower = {
   celestial: 12,
   apex: 13,
   'mythical-vanguard': 14,
-  'mythical-legend': 15
+  'mythical-legend': 15,
+  'mythic-warden': 16,
+  'mythic-guardian': 17,
+  'mythic-ascendant': 18,
+  'mythic-immortal': 19,
+  'eternal-legend': 20,
+  'radiant-overlord': 21,
+  'celestial-monarch': 22,
+  'sovereign-origin': 24
 };
 
-const MAX_APEX_STARS = 500;
-const starRankKeys = new Set(['apex', 'mythical-vanguard', 'mythical-legend']);
-const cycloneRankKeys = new Set(['mythical-vanguard', 'mythical-legend']);
-const wingRankKeys = new Set(['mythical-vanguard', 'mythical-legend']);
+const MAX_APEX_STARS = 1000;
+const starDivisionKeys = new Set(['mythic-warden', 'mythic-guardian', 'mythic-ascendant', 'mythic-immortal', 'eternal-legend', 'radiant-overlord', 'celestial-monarch', 'sovereign-origin']);
+const starRankKeys = new Set(['apex', 'mythical-vanguard', 'mythical-legend', ...starDivisionKeys]);
+const cycloneRankKeys = new Set(['mythical-legend', 'mythic-ascendant', 'mythic-immortal', 'eternal-legend', 'radiant-overlord', 'celestial-monarch', 'sovereign-origin']);
+const wingRankKeys = new Set(['mythical-vanguard', 'mythical-legend', 'mythic-immortal', 'eternal-legend', 'radiant-overlord', 'celestial-monarch', 'sovereign-origin']);
 
 export const getGamePalette = (rank) => palettes[rank?.key] || palettes.recruit;
+
+export const getProfileFrameClass = (stats) => {
+  const tier = Math.min(10, Math.max(0, Number(stats?.profileBorderTier ?? stats?.rank?.profileBorderTier ?? Math.floor((stats?.apexStars || stats?.rank?.apexStars || 0) / 100))));
+  const frames = [
+    'ring-gray-200 dark:ring-gray-700',
+    'ring-cyan-300 shadow-cyan-500/20',
+    'ring-blue-400 shadow-blue-500/25',
+    'ring-pink-400 shadow-pink-500/30',
+    'ring-violet-400 shadow-violet-500/35',
+    'ring-fuchsia-400 shadow-fuchsia-500/40',
+    'ring-orange-400 shadow-orange-500/45',
+    'ring-red-400 shadow-red-500/50',
+    'ring-yellow-300 shadow-yellow-500/55',
+    'ring-cyan-200 shadow-cyan-300/60',
+    'ring-white shadow-white/70'
+  ];
+  return `${frames[tier] || frames[0]} ring-4 shadow-xl`;
+};
 
 export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = false, stars }) {
   const palette = getGamePalette(rank);
@@ -165,7 +248,7 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
   const hasGlow = power >= 5;
   const isCycloneRank = cycloneRankKeys.has(rank?.key);
   const hasWingAura = wingRankKeys.has(rank?.key);
-  const isLegendStar = rank?.key === 'mythical-legend';
+  const isLegendStar = rank?.key === 'mythical-legend' || starDivisionKeys.has(rank?.key);
   const isMythic = power >= 9;
   const lowScale = size === 'sm' ? 0.78 : size === 'lg' ? 0.86 : 0.82;
   const midScale = size === 'sm' ? 0.9 : size === 'lg' ? 1 : 0.94;
@@ -329,6 +412,21 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
         ? `Max star power reached (${maxApexStars})`
         : `${stats?.apexStarXpToNext || rank?.apexStarXpToNext || 0} pts to Star ${apexStars + 1}`
       : 'Max game rank reached';
+  const milestone = useMemo(() => Math.floor(apexStars / 100) * 100, [apexStars]);
+  const [rankUpMilestone, setRankUpMilestone] = useState(null);
+
+  useEffect(() => {
+    if (compact || milestone < 100) return undefined;
+    const seasonId = stats?.season?.id || 'current';
+    const storageKey = `studenthub-rank-milestone-${seasonId}`;
+    const previous = Number(localStorage.getItem(storageKey) || 0);
+    if (milestone <= previous) return undefined;
+
+    localStorage.setItem(storageKey, String(milestone));
+    setRankUpMilestone(milestone);
+    const timer = window.setTimeout(() => setRankUpMilestone(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [compact, milestone, stats?.season?.id]);
 
   if (compact) {
     return (
@@ -347,6 +445,25 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      {rankUpMilestone && (
+        <div className="fixed inset-0 z-[95] grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[2rem] border border-white/15 bg-gray-950 p-6 text-center text-white shadow-2xl shadow-pink-500/25">
+            <div className="mx-auto grid h-28 w-28 place-items-center">
+              <GameRankEmblem rank={rank} size="lg" animated stars={apexStars} />
+            </div>
+            <p className="mt-5 text-xs font-black uppercase text-pink-200">Rank milestone reached</p>
+            <h2 className="mt-2 text-3xl font-black tracking-normal">You reached {rankUpMilestone} stars</h2>
+            <p className="mt-2 text-sm font-semibold text-white/65">Keep it up. Your profile border and rank aura just got stronger.</p>
+            <button
+              type="button"
+              onClick={() => setRankUpMilestone(null)}
+              className="mt-5 rounded-2xl bg-white px-5 py-3 text-sm font-black text-gray-950 transition hover:bg-pink-50"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
       {showCardAura && (
         <div
           className="pointer-events-none absolute -left-12 -top-14 h-36 w-36 rounded-full"

@@ -8,11 +8,23 @@ const { getMentionedMemberIds } = require('../services/mentions');
 const router = express.Router();
 
 const isGroupMember = (group, userId) => group.members.some(member => member.toString() === userId);
+const populateMessage = async (message) => {
+  await message.populate('userId', 'name avatar');
+  await message.populate('seenBy.userId', 'name avatar');
+  await message.populate('reactions.userId', 'name avatar');
+  await message.populate({
+    path: 'replyTo',
+    select: 'text fileUrl fileType userId createdAt',
+    populate: { path: 'userId', select: 'name avatar' }
+  });
+  return message;
+};
 
 const markMessagesSeen = async ({ groupId, userId, messageIds = [] }) => {
   const query = {
     groupId,
     userId: { $ne: userId },
+    deletedFor: { $ne: userId },
     'seenBy.userId': { $ne: userId }
   };
 
@@ -44,9 +56,15 @@ router.get('/:groupId', auth, async (req, res) => {
       userId: req.user
     });
 
-    const messages = await GroupChat.find({ groupId: req.params.groupId })
+    const messages = await GroupChat.find({ groupId: req.params.groupId, deletedFor: { $ne: req.user } })
       .populate('userId', 'name avatar')
       .populate('seenBy.userId', 'name avatar')
+      .populate('reactions.userId', 'name avatar')
+      .populate({
+        path: 'replyTo',
+        select: 'text fileUrl fileType userId createdAt',
+        populate: { path: 'userId', select: 'name avatar' }
+      })
       .sort({ createdAt: 1 });
 
     if (newlySeenMessageIds.length) {
@@ -110,6 +128,69 @@ router.put('/:groupId/seen', auth, async (req, res) => {
   }
 });
 
+// React to a group chat message.
+router.post('/:messageId/react', auth, async (req, res) => {
+  try {
+    const emoji = String(req.body.emoji || '').trim().slice(0, 8);
+    if (!emoji) return res.status(400).json({ msg: 'Emoji is required' });
+
+    const message = await GroupChat.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ msg: 'Message not found' });
+
+    const group = await Group.findById(message.groupId);
+    if (!group) return res.status(404).json({ msg: 'Group not found' });
+    if (!isGroupMember(group, req.user)) return res.status(403).json({ msg: 'Not a member' });
+
+    const existingIndex = (message.reactions || []).findIndex(reaction => reaction.userId.toString() === req.user);
+    if (existingIndex >= 0 && message.reactions[existingIndex].emoji === emoji) {
+      message.reactions.splice(existingIndex, 1);
+    } else if (existingIndex >= 0) {
+      message.reactions[existingIndex].emoji = emoji;
+      message.reactions[existingIndex].createdAt = new Date();
+    } else {
+      message.reactions.push({ userId: req.user, emoji });
+    }
+
+    await message.save();
+    await populateMessage(message);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`group_${message.groupId}`).emit('group-message-updated', message);
+    }
+
+    res.json(message);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+// Pin or unpin a group chat message.
+router.put('/:messageId/pin', auth, async (req, res) => {
+  try {
+    const message = await GroupChat.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ msg: 'Message not found' });
+
+    const group = await Group.findById(message.groupId);
+    if (!group) return res.status(404).json({ msg: 'Group not found' });
+    if (!isGroupMember(group, req.user)) return res.status(403).json({ msg: 'Not a member' });
+
+    message.pinned = !message.pinned;
+    message.pinnedAt = message.pinned ? new Date() : null;
+    await message.save();
+    await populateMessage(message);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`group_${message.groupId}`).emit('group-message-updated', message);
+    }
+
+    res.json(message);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 // Delete a group chat message (only the sender can delete)
 router.delete('/:messageId', auth, async (req, res) => {
   try {
@@ -128,12 +209,18 @@ router.delete('/:messageId', auth, async (req, res) => {
 // Post a message to group chat
 router.post('/', auth, async (req, res) => {
   try {
-    const { groupId, text, fileUrl, fileType } = req.body;
+    const { groupId, text, fileUrl, fileType, replyTo } = req.body;
     const group = await Group.findById(groupId);
     if (!group) return res.status(404).json({ msg: 'Group not found' });
     if (!isGroupMember(group, req.user)) return res.status(403).json({ msg: 'Not a member' });
 
-    const message = new GroupChat({ groupId, userId: req.user, text, fileUrl, fileType });
+    let replyMessageId = null;
+    if (replyTo) {
+      const replyMessage = await GroupChat.findOne({ _id: replyTo, groupId }).select('_id');
+      replyMessageId = replyMessage?._id || null;
+    }
+
+    const message = new GroupChat({ groupId, userId: req.user, text, fileUrl, fileType, replyTo: replyMessageId });
     await message.save();
     const mentionedUserIds = await getMentionedMemberIds(group, text);
     if (mentionedUserIds.length) {
@@ -148,8 +235,7 @@ router.post('/', auth, async (req, res) => {
         meta: { groupId, messageId: message._id, mention: true }
       });
     }
-    await message.populate('userId', 'name avatar');
-    await message.populate('seenBy.userId', 'name avatar');
+    await populateMessage(message);
     res.json(message);
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -160,10 +246,7 @@ router.delete('/me/:messageId', auth, async (req, res) => {
   try {
     const message = await GroupChat.findById(req.params.messageId);
     if (!message) return res.status(404).json({ msg: 'Message not found' });
-    if (message.userId.toString() !== req.user) {
-      return res.status(403).json({ msg: 'Can only delete your own messages' });
-    }
-    if (!message.deletedFor.includes(req.user)) {
+    if (!message.deletedFor.some(userId => userId.toString() === req.user)) {
       message.deletedFor.push(req.user);
       await message.save();
     }

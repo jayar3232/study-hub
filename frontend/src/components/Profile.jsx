@@ -31,11 +31,12 @@ import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { resolveMediaUrl } from '../utils/media';
 import RankBadge, { RankEmblem } from './RankBadge';
-import GameRankBadge from './GameRankBadge';
+import GameRankBadge, { getProfileFrameClass } from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
 import LoadingSpinner from './LoadingSpinner';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
 
 const formatMonthYear = (value) => {
   if (!value) return 'Recently';
@@ -254,6 +255,7 @@ export default function Profile() {
     try {
       const res = await api.post('/stories', formData);
       setStories(prev => [res.data, ...prev.filter(story => getEntityId(story) !== getEntityId(res.data))]);
+      window.dispatchEvent(new CustomEvent('storiesUpdated'));
       toast.success('My Day posted');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'My Day upload failed');
@@ -267,9 +269,26 @@ export default function Profile() {
       await api.delete(`/stories/${storyId}`);
       setStories(prev => prev.filter(story => getEntityId(story) !== storyId));
       setActiveStory(null);
+      window.dispatchEvent(new CustomEvent('storiesUpdated'));
       toast.success('My Day deleted');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Delete failed');
+    }
+  };
+
+  const syncStory = (updatedStory) => {
+    setStories(prev => prev.map(story => getEntityId(story) === getEntityId(updatedStory) ? updatedStory : story));
+    setActiveStory(prev => getEntityId(prev) === getEntityId(updatedStory) ? updatedStory : prev);
+    window.dispatchEvent(new CustomEvent('storiesUpdated'));
+  };
+
+  const reactToStory = async (story, emoji) => {
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/react`, { emoji });
+      syncStory(res.data);
+      toast.success('Reaction sent');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Reaction failed');
     }
   };
 
@@ -333,6 +352,13 @@ export default function Profile() {
   const currentPosition = rankData?.currentUserRank?.position;
   const storyItems = stories.filter(story => new Date(story.expiresAt || 0) > new Date());
   const myStoryCount = storyItems.filter(story => getEntityId(story.userId) === getEntityId(user)).length;
+  const activeStoryReactionSummary = Object.entries(
+    (activeStory?.reactions || []).reduce((summary, reaction) => {
+      if (!reaction?.emoji) return summary;
+      summary[reaction.emoji] = (summary[reaction.emoji] || 0) + 1;
+      return summary;
+    }, {})
+  );
 
   return (
     <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
@@ -365,7 +391,7 @@ export default function Profile() {
           <div className="relative z-10 flex min-h-[244px] flex-col justify-end gap-6 md:flex-row md:items-end md:justify-between">
             <div className="flex items-end gap-4">
               <div className="relative">
-                <div className="h-28 w-28 overflow-hidden rounded-xl border-4 border-white/20 bg-gray-800 shadow-xl">
+                <div className={`h-28 w-28 overflow-hidden rounded-xl border-4 border-white/20 bg-gray-800 ${getProfileFrameClass(gameStats)}`}>
                   {avatarSrc ? (
                     <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" />
                   ) : (
@@ -487,7 +513,7 @@ export default function Profile() {
                   <video src={storyUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/20" />
-                <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-pink-500">
+                <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-blue-400 bg-pink-500 shadow-lg shadow-blue-500/35">
                   {owner.avatar ? (
                     <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} className="h-full w-full object-cover" />
                   ) : (
@@ -750,11 +776,33 @@ export default function Profile() {
                 </div>
               </div>
             </div>
-            {activeStory.caption && (
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-sm font-bold text-white">
-                {activeStory.caption}
+            <div className="absolute inset-x-0 bottom-0 space-y-3 bg-gradient-to-t from-black/86 via-black/55 to-transparent p-4 text-white">
+              {activeStory.caption && (
+                <p className="text-sm font-bold">{activeStory.caption}</p>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex gap-2">
+                  {STORY_REACTIONS.map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => reactToStory(activeStory, emoji)}
+                      className="grid h-10 w-10 place-items-center rounded-full bg-white/12 text-lg backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/22"
+                      aria-label={`React ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                {activeStoryReactionSummary.length > 0 && (
+                  <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 py-2 text-xs font-black backdrop-blur">
+                    {activeStoryReactionSummary.slice(0, 3).map(([emoji, count]) => (
+                      <span key={emoji}>{emoji} {count}</span>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}

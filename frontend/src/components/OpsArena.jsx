@@ -9,12 +9,12 @@ import {
   Clock,
   Code2,
   Crown,
-  Feather,
   Gamepad2,
   Keyboard,
   Lightbulb,
   Lock,
   MessageCircle,
+  Plane,
   Play,
   Send,
   ShieldCheck,
@@ -33,7 +33,7 @@ import LoadingSpinner from './LoadingSpinner';
 const BlockStackGame = lazy(() => import('./BlockStackGame'));
 const BugHuntGame = lazy(() => import('./BugHuntGame'));
 const FocusFlowGame = lazy(() => import('./FocusFlowGame'));
-const FlappyBirdGame = lazy(() => import('./FlappyBirdGame'));
+const JetFighterGame = lazy(() => import('./JetFighterGame'));
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -89,16 +89,14 @@ const formatDateTime = (value) => {
 const formatElapsed = (elapsedMs = 0) => `${(elapsedMs / 1000).toFixed(1)}s`;
 
 const ArenaMark = ({ compact = false }) => (
-  <motion.div
-    animate={{ y: [0, -4, 0], rotate: [0, 1, -1, 0] }}
-    transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+  <div
     className={`${compact ? 'h-14 w-14 rounded-2xl' : 'h-24 w-24 rounded-[2rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-gray-950 text-white shadow-2xl shadow-cyan-500/20 ring-1 ring-white/10`}
   >
     <div className="absolute -left-8 top-5 h-16 w-16 rounded-full border-[6px] border-cyan-300/80 shadow-[0_0_28px_rgba(34,211,238,0.45)]" />
     <div className="absolute -right-8 bottom-5 h-16 w-16 rounded-full border-[6px] border-pink-400/80 shadow-[0_0_28px_rgba(236,72,153,0.45)]" />
     <div className="absolute inset-4 rounded-2xl border border-white/15" />
     <Wrench size={compact ? 24 : 38} className="relative z-10" />
-  </motion.div>
+  </div>
 );
 
 const StatCard = ({ icon: Icon, label, value, helper, tone }) => (
@@ -127,10 +125,10 @@ const TypingGameLogo = ({ compact = false }) => (
   </div>
 );
 
-const FlappyGameLogo = ({ compact = false }) => (
-  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-sky-950 text-white shadow-xl shadow-sky-500/20 ring-1 ring-sky-300/20`}>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(250,204,21,0.5),transparent_34%),radial-gradient(circle_at_80%_74%,rgba(34,211,238,0.38),transparent_35%)]" />
-    <Feather size={compact ? 24 : 30} className="relative z-10 rotate-12 text-yellow-100 drop-shadow" />
+const JetFighterLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-sky-950 text-white shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(34,211,238,0.48),transparent_34%),radial-gradient(circle_at_80%_74%,rgba(244,63,94,0.38),transparent_35%)]" />
+    <Plane size={compact ? 24 : 30} className="relative z-10 -rotate-45 text-cyan-100 drop-shadow" />
   </div>
 );
 
@@ -547,7 +545,7 @@ export default function OpsArena() {
     { icon: AlertTriangle, label: 'Pending Reports', value: issueStats.open, helper: isDeveloper ? 'Developer-only queue' : 'Visible to developers only', tone: 'from-rose-500 to-pink-600' },
     { icon: CheckCircle2, label: 'Approved', value: issueStats.resolved, helper: 'Accepted suggestions or fixes', tone: 'from-emerald-500 to-cyan-600' },
     { icon: Trophy, label: 'Arena Rank Score', value: summary?.stats?.highScore || 0, helper: `${summary?.stats?.totalPlays || 0} saved game runs`, tone: 'from-yellow-400 to-orange-600' },
-    { icon: Zap, label: 'Flappy Best', value: summary?.flappyStats?.highScore || 0, helper: summary?.flappyStats?.totalPlays ? `${summary.flappyStats.totalPlays} ranked flights` : 'No flight yet', tone: 'from-cyan-400 to-pink-600' }
+    { icon: Zap, label: 'Jet Best', value: summary?.jetFighterStats?.highScore || 0, helper: summary?.jetFighterStats?.totalPlays ? `${summary.jetFighterStats.totalPlays} ranked missions` : 'No mission yet', tone: 'from-cyan-400 to-pink-600' }
   ];
 
   const gameCards = [
@@ -562,14 +560,14 @@ export default function OpsArena() {
       accent: 'from-cyan-400 to-pink-500'
     },
     {
-      key: 'flappy',
-      title: 'Flappy Scholar',
-      label: 'Arcade Challenge',
-      description: 'Tap through study gates and keep the scholar flying.',
+      key: 'jet-fighter',
+      title: 'Jet Fighter',
+      label: 'Arcade Defense',
+      description: 'Drag the fighter, clear drones, and survive the launch run.',
       status: 'Live',
-      best: summary?.flappyStats?.highScore || 0,
-      Logo: FlappyGameLogo,
-      accent: 'from-yellow-300 to-sky-400'
+      best: summary?.jetFighterStats?.highScore || 0,
+      Logo: JetFighterLogo,
+      accent: 'from-cyan-300 to-rose-500'
     },
     {
       key: 'bug-hunt',
@@ -639,7 +637,7 @@ export default function OpsArena() {
     {
       key: 'games',
       title: 'Enter Games',
-      description: 'WorkGrid Blocks, Flappy Scholar, Bug Hunt, and Focus Flow.',
+      description: 'WorkGrid Blocks, Jet Fighter, Bug Hunt, and Focus Flow.',
       icon: Gamepad2,
       tone: 'from-cyan-400 to-pink-500',
       meta: `${summary?.stats?.highScore || 0} best score`
@@ -811,8 +809,8 @@ export default function OpsArena() {
               <BlockStackGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
 
-            {activeGame === 'flappy' && (
-              <FlappyBirdGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
+            {activeGame === 'jet-fighter' && (
+              <JetFighterGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
 
             {activeGame === 'typing' && (

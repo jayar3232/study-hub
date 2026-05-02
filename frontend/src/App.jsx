@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PresenceProvider } from './context/PresenceContext';
 import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
 
@@ -46,16 +47,18 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-        <BrowserRouter>
-          <div className="relative min-h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
-            <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
-            <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
-            <div className="relative z-10">
-              <AppRoutes />
+        <PresenceProvider>
+          <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+          <BrowserRouter>
+            <div className="relative min-h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
+              <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
+              <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
+              <div className="relative z-10">
+                <AppRoutes />
+              </div>
             </div>
-          </div>
-        </BrowserRouter>
+          </BrowserRouter>
+        </PresenceProvider>
       </AuthProvider>
     </ThemeProvider>
   );

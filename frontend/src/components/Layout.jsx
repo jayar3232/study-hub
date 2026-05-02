@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +10,7 @@ import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { AppLogoMark, AppWordmark } from './AppLogo';
 import { getNotificationPermissionState, requestNotificationPermission, showAppNotification } from '../utils/notifications';
+import OnlineRoster from './OnlineRoster';
 
 const APP_NAME = 'StudentHub';
 
@@ -249,17 +249,12 @@ export default function Layout({ children }) {
   }, [dndEnabled, location.pathname, user]);
 
   const BrandLogo = ({ compact = false, collapsed = false, mobile = false }) => (
-    <motion.div
-      animate={{ y: [0, mobile ? -2 : -3, 0] }}
-      transition={{ duration: 3.8, repeat: Infinity, ease: 'easeInOut' }}
-      className="group/brand inline-flex min-w-0 items-center gap-3"
-      title={APP_NAME}
-    >
+    <div className="group/brand inline-flex min-w-0 items-center gap-3" title={APP_NAME}>
       <AppLogoMark size={mobile ? 'sm' : compact ? 'md' : 'lg'} />
       <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[11rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[11rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[11rem] opacity-100'} min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
         <AppWordmark size={mobile ? 'sm' : compact ? 'sm' : 'md'} />
       </span>
-    </motion.div>
+    </div>
   );
 
   const DndToggle = ({ compact = false, collapsed = false }) => (
@@ -431,6 +426,7 @@ export default function Layout({ children }) {
         </div>
         <nav className="flex-1 space-y-2 p-3">
           {navItems.map(item => renderNavLink(item, false))}
+          <OnlineRoster compact limit={5} title="Active users" />
         </nav>
         <div className="space-y-2 border-t border-white/40 p-3 dark:border-white/10">
           <InstallButton />
@@ -479,35 +475,31 @@ export default function Layout({ children }) {
 
         <div className="mobile-context-panel sticky top-[calc(4.45rem_+_env(safe-area-inset-top))] z-[18] px-3 pt-2 md:hidden">
           {!isOnline && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
+            <div
               className="mb-2 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 shadow-lg shadow-amber-500/10 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
             >
               <WifiOff size={15} />
               Offline mode. Some actions will retry when connection returns.
-            </motion.div>
+            </div>
           )}
           {!location.pathname.startsWith('/messages') && (
-            <motion.div
-              key={pageMeta.title}
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mobile-page-titlebar flex items-center justify-between gap-3 rounded-2xl border border-white/55 bg-white/72 px-3 py-2.5 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/72 dark:shadow-black/20"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-base font-black text-gray-950 dark:text-white">{pageMeta.title}</p>
-                <p className="truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">{pageMeta.helper}</p>
+            <div className="space-y-2">
+              <div className="mobile-page-titlebar flex items-center justify-between gap-3 rounded-2xl border border-white/55 bg-white/72 px-3 py-2.5 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/72 dark:shadow-black/20">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-black text-gray-950 dark:text-white">{pageMeta.title}</p>
+                  <p className="truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">{pageMeta.helper}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={pageMeta.action}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gray-950 text-white shadow-lg shadow-gray-950/15 transition active:scale-95 dark:bg-white dark:text-gray-950"
+                  aria-label={`Open ${pageMeta.title}`}
+                >
+                  <PlusCircle size={19} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={pageMeta.action}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gray-950 text-white shadow-lg shadow-gray-950/15 transition active:scale-95 dark:bg-white dark:text-gray-950"
-                aria-label={`Open ${pageMeta.title}`}
-              >
-                <PlusCircle size={19} />
-              </button>
-            </motion.div>
+              <OnlineRoster compact limit={8} title="Online now" />
+            </div>
           )}
         </div>
 
@@ -548,19 +540,13 @@ export default function Layout({ children }) {
       </div>
 
       <div className="pointer-events-none fixed right-3 top-20 z-[60] flex w-[min(92vw,360px)] flex-col gap-3 md:right-6">
-        <AnimatePresence initial={false}>
-          {messagePopups.map(popup => {
+        {messagePopups.map(popup => {
             const popupAvatar = resolveMediaUrl(popup.from?.avatar);
             const senderName = getDisplayName(popup.from, 'Someone');
 
             return (
-              <motion.button
+              <button
                 key={popup.id}
-                layout
-                initial={{ opacity: 0, x: 28, scale: 0.96 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: 28, scale: 0.96 }}
-                transition={{ type: 'spring', damping: 24, stiffness: 260 }}
                 type="button"
                 onClick={() => openMessagePopup(popup)}
                 className="pointer-events-auto overflow-hidden rounded-2xl border border-pink-100 bg-white/95 p-4 text-left shadow-2xl shadow-pink-500/15 backdrop-blur transition hover:-translate-y-1 hover:border-pink-200 dark:border-pink-900/50 dark:bg-gray-900/95"
@@ -578,26 +564,18 @@ export default function Layout({ children }) {
                     <p className="mt-2 text-xs font-semibold text-pink-600 dark:text-pink-300">Open Messages</p>
                   </div>
                 </div>
-              </motion.button>
+              </button>
             );
           })}
-        </AnimatePresence>
       </div>
 
-      <AnimatePresence>
-        {sidebarOpen && (
+      {sidebarOpen && (
           <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+            <div
               className="fixed inset-0 bg-black/50 z-30 md:hidden"
               onClick={() => setSidebarOpen(false)}
             />
-            <motion.aside
-              initial={{ x: -300 }}
-              animate={{ x: 0 }}
-              exit={{ x: -300 }}
+            <aside
               className="fixed bottom-0 left-0 top-0 z-40 w-[min(86vw,20rem)] border-r border-white/45 bg-white/92 shadow-2xl shadow-gray-950/20 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/92 md:hidden"
             >
               <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-800">
@@ -608,6 +586,7 @@ export default function Layout({ children }) {
               </div>
               <nav className="p-4 space-y-2">
                 {navItems.map(item => renderNavLink(item, true))}
+                <OnlineRoster compact limit={8} title="Online now" />
                 <InstallButton />
                 <DndToggle />
                 <ThemeToggle />
@@ -619,10 +598,9 @@ export default function Layout({ children }) {
                   <span>Logout</span>
                 </button>
               </nav>
-            </motion.aside>
+            </aside>
           </>
         )}
-      </AnimatePresence>
     </div>
   );
 }

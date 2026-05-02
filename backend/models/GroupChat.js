@@ -6,6 +6,14 @@ const GroupChatSchema = new mongoose.Schema({
   text: { type: String },
   fileUrl: { type: String },
   fileType: { type: String },
+  replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'GroupChat', default: null },
+  pinned: { type: Boolean, default: false },
+  pinnedAt: { type: Date, default: null },
+  reactions: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    emoji: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
   seenBy: [{
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     seenAt: { type: Date, default: Date.now }

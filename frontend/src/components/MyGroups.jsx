@@ -76,9 +76,9 @@ const StatCard = ({ icon: Icon, label, value, helper }) => (
         <p className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{value}</p>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
       </div>
-      <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }} className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
+      <div className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
         <Icon size={22} />
-      </motion.div>
+      </div>
     </div>
     <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
   </motion.div>
@@ -277,17 +277,15 @@ export default function MyGroups() {
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <motion.div
-                animate={{ y: [0, -4, 0], rotate: [0, 1, -1, 0] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+              <div
                 className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20"
               >
                 <PlusCircle size={20} />
-              </motion.div>
+              </div>
               <div>
                 <p className="text-sm font-bold text-gray-950 dark:text-white">Create a project space</p>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Set up a dedicated room for posts, tasks, files, chat, and shared assets.
+                  Set up a dedicated room for announcements, files, chat, and shared assets.
                 </p>
               </div>
             </div>

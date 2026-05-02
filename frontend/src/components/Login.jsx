@@ -186,7 +186,7 @@ export default function Login() {
               Sign in to your team command center.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-8 text-white/65">
-              Manage workspaces, tasks, reports, rankings, media, and realtime messages in one polished school workspace.
+              Manage workspaces, reports, rankings, media, and realtime messages in one polished school workspace.
             </p>
           </div>
 
