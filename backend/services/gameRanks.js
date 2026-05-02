@@ -19,6 +19,12 @@ const getId = (value) => String(value?._id || value?.id || value || '');
 
 const SEASON_LENGTH_MONTHS = 2;
 const APEX_STAR_STEP = 2400;
+const MAX_APEX_STARS = 500;
+
+const APEX_STAR_RANKS = [
+  { minStars: 150, key: 'mythical-legend', name: 'Mythical Legend', shortName: 'Mythical Legend' },
+  { minStars: 100, key: 'mythical-vanguard', name: 'Mythical Vanguard', shortName: 'Mythical Vanguard' }
+];
 
 const GAME_REWARDS = {
   recruit: { title: 'Starter Badge', reward: '100 Arena Coins', accent: 'slate' },
@@ -34,7 +40,9 @@ const GAME_REWARDS = {
   dragon: { title: 'Ascendant Crest', reward: 'Ascendant rank emblem', accent: 'orange' },
   inferno: { title: 'Immortal Aura', reward: 'Elite glow trail', accent: 'red' },
   celestial: { title: 'Celestial Spark', reward: 'Spark aura unlock', accent: 'amber' },
-  apex: { title: 'Sovereign Legacy', reward: 'Apex sovereign title', accent: 'emerald' }
+  apex: { title: 'Sovereign Legacy', reward: 'Apex sovereign title', accent: 'emerald' },
+  'mythical-vanguard': { title: 'Vanguard Wings', reward: 'Red-orange wing aura', accent: 'orange' },
+  'mythical-legend': { title: 'Legend Wings', reward: 'Blue-violet sparkle aura', accent: 'violet' }
 };
 
 const DEMOTION_MAP = {
@@ -51,8 +59,12 @@ const DEMOTION_MAP = {
   dragon: 'mythic',
   inferno: 'dragon',
   celestial: 'inferno',
-  apex: 'celestial'
+  apex: 'celestial',
+  'mythical-vanguard': 'apex',
+  'mythical-legend': 'apex'
 };
+
+const getApexStarRank = (stars = 0) => APEX_STAR_RANKS.find(rank => stars >= rank.minStars) || null;
 
 const getApexStarStats = (xp = 0, starXp = xp) => {
   const apexRank = GAME_RANKS[GAME_RANKS.length - 1];
@@ -67,14 +79,16 @@ const getApexStarStats = (xp = 0, starXp = xp) => {
 
   const overflow = Math.max(0, starXp - apexRank.minXp);
   const rawStars = Math.floor(overflow / APEX_STAR_STEP) + 1;
-  const apexStars = Math.min(99, rawStars);
+  const apexStars = Math.min(MAX_APEX_STARS, rawStars);
   const remainder = overflow % APEX_STAR_STEP;
+  const atMaxStars = apexStars >= MAX_APEX_STARS;
 
   return {
     apexStars,
-    apexStarProgress: Math.round((remainder / APEX_STAR_STEP) * 100),
-    apexStarXpToNext: APEX_STAR_STEP - remainder,
-    glowLevel: Math.min(10, apexStars)
+    apexStarProgress: atMaxStars ? 100 : Math.round((remainder / APEX_STAR_STEP) * 100),
+    apexStarXpToNext: atMaxStars ? 0 : APEX_STAR_STEP - remainder,
+    glowLevel: Math.min(15, apexStars),
+    maxApexStars: MAX_APEX_STARS
   };
 };
 
@@ -95,8 +109,9 @@ const getGameRank = (xp = 0, starXp = xp) => {
     : 100;
 
   const apexStarStats = getApexStarStats(xp, starXp);
+  const starRank = current.key === 'apex' ? getApexStarRank(apexStarStats.apexStars) : null;
   const currentWithProgress = current.key === 'apex'
-    ? { ...current, ...apexStarStats }
+    ? { ...current, ...(starRank || {}), ...apexStarStats }
     : current;
 
   return {

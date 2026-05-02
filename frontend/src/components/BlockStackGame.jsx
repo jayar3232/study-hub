@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Grid3X3, MousePointerClick, RotateCcw, Save, Sparkles, Trophy, Zap } from 'lucide-react';
@@ -141,9 +141,11 @@ export function BlockGameLogo({ compact = false }) {
 }
 
 export default function BlockStackGame({ stats, onScoreSaved }) {
+  const boardRef = useRef(null);
   const [board, setBoard] = useState(() => emptyBoard());
   const [pieces, setPieces] = useState(() => createTray());
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [dragState, setDragState] = useState(null);
   const [score, setScore] = useState(0);
   const [moves, setMoves] = useState(0);
   const [linesCleared, setLinesCleared] = useState(0);
@@ -162,6 +164,33 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
   const selectedPiece = pieces[selectedIndex];
   const fill = useMemo(() => filledPercent(board), [board]);
 
+  const getPointerCell = (clientX, clientY) => {
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const cellSize = rect.width / BOARD_SIZE;
+    const col = Math.floor((clientX - rect.left) / cellSize);
+    const row = Math.floor((clientY - rect.top) / cellSize);
+    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return null;
+    return { row, col };
+  };
+
+  const getPieceBounds = (piece) => {
+    const maxRow = Math.max(...piece.cells.map(([row]) => row));
+    const maxCol = Math.max(...piece.cells.map(([, col]) => col));
+    return { rows: maxRow + 1, cols: maxCol + 1 };
+  };
+
+  const renderPiecePreview = (piece, sizeClass = 'h-3 w-3') => (
+    <div className="grid grid-cols-4 gap-0.5 rounded-xl bg-gray-950/60 p-1.5">
+      {Array.from({ length: 16 }).map((_, cellIndex) => {
+        const row = Math.floor(cellIndex / 4);
+        const col = cellIndex % 4;
+        const active = piece.cells.some(([pieceRow, pieceCol]) => pieceRow === row && pieceCol === col);
+        return <span key={cellIndex} className={`${sizeClass} rounded-[3px] ${active ? `bg-gradient-to-br ${piece.tone} shadow-[0_0_10px_rgba(255,255,255,0.16)]` : 'bg-white/10'}`} />;
+      })}
+    </div>
+  );
+
   const resetGame = () => {
     setBoard(emptyBoard());
     setPieces(createTray());
@@ -179,6 +208,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
     setFlashCells(new Set());
     setComboBanner(null);
     setClearPulseKey(0);
+    setDragState(null);
   };
 
   const saveScore = async (payload) => {
@@ -227,15 +257,16 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
     }, 950);
   };
 
-  const handleCellClick = (row, col) => {
-    if (gameOver || !selectedPiece) return;
-    const placement = findPlacement(board, selectedPiece, row, col);
+  const commitPiecePlacement = (pieceIndex, row, col) => {
+    const pieceToPlace = pieces[pieceIndex];
+    if (gameOver || !pieceToPlace) return false;
+    const placement = findPlacement(board, pieceToPlace, row, col);
     if (!placement) {
       setShakeKey(value => value + 1);
-      return;
+      return false;
     }
 
-    const placed = placePiece(board, selectedPiece, placement.row, placement.col);
+    const placed = placePiece(board, pieceToPlace, placement.row, placement.col);
     const clearedResult = clearCompletedLanes(placed);
     const nextCombo = clearedResult.cleared ? combo + 1 : 0;
     const nextMaxCombo = Math.max(maxCombo, nextCombo);
@@ -249,7 +280,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
     const nextMoves = moves + 1;
     const nextLines = linesCleared + clearedResult.cleared;
 
-    let nextPieces = pieces.map((piece, index) => (index === selectedIndex ? null : piece));
+    let nextPieces = pieces.map((piece, index) => (index === pieceIndex ? null : piece));
     if (nextPieces.every(piece => !piece)) nextPieces = createTray();
     const nextSelectedIndex = Math.max(0, nextPieces.findIndex(Boolean));
     const noMovesLeft = !hasAnyMove(clearedResult.board, nextPieces);
@@ -277,6 +308,47 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
     setMaxCombo(nextMaxCombo);
 
     if (noMovesLeft) finishGame(clearedResult.board, nextScore, nextMoves, nextLines, nextMaxCombo);
+    return true;
+  };
+
+  const handleCellClick = (row, col) => {
+    commitPiecePlacement(selectedIndex, row, col);
+  };
+
+  const updateDragState = (event, index, piece) => {
+    const cell = getPointerCell(event.clientX, event.clientY);
+    const placement = cell ? findPlacement(board, piece, cell.row, cell.col) : null;
+    setDragState({
+      index,
+      piece,
+      x: event.clientX,
+      y: event.clientY,
+      cell,
+      placement
+    });
+  };
+
+  const handlePiecePointerDown = (event, index, piece) => {
+    if (!piece || gameOver) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setSelectedIndex(index);
+    updateDragState(event, index, piece);
+  };
+
+  const handlePiecePointerMove = (event) => {
+    if (!dragState) return;
+    event.preventDefault();
+    updateDragState(event, dragState.index, dragState.piece);
+  };
+
+  const handlePiecePointerEnd = (event) => {
+    if (!dragState) return;
+    event.preventDefault();
+    const placement = dragState.placement;
+    const placed = placement ? commitPiecePlacement(dragState.index, placement.row, placement.col) : false;
+    if (!placed) setShakeKey(value => value + 1);
+    setDragState(null);
   };
 
   return (
@@ -334,10 +406,13 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
           >
             <div className="absolute inset-3 rounded-[1.45rem] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:12.5%_12.5%]" />
 
-            <div className="relative grid h-full w-full grid-cols-8 gap-1">
+            <div ref={boardRef} className="relative grid h-full w-full grid-cols-8 gap-1">
               {board.map((row, rowIndex) => row.map((cell, colIndex) => {
                 const valid = selectedPiece && Boolean(findPlacement(board, selectedPiece, rowIndex, colIndex));
                 const flash = flashCells.has(`${rowIndex}-${colIndex}`);
+                const ghost = dragState?.placement && dragState.piece?.cells.some(([pieceRow, pieceCol]) => (
+                  dragState.placement.row + pieceRow === rowIndex && dragState.placement.col + pieceCol === colIndex
+                ));
                 return (
                   <motion.button
                     key={`${rowIndex}-${colIndex}`}
@@ -356,6 +431,8 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
                         ? 'border-white bg-white shadow-[0_0_28px_rgba(255,255,255,0.75)]'
                         : cell
                           ? `border-white/25 bg-gradient-to-br ${cell} shadow-lg shadow-black/30`
+                          : ghost
+                            ? `border-white/35 bg-gradient-to-br ${dragState.piece.tone} opacity-80 shadow-lg shadow-cyan-500/20`
                           : valid
                             ? 'border-cyan-300/35 bg-cyan-300/10 hover:bg-cyan-300/25'
                             : 'border-white/5 bg-white/[0.04] hover:bg-white/[0.07]'
@@ -363,6 +440,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
                     aria-label={`Board cell ${rowIndex + 1}, ${colIndex + 1}`}
                   >
                     {cell && <span className="absolute inset-1 rounded-lg border border-white/20 bg-white/10" />}
+                    {ghost && !cell && <span className="absolute inset-1 rounded-lg border border-white/30 bg-white/15" />}
                   </motion.button>
                 );
               }))}
@@ -411,22 +489,26 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
           )}
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
+        <aside className="block-stack-sidebar space-y-4">
+          <div className="block-tray-panel rounded-3xl border border-white/10 bg-white/[0.06] p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-black text-white">Block Tray</p>
               <MousePointerClick size={17} className="text-cyan-300" />
             </div>
-            <div className="space-y-3">
+            <div className="block-tray-list space-y-3">
               {pieces.map((piece, index) => (
                 <motion.button
                   key={piece?.id || index}
                   type="button"
                   disabled={!piece || gameOver}
                   onClick={() => piece && setSelectedIndex(index)}
+                  onPointerDown={event => piece && handlePiecePointerDown(event, index, piece)}
+                  onPointerMove={handlePiecePointerMove}
+                  onPointerUp={handlePiecePointerEnd}
+                  onPointerCancel={handlePiecePointerEnd}
                   whileHover={piece && !gameOver ? { y: -2 } : undefined}
                   whileTap={piece && !gameOver ? { scale: 0.98 } : undefined}
-                  className={`w-full rounded-2xl border p-3 text-left transition ${
+                  className={`block-tray-piece touch-none w-full rounded-2xl border p-3 text-left transition ${
                     selectedIndex === index && piece
                       ? 'border-pink-300/60 bg-pink-400/15 shadow-lg shadow-pink-500/10'
                       : 'border-white/10 bg-white/[0.05] hover:border-cyan-300/45 hover:bg-cyan-300/10'
@@ -438,14 +520,7 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
                         <p className="text-sm font-black text-white">{piece.name}</p>
                         <p className="text-xs font-semibold text-white/45">{piece.cells.length} workload cells</p>
                       </div>
-                      <div className="grid grid-cols-4 gap-0.5 rounded-xl bg-gray-950/60 p-1.5">
-                        {Array.from({ length: 16 }).map((_, cellIndex) => {
-                          const row = Math.floor(cellIndex / 4);
-                          const col = cellIndex % 4;
-                          const active = piece.cells.some(([pieceRow, pieceCol]) => pieceRow === row && pieceCol === col);
-                          return <span key={cellIndex} className={`h-2.5 w-2.5 rounded-[3px] ${active ? `bg-gradient-to-br ${piece.tone}` : 'bg-white/10'}`} />;
-                        })}
-                      </div>
+                      {renderPiecePreview(piece, 'h-2.5 w-2.5')}
                     </div>
                   ) : (
                     <p className="text-sm font-bold text-white/35">Placed</p>
@@ -494,6 +569,25 @@ export default function BlockStackGame({ stats, onScoreSaved }) {
           </button>
         </aside>
       </div>
+
+      <AnimatePresence>
+        {dragState?.piece && (
+          <motion.div
+            key="drag-piece-preview"
+            initial={{ opacity: 0, scale: 0.86, x: '-50%', y: '-70%' }}
+            animate={{ opacity: 1, scale: 1, x: '-50%', y: '-70%' }}
+            exit={{ opacity: 0, scale: 0.86, x: '-50%', y: '-70%' }}
+            transition={{ duration: 0.12 }}
+            className="pointer-events-none fixed z-[100] rounded-2xl border border-white/25 bg-gray-950/90 p-2 shadow-2xl shadow-cyan-500/25 backdrop-blur"
+            style={{
+              left: dragState.x,
+              top: dragState.y
+            }}
+          >
+            {renderPiecePreview(dragState.piece, 'h-3.5 w-3.5')}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

@@ -226,12 +226,12 @@ export default function MyGroups() {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
+    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
       <motion.section
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-indigo-500 shadow-xl shadow-pink-500/15"
+        className="mobile-hero-panel relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-indigo-500 shadow-xl shadow-pink-500/15"
       >
         <div className="absolute inset-0 bg-black/15" />
         <div className="relative flex flex-col gap-5 p-6 lg:flex-row lg:items-center lg:justify-between">
@@ -263,7 +263,7 @@ export default function MyGroups() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08 }}
         whileHover={{ y: -4 }}
-        className="group relative grid gap-4 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"
+        className="mobile-control-panel group relative grid gap-4 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
         <div className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[12px_-12px_42px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
@@ -378,7 +378,7 @@ export default function MyGroups() {
         )}
       </AnimatePresence>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="mobile-metric-strip grid gap-4 md:grid-cols-3">
         <StatCard icon={Grid3X3} label="Total Workspaces" value={groups.length} helper="All active project spaces" />
         <StatCard icon={Crown} label="Owned by You" value={createdCount} helper="Workspaces you created" />
         <StatCard icon={Users} label="Members Reached" value={totalMembers} helper={`${joinedCount} joined as member`} />
@@ -389,7 +389,7 @@ export default function MyGroups() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.12 }}
         whileHover={{ y: -4 }}
-        className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-2xl hover:shadow-cyan-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-cyan-900/60"
+        className="mobile-control-panel group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-2xl hover:shadow-cyan-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-cyan-900/60"
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
         <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-cyan-300 opacity-0 shadow-[10px_-10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
@@ -440,7 +440,7 @@ export default function MyGroups() {
         {filteredGroups.length === 0 ? (
           <EmptyState type="groups" action={() => setShowCreate(true)} />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="mobile-card-list grid gap-4 lg:grid-cols-2">
             <AnimatePresence initial={false}>
               {filteredGroups.map((group, index) => {
                 const memberCount = group.members?.length || 0;

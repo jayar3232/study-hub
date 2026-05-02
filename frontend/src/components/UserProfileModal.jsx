@@ -204,7 +204,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     <AnimatePresence>
       {isOpen && (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onMouseDown={closeModal}
         >
           <motion.div
@@ -212,11 +212,11 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.96 }}
             transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-            className="max-h-[90vh] w-full max-w-[420px] overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl"
+            className="mobile-stalk-modal h-[92svh] max-h-[92svh] w-full overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:h-auto sm:max-h-[88vh] sm:max-w-[720px] sm:rounded-3xl"
             onMouseDown={event => event.stopPropagation()}
           >
-            <div className="max-h-[90vh] overflow-y-auto">
-              <div className="relative overflow-hidden bg-gray-950 p-5 text-white">
+            <div className="h-full max-h-[92svh] overflow-y-auto sm:max-h-[88vh]">
+              <div className="relative overflow-hidden bg-gray-950 p-4 text-white sm:p-5">
               {coverPhoto ? (
                 <img src={coverPhoto} alt="Profile cover" className="absolute inset-0 h-full w-full object-cover" />
               ) : (
@@ -226,13 +226,13 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
               <button
                 type="button"
                 onClick={closeModal}
-                className="absolute left-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/35 text-white shadow-xl backdrop-blur transition hover:-translate-x-0.5 hover:bg-white/20 hover:text-white"
+                className="absolute left-3 top-[calc(env(safe-area-inset-top)+0.65rem)] z-30 flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur transition hover:-translate-x-0.5 hover:bg-white/20 hover:text-white sm:left-4 sm:top-4 sm:h-12 sm:w-12"
                 aria-label="Back"
               >
-                <ArrowLeft size={26} strokeWidth={2.8} />
+                <ArrowLeft size={24} strokeWidth={2.8} />
               </button>
-              <div className="relative z-10 flex items-end gap-4 pt-10">
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white shadow-xl">
+              <div className="relative z-10 flex items-end gap-3 pt-12">
+                <div className="flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white shadow-xl sm:h-20 sm:w-20">
                   {avatar ? <img src={avatar} alt={profile?.name || 'User'} className="h-full w-full object-cover" /> : initials}
                 </div>
                 <div className="min-w-0 pb-1">

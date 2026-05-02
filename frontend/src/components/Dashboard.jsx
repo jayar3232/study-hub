@@ -381,16 +381,16 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 lg:px-8">
+      <div className="mobile-page mx-auto max-w-7xl px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
         <LoadingSpinner label="Loading command center" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
+    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
       <RevealSection
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-gray-950 via-indigo-950 to-indigo-950 shadow-xl shadow-pink-500/15"
+        className="mobile-hero-panel relative overflow-hidden rounded-2xl bg-gradient-to-r from-gray-950 via-indigo-950 to-indigo-950 shadow-xl shadow-pink-500/15"
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.35),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.2),transparent_34%)]" />
         <div className="relative flex flex-col gap-6 p-6 md:p-8 lg:flex-row lg:items-center lg:justify-between">
@@ -463,13 +463,13 @@ export default function Dashboard() {
         </div>
       </RevealSection>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="mobile-metric-strip grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat, index) => (
           <StatCard key={stat.label} {...stat} delay={index * 0.06} />
         ))}
       </section>
 
-      <RevealSection className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]" delay={0.03}>
+      <RevealSection className="mobile-content-stack grid gap-4 lg:grid-cols-[0.85fr_1.15fr]" delay={0.03}>
         <RankBadge stats={rankStats} />
         <motion.div
           variants={cardVariants}
@@ -532,7 +532,7 @@ export default function Dashboard() {
         </motion.div>
       </RevealSection>
 
-      <RevealSection className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]" delay={0.04}>
+      <RevealSection className="mobile-content-stack grid gap-4 lg:grid-cols-[1.25fr_0.75fr]" delay={0.04}>
         <motion.div
           variants={cardVariants}
           initial="hidden"
@@ -637,7 +637,7 @@ export default function Dashboard() {
         </motion.div>
       </RevealSection>
 
-      <RevealSection className="grid gap-4 lg:grid-cols-4" delay={0.04}>
+      <RevealSection className="mobile-content-stack grid gap-4 lg:grid-cols-4" delay={0.04}>
         {[
           {
             icon: FolderKanban,

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
+  ArrowLeft,
   CheckCheck,
   Download,
   FileText,
@@ -37,6 +38,7 @@ import UserProfileModal from './UserProfileModal';
 import { resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
 import LoadingSpinner from './LoadingSpinner';
+import MediaViewer from './MediaViewer';
 
 let socket;
 
@@ -122,6 +124,7 @@ export default function Messages() {
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [userNotes, setUserNotes] = useState({});
+  const [mediaPreview, setMediaPreview] = useState(null);
   const [, setPresenceClock] = useState(0);
 
   const messagesEndRef = useRef(null);
@@ -988,14 +991,35 @@ export default function Messages() {
 
     if (message.fileUrl && message.fileType === 'image') {
       return (
-        <button type="button" onClick={() => window.open(mediaUrl, '_blank')} className="block overflow-hidden rounded-2xl">
-          <img src={mediaUrl} alt={message.fileName || 'Attachment'} className="max-h-80 w-full object-contain" />
+        <button
+          type="button"
+          onClick={() => setMediaPreview({ type: 'image', url: mediaUrl, name: message.fileName || 'Photo' })}
+          className="block overflow-hidden rounded-2xl"
+          aria-label="View photo"
+        >
+          <img src={mediaUrl} alt={message.fileName || 'Attachment'} loading="lazy" decoding="async" className="max-h-80 w-full object-contain" />
         </button>
       );
     }
 
     if (message.fileUrl && message.fileType === 'video') {
-      return <video controls src={mediaUrl} className="max-h-80 w-full rounded-2xl" />;
+      return (
+        <button
+          type="button"
+          onClick={() => setMediaPreview({ type: 'video', url: mediaUrl, name: message.fileName || 'Video' })}
+          className="block w-full overflow-hidden rounded-2xl"
+          aria-label="View video"
+        >
+          <span className="relative block overflow-hidden rounded-2xl bg-black">
+            <video src={mediaUrl} preload="metadata" playsInline muted className="max-h-80 w-full rounded-2xl object-contain opacity-90" />
+            <span className="absolute inset-0 grid place-items-center bg-black/15">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-white/90 text-gray-950 shadow-2xl">
+                <Video size={24} fill="currentColor" />
+              </span>
+            </span>
+          </span>
+        </button>
+      );
     }
 
     if (message.fileUrl && message.fileType === 'audio') {
@@ -1040,9 +1064,9 @@ export default function Messages() {
   }
 
   return (
-    <div className="h-[calc(100svh-8rem)] overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/92 shadow-2xl shadow-slate-300/25 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/88 dark:shadow-black/20 md:h-[calc(100vh-3rem)]">
+    <div className="mobile-chat-shell mobile-messenger-shell overflow-hidden border border-slate-200/80 bg-white/92 shadow-2xl shadow-slate-300/25 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/88 dark:shadow-black/20">
       <div className="flex h-full flex-col">
-        <div className="relative overflow-hidden border-b border-slate-200/80 bg-white/92 px-5 py-4 text-slate-950 dark:border-gray-800 dark:bg-gray-950/92 dark:text-white">
+        <div className={`${selectedUser ? 'hidden md:block' : ''} relative overflow-hidden border-b border-slate-200/80 bg-white/92 px-4 py-3 text-slate-950 dark:border-gray-800 dark:bg-gray-950/92 dark:text-white sm:px-5 sm:py-4`}>
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1050,7 +1074,7 @@ export default function Messages() {
           >
             <div>
               <h2 className="text-xl font-bold tracking-normal md:text-2xl">Messages</h2>
-              <p className="text-sm text-slate-500 dark:text-gray-400">Realtime chats, online status, and seen receipts</p>
+              <p className="hidden text-sm text-slate-500 dark:text-gray-400 sm:block">Realtime chats, online status, and seen receipts</p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600 backdrop-blur dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
               <span className={`h-2.5 w-2.5 rounded-full ${
@@ -1065,7 +1089,7 @@ export default function Messages() {
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} w-full flex-col border-r border-slate-200/80 bg-white/90 dark:border-gray-800 dark:bg-gray-950/80 md:w-[21rem] md:max-w-sm md:flex`}>
+          <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list w-full flex-col border-r border-slate-200/80 bg-white/90 dark:border-gray-800 dark:bg-gray-950/80 md:w-[21rem] md:max-w-sm md:flex`}>
             <div className="border-b border-gray-200/80 p-4 dark:border-gray-800">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1217,14 +1241,14 @@ export default function Messages() {
           </aside>
 
           {selectedUser ? (
-            <section className="flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
-              <header className="flex items-center gap-3 border-b border-gray-200/80 bg-white/94 px-4 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-950/92">
+            <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
+              <header className="mobile-chat-header flex items-center gap-3 border-b border-gray-200/80 bg-white/94 px-4 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-950/92">
                 <button
                   onClick={() => setSelectedUser(null)}
-                  className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
                   aria-label="Back to conversations"
                 >
-                  <X size={18} />
+                  <ArrowLeft size={21} strokeWidth={2.7} />
                 </button>
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="relative shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-pink-300" title="View profile">
                   {renderAvatar(selectedUser, 'h-12 w-12', 22)}
@@ -1312,7 +1336,7 @@ export default function Messages() {
                 )}
               </AnimatePresence>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+              <div className="mobile-message-thread min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-5">
                 {loading ? (
                   <div className="space-y-4">
                     {[0, 1, 2].map(item => (
@@ -1498,7 +1522,7 @@ export default function Messages() {
                 )}
               </div>
 
-              <footer className="border-t border-gray-200/80 bg-white/95 p-3 backdrop-blur dark:border-gray-800 dark:bg-gray-950/95">
+              <footer className="message-composer-footer border-t border-gray-200/80 bg-white/95 p-2 backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 sm:p-3">
                 <AnimatePresence>
                   {replyingTo && (
                     <motion.div
@@ -1568,14 +1592,14 @@ export default function Messages() {
                   </div>
                 )}
 
-                <div className="flex items-end gap-2">
+                <div className="message-composer-grid">
                   <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={event => handleAttachmentSelect(event, 'image')} />
                   <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={event => handleAttachmentSelect(event, 'video')} />
 
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || recording}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-slate-100 hover:text-pink-600 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-pink-300"
+                    className="message-composer-action"
                     aria-label="Send picture"
                   >
                     <ImageIcon size={19} />
@@ -1583,7 +1607,7 @@ export default function Messages() {
                   <button
                     onClick={() => videoInputRef.current?.click()}
                     disabled={sending || recording}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-slate-100 hover:text-pink-600 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-pink-300"
+                    className="message-composer-action"
                     aria-label="Send video"
                   >
                     <Video size={19} />
@@ -1591,10 +1615,10 @@ export default function Messages() {
                   <button
                     onClick={recording ? stopRecording : startRecording}
                     disabled={sending}
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition disabled:opacity-50 ${
+                    className={`message-composer-action ${
                       recording
                         ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300'
-                        : 'text-gray-500 hover:bg-slate-100 hover:text-pink-600 dark:hover:bg-gray-800 dark:hover:text-pink-300'
+                        : ''
                     }`}
                     aria-label={recording ? 'Stop recording' : 'Record voice message'}
                   >
@@ -1616,7 +1640,7 @@ export default function Messages() {
                       }
                     }}
                     placeholder="Aa"
-                    className="min-h-12 flex-1 rounded-full border border-gray-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
+                    className="message-composer-input"
                     disabled={sending || recording}
                   />
                   <motion.button
@@ -1626,7 +1650,7 @@ export default function Messages() {
                     transition={sending ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
                     onClick={() => sendMessage()}
                     disabled={(!newMessage.trim() && !selectedAttachment) || sending || recording}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-600 to-cyan-600 text-white shadow-lg shadow-pink-500/20 transition disabled:cursor-not-allowed disabled:opacity-45"
+                    className="message-composer-send"
                     aria-label="Send message"
                   >
                     {sending ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
@@ -1667,6 +1691,8 @@ export default function Messages() {
         user={profileUser}
         onClose={() => setProfileUser(null)}
       />
+
+      <MediaViewer media={mediaPreview} onClose={() => setMediaPreview(null)} />
     </div>
   );
 }

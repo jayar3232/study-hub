@@ -300,8 +300,8 @@ export default function Friends() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <section className="overflow-hidden rounded-3xl bg-gray-950 text-white shadow-2xl shadow-pink-500/10">
+    <div className="mobile-page mx-auto max-w-7xl space-y-4 sm:space-y-6">
+      <section className="mobile-hero-panel overflow-hidden rounded-3xl bg-gray-950 text-white shadow-2xl shadow-pink-500/10">
         <div className="relative p-5 sm:p-7">
           <div className="absolute -right-12 top-3 h-32 w-32 rounded-full border-[14px] border-cyan-300/20" />
           <div className="absolute -bottom-16 left-1/2 h-40 w-40 rounded-full border-[18px] border-pink-400/20" />
@@ -339,7 +339,7 @@ export default function Friends() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <section className="mobile-control-panel rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {tabs.map(tab => (
@@ -415,7 +415,7 @@ export default function Friends() {
               {friends.length === 0 ? (
                 <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing StudentHub users." />
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="mobile-card-list grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {friends.map(item => (
                     <motion.article
                       key={item._id}
@@ -467,7 +467,7 @@ export default function Friends() {
           )}
 
           {activeTab === 'add' && (
-            <section className="space-y-3">
+            <section className="mobile-card-list space-y-3">
               {people.length === 0 ? (
                 <EmptyPanel icon={Sparkles} title="Everyone is connected" message="No new people to add right now. New users will appear here automatically." />
               ) : (

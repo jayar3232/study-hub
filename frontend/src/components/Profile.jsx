@@ -274,8 +274,8 @@ export default function Profile() {
   const currentPosition = rankData?.currentUserRank?.position;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-xl shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+      <section className="mobile-profile-hero overflow-hidden rounded-2xl border border-white/70 bg-white shadow-xl shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
         <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
           {coverSrc && !coverLoadFailed ? (
             <img
@@ -376,7 +376,7 @@ export default function Profile() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mobile-metric-strip grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={Users} label="Groups Joined" value={groups.length} helper="Workspaces you can access" />
         <StatCard icon={TrendingUp} label="Total Members" value={totalMembers} helper="Across your joined groups" />
         <StatCard icon={Award} label="Created by You" value={createdGroups.length} helper="Groups you own" />
@@ -384,7 +384,7 @@ export default function Profile() {
         <StatCard icon={Trophy} label="Arena High Score" value={gameStats?.highScore || 0} helper={`${gameStats?.totalPlays || 0} ranked runs`} />
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
+      <section className="mobile-content-stack grid gap-4 lg:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
         <RankBadge stats={rankStats} />
         <GameRankBadge stats={gameStats} />
         <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
@@ -424,7 +424,7 @@ export default function Profile() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="mobile-content-stack grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>

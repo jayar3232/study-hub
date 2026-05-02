@@ -8,6 +8,7 @@ import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
 import LoadingSpinner from './LoadingSpinner';
+import MediaViewer from './MediaViewer';
 
 let socket;
 
@@ -31,6 +32,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
+  const [viewerMedia, setViewerMedia] = useState(null);
   const [activeMenuMessageId, setActiveMenuMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const currentUserId = getEntityId(user);
@@ -221,18 +223,33 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
           <img
             src={mediaUrl}
             alt="attachment"
+            loading="lazy"
+            decoding="async"
             className="mt-1 max-h-64 cursor-pointer rounded-xl object-contain"
-            onClick={() => window.open(mediaUrl)}
+            onClick={() => setViewerMedia({ type: 'image', url: mediaUrl, name: getFileName(message.fileUrl) })}
           />
         </div>
       );
     }
 
     if (message.fileUrl && message.fileType === 'video') {
+      const mediaUrl = resolveMediaUrl(message.fileUrl);
       return (
         <div className="space-y-2">
           {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
-          <video controls className="mt-1 max-h-64 rounded-xl" src={resolveMediaUrl(message.fileUrl)} />
+          <button
+            type="button"
+            onClick={() => setViewerMedia({ type: 'video', url: mediaUrl, name: getFileName(message.fileUrl) || 'Video' })}
+            className="relative mt-1 block max-h-64 overflow-hidden rounded-xl bg-black"
+            aria-label="View video"
+          >
+            <video preload="metadata" playsInline muted className="max-h-64 rounded-xl object-contain opacity-90" src={mediaUrl} />
+            <span className="absolute inset-0 grid place-items-center bg-black/15">
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-white/90 text-gray-950 shadow-xl">
+                <Video size={22} fill="currentColor" />
+              </span>
+            </span>
+          </button>
         </div>
       );
     }
@@ -327,7 +344,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
   }
 
   return (
-    <div className="flex h-[min(76vh,760px)] min-h-[560px] flex-col overflow-hidden rounded-3xl border border-gray-200/80 bg-white shadow-xl shadow-pink-500/5 dark:border-gray-800 dark:bg-gray-900">
+    <div className="flex h-[calc(100svh-9rem)] min-h-[480px] flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-xl shadow-pink-500/5 dark:border-gray-800 dark:bg-gray-900 sm:h-[min(76vh,760px)] sm:min-h-[560px] sm:rounded-3xl">
       <div className="flex items-center justify-between gap-4 border-b border-gray-200/80 bg-white/95 px-4 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex -space-x-2">
@@ -446,7 +463,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="group-message-composer-grid">
           <div className="flex flex-1 items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 transition focus-within:border-pink-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:focus-within:border-pink-500">
             <label className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach image">
               <ImageIcon size={19} />
@@ -481,7 +498,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
               animate={uploading ? { x: [0, 4, 0], rotate: [0, -10, 0] } : { x: 0, rotate: 0 }}
               transition={uploading ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
               onClick={() => sendMediaMessage(selectedMedia, mediaType)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0084ff] text-white shadow-lg shadow-pink-500/20 transition hover:scale-105 disabled:opacity-50"
+              className="message-composer-send"
               disabled={uploading}
               aria-label="Send media"
             >
@@ -495,7 +512,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
               transition={uploading ? { duration: 0.55, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.18 }}
               onClick={() => sendTextMessage(newMessage)}
               disabled={!newMessage.trim() || uploading}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0084ff] text-white shadow-lg shadow-pink-500/20 transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-45"
+              className="message-composer-send"
               aria-label="Send message"
             >
               <Send size={19} />
@@ -503,6 +520,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
           )}
         </div>
       </div>
+      <MediaViewer media={viewerMedia} onClose={() => setViewerMedia(null)} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus } from 'lucide-react';
+import { BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -9,7 +9,7 @@ import { resolveMediaUrl } from '../utils/media';
 import { installGlobalClickSound, playUiSound } from '../utils/sound';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
-import { SCHOOL_LOGO_SRC } from '../utils/academics';
+import { AppLogoMark, AppWordmark } from './AppLogo';
 
 const APP_NAME = 'StudentHub';
 
@@ -38,17 +38,64 @@ export default function Layout({ children }) {
   const [developerAccess, setDeveloperAccess] = useState(Boolean(user?.isDeveloper));
   const [messagePopups, setMessagePopups] = useState([]);
   const [dndEnabled, setDndEnabled] = useState(() => localStorage.getItem('workloop-dnd') === 'true');
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [isInstalledApp, setIsInstalledApp] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone === true;
+  });
   const messageTimersRef = useRef({});
   const navigate = useNavigate();
   const location = useLocation();
   const avatarSrc = resolveMediaUrl(user?.avatar);
   const pageContent = children || <Outlet />;
+  const isCompactRoute = location.pathname.startsWith('/messages') || location.pathname.startsWith('/arena') || location.pathname.startsWith('/group/');
+
+  const pageMeta = (() => {
+    if (location.pathname.startsWith('/groups')) return { title: 'Workspaces', helper: 'Projects, teams, invites', action: () => navigate('/groups') };
+    if (location.pathname.startsWith('/messages')) return { title: 'Messages', helper: 'Realtime chats and media', action: () => navigate('/messages') };
+    if (location.pathname.startsWith('/friends')) return { title: 'Friends', helper: 'Requests and teammates', action: () => navigate('/friends') };
+    if (location.pathname.startsWith('/arena')) return { title: developerAccess ? 'Developer Console' : 'Fix Arena', helper: 'Reports, games, ranks', action: () => navigate('/arena') };
+    if (location.pathname.startsWith('/profile')) return { title: 'Me', helper: 'Profile and settings', action: () => navigate('/profile') };
+    if (location.pathname.startsWith('/group/')) return { title: 'Workspace', helper: 'Focused project room', action: () => navigate('/groups') };
+    return { title: 'Dashboard', helper: 'Today at a glance', action: () => navigate('/dashboard') };
+  })();
 
   useEffect(() => {
     localStorage.setItem('workloop-dnd', String(dndEnabled));
   }, [dndEnabled]);
 
   useEffect(() => installGlobalClickSound(), []);
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', updateOnlineState);
+    window.addEventListener('offline', updateOnlineState);
+    return () => {
+      window.removeEventListener('online', updateOnlineState);
+      window.removeEventListener('offline', updateOnlineState);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsInstalledApp(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
 
   useEffect(() => () => {
     Object.values(messageTimersRef.current).forEach(clearTimeout);
@@ -183,22 +230,16 @@ export default function Layout({ children }) {
     return () => socket.off('receiveMessage', onReceiveMessage);
   }, [dndEnabled, location.pathname, user]);
 
-  const BrandLogo = ({ compact = false, collapsed = false }) => (
+  const BrandLogo = ({ compact = false, collapsed = false, mobile = false }) => (
     <motion.div
-      animate={{ y: [0, -3, 0] }}
+      animate={{ y: [0, mobile ? -2 : -3, 0] }}
       transition={{ duration: 3.8, repeat: Infinity, ease: 'easeInOut' }}
       className="group/brand inline-flex min-w-0 items-center gap-3"
       title={APP_NAME}
     >
-      <span className={`${compact ? 'h-14 w-14 rounded-[1.35rem]' : 'h-16 w-16 rounded-[1.6rem]'} relative flex shrink-0 items-center justify-center overflow-hidden bg-white/90 shadow-xl shadow-cyan-500/15 ring-1 ring-white/70 transition group-hover/brand:shadow-pink-500/20 dark:bg-gray-950/80 dark:ring-white/10`}>
-        <span className="absolute inset-0 bg-gradient-to-br from-cyan-300/35 via-pink-300/25 to-indigo-400/35" />
-        <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="relative h-full w-full object-cover p-1" />
-      </span>
+      <AppLogoMark size={mobile ? 'sm' : compact ? 'md' : 'lg'} />
       <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[11rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[11rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[11rem] opacity-100'} min-w-0 overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
-        <span className={`${compact ? 'text-[1.65rem]' : 'text-3xl'} block truncate font-black tracking-normal text-gray-950 drop-shadow-sm dark:text-white`}>
-          Student<span className="bg-gradient-to-r from-cyan-500 via-pink-500 to-indigo-500 bg-clip-text text-transparent">Hub</span>
-        </span>
-        <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} mt-0.5 block truncate font-black uppercase tracking-normal text-gray-500 dark:text-gray-400`}>NEMSU Workspace</span>
+        <AppWordmark size={mobile ? 'sm' : compact ? 'sm' : 'md'} />
       </span>
     </motion.div>
   );
@@ -241,13 +282,38 @@ export default function Layout({ children }) {
     </button>
   );
 
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+
+    installPrompt.prompt();
+    const result = await installPrompt.userChoice.catch(() => null);
+    if (!result || result.outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
+
+  const InstallButton = () => {
+    if (!installPrompt || isInstalledApp) return null;
+
+    return (
+      <button
+        type="button"
+        onClick={handleInstallApp}
+        className="flex w-full items-center gap-3 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:-translate-y-0.5 hover:bg-cyan-400/15 dark:border-cyan-300/20 dark:text-cyan-200"
+      >
+        <Download size={19} />
+        <span>Install StudentHub</span>
+      </button>
+    );
+  };
+
   const navItems = [
-    { path: '/dashboard', icon: Home, label: 'Dashboard' },
-    { path: '/groups', icon: Users, label: 'Workspaces' },
-    { path: '/messages', icon: MessageCircle, label: 'Messages' },
-    { path: '/friends', icon: UserPlus, label: 'Friends' },
-    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena' },
-    { path: '/profile', icon: User, label: 'Profile' },
+    { path: '/dashboard', icon: Home, label: 'Dashboard', mobileLabel: 'Home' },
+    { path: '/groups', icon: Users, label: 'Workspaces', mobileLabel: 'Spaces' },
+    { path: '/messages', icon: MessageCircle, label: 'Messages', mobileLabel: 'Chats' },
+    { path: '/friends', icon: UserPlus, label: 'Friends', mobileLabel: 'Friends' },
+    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena', mobileLabel: 'Arena' },
+    { path: '/profile', icon: User, label: 'Profile', mobileLabel: 'Me' },
   ];
   const mobileBottomItems = navItems;
 
@@ -322,6 +388,7 @@ export default function Layout({ children }) {
           {navItems.map(item => renderNavLink(item, false))}
         </nav>
         <div className="space-y-2 border-t border-white/40 p-3 dark:border-white/10">
+          <InstallButton />
           <DndToggle />
           <ThemeToggle />
           {user && (
@@ -348,8 +415,8 @@ export default function Layout({ children }) {
       </aside>
 
       <div className="flex min-h-screen flex-col md:ml-64">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/45 bg-white/55 p-4 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/55 dark:shadow-black/10 md:hidden">
-          <BrandLogo compact />
+        <header className="mobile-topbar sticky top-0 z-20 flex items-center justify-between border-b border-white/45 bg-white/70 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/10 md:hidden">
+          <BrandLogo mobile />
           <div className="flex items-center gap-2">
             <DndToggle compact />
             {user && (
@@ -363,7 +430,41 @@ export default function Layout({ children }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden p-4 pb-20 md:pb-4">
+        <div className="mobile-context-panel sticky top-[calc(4.45rem_+_env(safe-area-inset-top))] z-[18] px-3 pt-2 md:hidden">
+          {!isOnline && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-2 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 shadow-lg shadow-amber-500/10 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              <WifiOff size={15} />
+              Offline mode. Some actions will retry when connection returns.
+            </motion.div>
+          )}
+          {!location.pathname.startsWith('/messages') && (
+            <motion.div
+              key={pageMeta.title}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mobile-page-titlebar flex items-center justify-between gap-3 rounded-2xl border border-white/55 bg-white/72 px-3 py-2.5 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/72 dark:shadow-black/20"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-base font-black text-gray-950 dark:text-white">{pageMeta.title}</p>
+                <p className="truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">{pageMeta.helper}</p>
+              </div>
+              <button
+                type="button"
+                onClick={pageMeta.action}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gray-950 text-white shadow-lg shadow-gray-950/15 transition active:scale-95 dark:bg-white dark:text-gray-950"
+                aria-label={`Open ${pageMeta.title}`}
+              >
+                <PlusCircle size={19} />
+              </button>
+            </motion.div>
+          )}
+        </div>
+
+        <main className={`app-main flex-1 overflow-x-hidden ${isCompactRoute ? 'app-main--compact' : ''}`}>
           {location.pathname.startsWith('/arena') ? (
             <div className="min-h-full">{pageContent}</div>
           ) : (
@@ -382,7 +483,7 @@ export default function Layout({ children }) {
           )}
         </main>
 
-        <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-white/45 bg-white/55 py-2 shadow-2xl shadow-gray-300/35 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/55 dark:shadow-black/20 md:hidden">
+        <nav className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-20 border-t border-white/45 bg-white/72 shadow-2xl shadow-gray-300/35 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/72 dark:shadow-black/20 md:hidden">
           {mobileBottomItems.map(item => {
             const isActive = location.pathname === item.path;
             const isMessages = item.path === '/messages';
@@ -394,16 +495,13 @@ export default function Layout({ children }) {
                 key={item.path}
                 to={item.path}
                 data-sound="tab"
-                className={`p-2 rounded-full relative transition hover:-translate-y-0.5 ${
-                  isActive
-                    ? 'text-pink-600 dark:text-pink-400'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
+                className={`mobile-nav-item relative flex flex-col items-center justify-center gap-0.5 ${isActive ? 'is-active' : ''}`}
                 aria-label={item.label}
               >
-                <item.icon size={24} />
+                <item.icon size={21} strokeWidth={isActive ? 2.6 : 2.2} />
+                <span className="max-w-full truncate text-[10px] font-black leading-none">{item.mobileLabel || item.label}</span>
                 {badgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center">
+                  <span className="absolute right-1 top-0 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-pink-500 px-1 text-xs text-white">
                     {badgeCount > 9 ? '9+' : badgeCount}
                   </span>
                 )}
@@ -464,16 +562,17 @@ export default function Layout({ children }) {
               initial={{ x: -300 }}
               animate={{ x: 0 }}
               exit={{ x: -300 }}
-              className="fixed top-0 left-0 bottom-0 w-64 bg-white dark:bg-gray-800 z-40 shadow-xl md:hidden"
+              className="fixed bottom-0 left-0 top-0 z-40 w-[min(86vw,20rem)] border-r border-white/45 bg-white/92 shadow-2xl shadow-gray-950/20 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/92 md:hidden"
             >
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <BrandLogo compact />
-                <button onClick={() => setSidebarOpen(false)} data-sound="close" aria-label="Close menu">
+              <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-800">
+                <BrandLogo mobile />
+                <button onClick={() => setSidebarOpen(false)} data-sound="close" className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close menu">
                   <X size={24} />
                 </button>
               </div>
               <nav className="p-4 space-y-2">
                 {navItems.map(item => renderNavLink(item, true))}
+                <InstallButton />
                 <DndToggle />
                 <ThemeToggle />
                 <button

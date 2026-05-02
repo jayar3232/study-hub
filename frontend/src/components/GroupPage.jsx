@@ -56,6 +56,7 @@ import LoadingSpinner from './LoadingSpinner';
 import EmptyState from './EmptyState';
 import UserProfileModal from './UserProfileModal';
 import { PostSkeleton } from './SkeletonLoader';
+import MediaViewer from './MediaViewer';
 import { resolveMediaUrl } from '../utils/media';
 import { getSocket } from '../services/socket';
 import { playUiSound } from '../utils/sound';
@@ -1218,6 +1219,7 @@ export default function GroupPage() {
   const [groupSettings, setGroupSettings] = useState({ name: '', subject: '', description: '' });
   const [savingGroupSettings, setSavingGroupSettings] = useState(false);
   const [mediaViewerIndex, setMediaViewerIndex] = useState(null);
+  const [looseMediaItem, setLooseMediaItem] = useState(null);
   const [joinedGroups, setJoinedGroups] = useState([]);
   const [sharePost, setSharePost] = useState(null);
   const [shareMode, setShareMode] = useState('message');
@@ -2000,14 +2002,37 @@ export default function GroupPage() {
     if (!itemOrUrl) return;
     const targetUrl = typeof itemOrUrl === 'string' ? resolveMediaUrl(itemOrUrl) : resolveMediaUrl(itemOrUrl.url);
     const index = mediaItems.findIndex(item => resolveMediaUrl(item.url) === targetUrl || item.id === itemOrUrl.id);
-    if (index !== -1) setMediaViewerIndex(index);
-    else window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    if (index !== -1) {
+      setLooseMediaItem(null);
+      setMediaViewerIndex(index);
+    } else {
+      const inferredType = getShareFileType(targetUrl) || itemOrUrl.type || 'image';
+      setMediaViewerIndex(null);
+      setLooseMediaItem({
+        id: itemOrUrl.id || targetUrl,
+        type: inferredType === 'video' ? 'video' : 'image',
+        url: targetUrl,
+        title: itemOrUrl.title || itemOrUrl.name || 'Media preview',
+        origin: itemOrUrl.origin || 'Media'
+      });
+    }
   };
 
-  const activeMediaItem = mediaViewerIndex !== null ? mediaItems[mediaViewerIndex] : null;
+  const activeMediaItem = looseMediaItem || (mediaViewerIndex !== null ? mediaItems[mediaViewerIndex] : null);
+  const mediaViewerPayload = activeMediaItem
+    ? {
+        ...activeMediaItem,
+        url: resolveMediaUrl(activeMediaItem.url),
+        name: activeMediaItem.title || activeMediaItem.name || 'Media preview'
+      }
+    : null;
+  const mediaViewerPosition = activeMediaItem && !looseMediaItem
+    ? `Viewing ${(mediaViewerIndex ?? 0) + 1} of ${mediaItems.length}`
+    : activeMediaItem?.origin || '';
 
   const moveMediaViewer = (direction) => {
     if (!mediaItems.length) return;
+    setLooseMediaItem(null);
     setMediaViewerIndex(index => {
       if (index === null) return 0;
       return (index + direction + mediaItems.length) % mediaItems.length;
@@ -2093,9 +2118,9 @@ export default function GroupPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 overflow-x-hidden px-2 py-3 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+    <div className="mobile-page mx-auto max-w-7xl space-y-4 overflow-x-hidden px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
       {activeTab === 'overview' ? (
-        <section className="relative overflow-hidden rounded-2xl border border-pink-200/70 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.08),0_18px_50px_rgba(236,72,153,0.12)] dark:border-pink-900/40 dark:bg-gray-900 dark:shadow-[0_0_0_1px_rgba(236,72,153,0.10),0_18px_50px_rgba(236,72,153,0.08)]">
+        <section className="mobile-group-hero relative overflow-hidden rounded-2xl border border-pink-200/70 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.08),0_18px_50px_rgba(236,72,153,0.12)] dark:border-pink-900/40 dark:bg-gray-900 dark:shadow-[0_0_0_1px_rgba(236,72,153,0.10),0_18px_50px_rgba(236,72,153,0.08)]">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400" />
           <div className="flex flex-col gap-5 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
@@ -2150,7 +2175,7 @@ export default function GroupPage() {
             </div>
           </div>
 
-          <div className="grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mobile-metric-strip grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2 lg:grid-cols-4">
             {quickStats.map(stat => (
               <div key={stat.label} className="bg-white p-4 dark:bg-gray-900">
                 <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{stat.label}</p>
@@ -2160,7 +2185,7 @@ export default function GroupPage() {
           </div>
         </section>
       ) : (
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <section className="mobile-control-panel rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <button
@@ -2260,7 +2285,7 @@ export default function GroupPage() {
             </div>
             <p className="max-w-xl text-sm text-gray-500 dark:text-gray-400">Each area opens as a focused page so tasks, files, chat, and media do not compete for attention.</p>
           </div>
-          <div className="grid gap-3 lg:grid-cols-4">
+          <div className="mobile-module-grid grid gap-3 lg:grid-cols-4">
             {featuredModules.map(key => {
               const tab = tabs.find(item => item.key === key);
               if (!tab) return null;
@@ -3432,57 +3457,17 @@ export default function GroupPage() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {activeMediaItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-4">
-            <motion.div
-              initial={{ scale: 0.96, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.96, opacity: 0 }}
-              className="grid max-h-[94vh] w-full max-w-6xl overflow-hidden rounded-xl bg-gray-950 text-white shadow-2xl lg:grid-cols-[minmax(0,1fr)_320px]"
-            >
-              <div className="relative flex min-h-[55vh] items-center justify-center bg-black">
-                {activeMediaItem.type === 'image' ? (
-                  <img src={resolveMediaUrl(activeMediaItem.url)} alt={activeMediaItem.title} className="max-h-[80vh] max-w-full object-contain" />
-                ) : (
-                  <video controls autoPlay src={resolveMediaUrl(activeMediaItem.url)} className="max-h-[80vh] w-full" />
-                )}
-                {mediaItems.length > 1 && (
-                  <>
-                    <button type="button" onClick={() => moveMediaViewer(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 px-4 py-3 text-sm font-bold backdrop-blur transition hover:bg-white/20">
-                      Prev
-                    </button>
-                    <button type="button" onClick={() => moveMediaViewer(1)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 px-4 py-3 text-sm font-bold backdrop-blur transition hover:bg-white/20">
-                      Next
-                    </button>
-                  </>
-                )}
-              </div>
-              <aside className="flex flex-col border-l border-white/10 bg-gray-950">
-                <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
-                  <div className="min-w-0">
-                    <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] font-bold uppercase text-white/70">{activeMediaItem.origin}</span>
-                    <h2 className="mt-3 break-words text-lg font-bold">{activeMediaItem.title}</h2>
-                    <p className="mt-1 text-sm text-white/60">{activeMediaItem.author} - {formatRelativeDate(activeMediaItem.createdAt)}</p>
-                  </div>
-                  <button type="button" onClick={() => setMediaViewerIndex(null)} className="rounded-lg p-2 text-white/70 transition hover:bg-white/10 hover:text-white">
-                    <X size={20} />
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                  <p className="text-sm leading-6 text-white/65">
-                    Viewing {mediaViewerIndex + 1} of {mediaItems.length} media item{mediaItems.length === 1 ? '' : 's'} from this group.
-                  </p>
-                  <a href={resolveMediaUrl(activeMediaItem.url)} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-gray-950 transition hover:bg-gray-100">
-                    <Eye size={16} />
-                    Open original
-                  </a>
-                </div>
-              </aside>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <MediaViewer
+        media={mediaViewerPayload}
+        onClose={() => {
+          setMediaViewerIndex(null);
+          setLooseMediaItem(null);
+        }}
+        onPrevious={!looseMediaItem && mediaItems.length > 1 ? () => moveMediaViewer(-1) : null}
+        onNext={!looseMediaItem && mediaItems.length > 1 ? () => moveMediaViewer(1) : null}
+        positionLabel={mediaViewerPosition}
+        details={activeMediaItem?.author ? `${activeMediaItem.author} - ${formatRelativeDate(activeMediaItem.createdAt)}` : activeMediaItem?.origin}
+      />
 
       <AnimatePresence>
         {previewFile && (

@@ -1,18 +1,1 @@
-self.addEventListener('install', event => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key))))
-  );
-});
-
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    Promise.all([
-      caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key)))),
-      self.registration.unregister(),
-      self.clients.matchAll({ type: 'window' }).then(clients => {
-        clients.forEach(client => client.navigate(client.url));
-      })
-    ])
-  );
-});
+if(!self.define){let e,i={};const n=(n,s)=>(n=new URL(n+".js",s).href,i[n]||new Promise(i=>{if("document"in self){const e=document.createElement("script");e.src=n,e.onload=i,document.head.appendChild(e)}else e=n,importScripts(n),i()}).then(()=>{let e=i[n];if(!e)throw new Error(`Module ${n} didn’t register its module`);return e}));self.define=(s,o)=>{const r=e||("document"in self?document.currentScript.src:"")||location.href;if(i[r])return;let a={};const d=e=>n(e,r),l={module:{uri:r},exports:a,require:d};i[r]=Promise.all(s.map(e=>l[e]||d(e))).then(e=>(o(...e),a))}}define(["./workbox-3e722498"],function(e){"use strict";self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"updatedlogofinal.png",revision:"a7e0dbeac2c72a25b50ec1e51c4ba808"},{url:"updatedLogo.png",revision:"3192c51d45884a6e726d0a197df443fb"},{url:"studenthub-logo.png",revision:"2511c82c51f66b1e13cf98e33faefaf8"},{url:"pwa-512.png",revision:"c0fbc054a72fd06fddbfb3968b5e4afc"},{url:"pwa-192.png",revision:"0f1451f7c0e5ced662e30cf396b031da"},{url:"index.html",revision:"fee3d986d77cdaa01f1b0a0d38973cb6"},{url:"apple-touch-icon.png",revision:"bea240070794992a4ff96a06617d3195"},{url:"assets/workbox-window.prod.es5-vqzQaGvo.js",revision:null},{url:"assets/message send-BvCJX4Pw.mp3",revision:null},{url:"assets/message recieved-VFnaOT6i.mp3",revision:null},{url:"assets/index-DJjtQh42.js",revision:null},{url:"assets/index-D18TW3Dw.css",revision:null},{url:"assets/clicksounds-DdBA6f6V.mp3",revision:null},{url:"apple-touch-icon.png",revision:"bea240070794992a4ff96a06617d3195"},{url:"pwa-192.png",revision:"0f1451f7c0e5ced662e30cf396b031da"},{url:"pwa-512.png",revision:"c0fbc054a72fd06fddbfb3968b5e4afc"},{url:"updatedlogofinal.png",revision:"a7e0dbeac2c72a25b50ec1e51c4ba808"},{url:"manifest.webmanifest",revision:"1dca228048afd135d44919a42d77423d"}],{}),e.cleanupOutdatedCaches(),e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("/index.html"))),e.registerRoute(({url:e})=>e.pathname.startsWith("/api")||e.pathname.startsWith("/socket.io"),new e.NetworkOnly,"GET")});

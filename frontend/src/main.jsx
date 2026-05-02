@@ -1,19 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 import App from './App.jsx'
 import './index.css'
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations?.().then(registrations => {
-    registrations.forEach(registration => registration.unregister())
-  })
-}
-
-if ('caches' in window) {
-  caches.keys?.().then(keys => {
-    keys.forEach(key => caches.delete(key))
-  })
-}
+registerSW({ immediate: true })
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

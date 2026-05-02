@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Lock, Mail, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { SCHOOL_LOGO_SRC } from '../utils/academics';
+import AppLogo, { AppLogoMark } from './AppLogo';
 
 const decodeBase64Url = (value = '') => {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -171,19 +171,7 @@ export default function Login() {
 
       <div className="relative grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
         <section className="hidden min-h-screen px-10 py-10 lg:flex lg:flex-col lg:justify-between">
-          <div className="flex items-center gap-3">
-            <motion.img
-              animate={{ y: [0, -5, 0], rotate: [0, 1, -1, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              src={SCHOOL_LOGO_SRC}
-              alt="NEMSU logo"
-              className="h-14 w-14 rounded-2xl bg-white object-cover p-1 shadow-2xl shadow-cyan-500/20"
-            />
-            <div>
-              <div className="text-3xl font-black tracking-normal">Nex<span className="bg-gradient-to-r from-pink-300 to-cyan-300 bg-clip-text text-transparent">us</span></div>
-              <p className="text-xs font-black uppercase text-white/45">NEMSU workspace network</p>
-            </div>
-          </div>
+          <AppLogo size="md" wordSize="md" tone="inverse" />
 
           <div className="max-w-xl">
             <motion.div
@@ -216,9 +204,8 @@ export default function Login() {
             transition={{ type: 'spring', damping: 24, stiffness: 240 }}
             className="w-full max-w-[430px]"
           >
-            <div className="mb-6 flex items-center justify-center gap-3 lg:hidden">
-              <img src={SCHOOL_LOGO_SRC} alt="NEMSU logo" className="h-12 w-12 rounded-2xl bg-white object-cover p-1" />
-              <div className="text-3xl font-black">Student<span className="text-pink-500">Hub</span></div>
+            <div className="mb-6 flex justify-center lg:hidden">
+              <AppLogo size="sm" wordSize="sm" />
             </div>
 
             <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/95 p-6 text-gray-950 shadow-2xl shadow-pink-500/20 dark:bg-gray-900/95 dark:text-white sm:p-8">
@@ -227,13 +214,7 @@ export default function Login() {
               <div className="pointer-events-none absolute bottom-0 left-0 h-24 w-24 rounded-bl-[2rem] border-b-2 border-l-2 border-cyan-300/80 shadow-[-14px_14px_45px_rgba(34,211,238,0.18)]" />
 
               <div className="relative mb-7 text-center">
-                <motion.img
-                  animate={{ y: [0, -4, 0] }}
-                  transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                  src={SCHOOL_LOGO_SRC}
-                  alt="StudentHub"
-                  className="mx-auto h-16 w-16 rounded-2xl bg-gray-950 object-cover p-1 shadow-xl shadow-cyan-500/20 dark:bg-white"
-                />
+                <AppLogoMark size="lg" className="mx-auto" />
                 <h2 className="mt-5 text-3xl font-black tracking-normal">Welcome back</h2>
                 <p className="mt-2 text-sm font-semibold text-gray-500 dark:text-gray-400">Login to continue your workspace flow.</p>
               </div>

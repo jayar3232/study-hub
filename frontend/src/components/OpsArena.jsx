@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   AlertTriangle,
+  ArrowLeft,
   Bug,
   CheckCircle2,
   Clock,
@@ -156,6 +157,7 @@ export default function OpsArena() {
   const [typingSeconds, setTypingSeconds] = useState(0);
   const [typingBusy, setTypingBusy] = useState(false);
   const [activeGame, setActiveGame] = useState('blocks');
+  const [arenaView, setArenaView] = useState('home');
   const [profileUser, setProfileUser] = useState(null);
 
   const isDeveloper = Boolean(developerInfo?.isDeveloper);
@@ -378,6 +380,7 @@ export default function OpsArena() {
   const handleTypingTextChange = (event) => {
     const value = event.target.value;
     if (!typingSession || typingBusy) return;
+    if (value.length < typingText.length) return;
     const sentences = getTypingSentences(typingSession);
     const expected = sentences[typingEntries.length] || '';
     const normalizedValue = normalizeTypingSentence(value);
@@ -392,9 +395,61 @@ export default function OpsArena() {
   };
 
   const handleTypingKeyDown = (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    advanceTypingSentence(typingText, typingEntries.length);
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      advanceTypingSentence(typingText, typingEntries.length);
+    }
+  };
+
+  const handleTypingBeforeInput = (event) => {
+    if (event.inputType?.startsWith('delete')) {
+      event.preventDefault();
+    }
+  };
+
+  const renderTypingPrompt = () => {
+    if (!typingProgress.prompt) return 'Done';
+
+    const promptChars = typingProgress.prompt.split('');
+    const typedChars = typingProgress.typed.split('');
+    const extraChars = typedChars.slice(promptChars.length);
+
+    return (
+      <>
+        {promptChars.map((char, index) => {
+          const typedChar = typedChars[index];
+          const hasTyped = typeof typedChar === 'string';
+          const isWrong = hasTyped && typedChar.toLowerCase() !== char.toLowerCase();
+          const isCurrent = index === typedChars.length;
+
+          return (
+            <span
+              key={`${char}-${index}`}
+              className={`typing-prompt-char ${
+                isWrong
+                  ? 'is-wrong'
+                  : hasTyped
+                    ? 'is-correct'
+                    : isCurrent
+                      ? 'is-current'
+                      : ''
+              }`}
+            >
+              {char === ' ' ? '\u00A0' : char}
+            </span>
+          );
+        })}
+        {extraChars.map((char, index) => (
+          <span key={`extra-${char}-${index}`} className="typing-prompt-char is-wrong">
+            {char === ' ' ? '\u00A0' : char}
+          </span>
+        ))}
+      </>
+    );
   };
 
   useEffect(() => {
@@ -418,7 +473,7 @@ export default function OpsArena() {
     let mistakes = 0;
 
     for (let index = 0; index < typed.length; index += 1) {
-      if (typed[index] !== prompt[index]) mistakes += 1;
+      if ((typed[index] || '').toLowerCase() !== (prompt[index] || '').toLowerCase()) mistakes += 1;
     }
 
     const accuracy = typed.length
@@ -514,29 +569,97 @@ export default function OpsArena() {
     }
   ];
 
+  const openArenaView = (view) => {
+    setArenaView(view);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
+  const activeGameInfo = gameCards.find(game => game.key === activeGame) || gameCards[0];
+  const viewMeta = {
+    home: {
+      eyebrow: 'Member reports + developer response',
+      title: 'Fix Arena',
+      description: 'Choose one workspace action at a time: play, submit a report, or review developer conversations without digging through one long page.'
+    },
+    games: {
+      eyebrow: 'Game panel',
+      title: activeGameInfo?.title || 'Games',
+      description: 'Play one live challenge at a time. Scores from every game contribute to your Division Rank.'
+    },
+    report: {
+      eyebrow: 'Private member report',
+      title: 'Submit Report',
+      description: 'Send a bug, problem, or suggestion privately to the developer team and track the response thread.'
+    },
+    developer: {
+      eyebrow: 'Developer-only console',
+      title: 'Developer Console',
+      description: 'Review member submissions, reply privately, and approve, reject, or resolve reports in one focused workspace.'
+    }
+  }[arenaView] || {};
+
+  const arenaActions = [
+    {
+      key: 'games',
+      title: 'Enter Games',
+      description: 'WorkGrid Blocks, Typing Sprint, Bug Hunt, and Focus Flow.',
+      icon: Gamepad2,
+      tone: 'from-cyan-400 to-pink-500',
+      meta: `${summary?.stats?.highScore || 0} best score`
+    },
+    {
+      key: 'report',
+      title: isDeveloper ? 'Member Reports' : 'Submit Report',
+      description: isDeveloper ? 'Open member threads and developer decisions.' : 'Send a private problem or suggestion to developers.',
+      icon: Bug,
+      tone: 'from-pink-500 to-rose-500',
+      meta: isDeveloper ? `${issues.length} total reports` : `${issues.length} submitted`
+    },
+    {
+      key: 'developer',
+      title: isDeveloper ? 'Developer Console' : 'Developer Access',
+      description: isDeveloper ? 'Review, reply, approve, reject, and resolve reports.' : 'Unlock the private developer tools when needed.',
+      icon: ShieldCheck,
+      tone: 'from-violet-500 to-cyan-500',
+      meta: isDeveloper ? `${issueStats.open} pending` : 'Password protected'
+    }
+  ];
+
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl space-y-5 px-3 py-4 sm:px-6 lg:px-8">
+      <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-5 sm:px-6 sm:py-4 lg:px-8">
         <LoadingSpinner label="Loading Fix Arena" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-6 lg:px-8">
-      <section className="relative overflow-hidden rounded-3xl bg-gray-950 shadow-2xl shadow-cyan-500/10">
+    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+      <section className="mobile-hero-panel mobile-arena-hero relative overflow-hidden rounded-3xl bg-gray-950 shadow-2xl shadow-cyan-500/10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.25),transparent_30%),radial-gradient(circle_at_82%_22%,rgba(236,72,153,0.25),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.9))]" />
         <div className="relative grid gap-6 p-6 text-white md:p-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <ArenaMark />
             <div>
+              {arenaView !== 'home' && (
+                <button
+                  type="button"
+                  onClick={() => openArenaView('home')}
+                  className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-black uppercase text-white backdrop-blur transition hover:-translate-x-0.5 hover:bg-white/15"
+                >
+                  <ArrowLeft size={15} />
+                  Back to arena
+                </button>
+              )}
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-black uppercase text-cyan-100 backdrop-blur">
                 <Code2 size={14} />
-                Member reports + developer response
+                {viewMeta.eyebrow}
               </div>
-              <h1 className="mt-4 text-4xl font-black tracking-normal md:text-5xl">Fix Arena</h1>
+              <h1 className="mt-4 text-4xl font-black tracking-normal md:text-5xl">{viewMeta.title}</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75 md:text-base">
-                Members can report problems or suggestions. Developers can review, reply, update status, and keep communication in one clean thread.
+                {viewMeta.description}
               </p>
             </div>
           </div>
@@ -547,11 +670,49 @@ export default function OpsArena() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {statCards.map(card => <StatCard key={card.label} {...card} />)}
-      </section>
+      {arenaView === 'home' && (
+        <>
+          <section className="mobile-metric-strip grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {statCards.map(card => <StatCard key={card.label} {...card} />)}
+          </section>
 
-      <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <section className="grid gap-4 lg:grid-cols-3">
+            {arenaActions.map(action => {
+              const Icon = action.icon;
+              return (
+                <motion.button
+                  key={action.key}
+                  type="button"
+                  onClick={() => openArenaView(action.key)}
+                  whileHover={{ y: -4 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+                >
+                  <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${action.tone} opacity-80`} />
+                  <div className="flex min-h-[11rem] flex-col justify-between gap-5">
+                    <div>
+                      <div className={`mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${action.tone} text-white shadow-lg shadow-pink-500/10`}>
+                        <Icon size={25} />
+                      </div>
+                      <h2 className="text-xl font-black text-gray-950 dark:text-white">{action.title}</h2>
+                      <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{action.description}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600 dark:bg-gray-950 dark:text-gray-300">{action.meta}</span>
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-950 text-white transition group-hover:translate-x-1 dark:bg-white dark:text-gray-950">
+                        <ArrowLeft size={18} className="rotate-180" />
+                      </span>
+                    </div>
+                  </div>
+                </motion.button>
+              );
+            })}
+          </section>
+        </>
+      )}
+
+      {arenaView === 'games' && (
+      <section className="mobile-game-shell overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
         <div className="border-b border-gray-100 p-5 dark:border-gray-800">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -567,7 +728,7 @@ export default function OpsArena() {
         </div>
 
         <div className="space-y-4 p-4">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mobile-game-tabs grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {gameCards.map(game => {
               const Logo = game.Logo;
               const isActive = activeGame === game.key;
@@ -608,14 +769,14 @@ export default function OpsArena() {
             })}
           </div>
 
-          <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="mobile-game-active grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="min-w-0">
             {activeGame === 'blocks' && (
               <BlockStackGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} />
             )}
 
             {activeGame === 'typing' && (
-              <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <section className="mobile-typing-game overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <div className="border-b border-gray-100 p-5 dark:border-gray-800">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-center gap-4">
@@ -623,7 +784,7 @@ export default function OpsArena() {
                       <div>
                         <p className="text-xs font-black uppercase text-yellow-500">Speed Challenge</p>
                         <h2 className="text-2xl font-black tracking-normal text-gray-950 dark:text-white">Typing Sprint</h2>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Type each sentence, press Enter, and keep the streak alive until time runs out.</p>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Type the live sentence. Wrong letters turn red and the next sentence appears automatically.</p>
                       </div>
                     </div>
                     <button onClick={startTypingSprint} disabled={typingBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
@@ -660,14 +821,14 @@ export default function OpsArena() {
                           </div>
                           <div className="mt-5 text-center">
                             <p className="text-xs font-black uppercase text-gray-400">Current sentence</p>
-                            <motion.p
+                            <motion.div
                               key={typingProgress.prompt}
                               initial={{ opacity: 0, y: 10, scale: 0.96 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
-                              className="mx-auto mt-2 max-w-3xl text-2xl font-black leading-9 tracking-normal text-gray-950 dark:text-white md:text-3xl md:leading-10"
+                              className="mobile-typing-prompt mx-auto mt-2 max-w-3xl rounded-3xl bg-white px-4 py-4 text-left text-xl font-black leading-9 tracking-normal text-gray-950 shadow-sm ring-1 ring-gray-100 dark:bg-gray-900 dark:text-white dark:ring-gray-800 md:text-3xl md:leading-10"
                             >
-                              {typingProgress.prompt || 'Done'}
-                            </motion.p>
+                              {renderTypingPrompt()}
+                            </motion.div>
                             <div className="mx-auto mt-4 h-2 max-w-md overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                               <motion.div
                                 animate={{ width: `${Math.min(100, (typingEntries.length / Math.max(1, typingProgress.sentences.length)) * 100)}%` }}
@@ -699,11 +860,14 @@ export default function OpsArena() {
                   </div>
 
                   <form onSubmit={submitTypingSprint} className="mt-4 space-y-3">
-                    <textarea value={typingText} onChange={handleTypingTextChange} onKeyDown={handleTypingKeyDown} disabled={!typingSession || typingBusy} rows="3" placeholder="Type current sentence, then press Enter..." className={`w-full resize-none rounded-2xl border bg-white px-4 py-4 text-lg font-black leading-8 text-gray-900 outline-none disabled:bg-gray-50 dark:bg-gray-950 dark:text-white dark:disabled:bg-gray-900 ${
+                    <input value={typingText} onChange={handleTypingTextChange} onKeyDown={handleTypingKeyDown} onBeforeInput={handleTypingBeforeInput} disabled={!typingSession || typingBusy} type="text" autoCapitalize="none" autoCorrect="off" spellCheck="false" inputMode="text" placeholder="Type here..." className={`mobile-typing-input w-full rounded-2xl border bg-white px-4 py-4 text-lg font-black leading-8 text-gray-900 outline-none disabled:bg-gray-50 dark:bg-gray-950 dark:text-white dark:disabled:bg-gray-900 ${
                       typingInputWrong
                         ? 'border-rose-300 focus:border-rose-400 focus:ring-2 focus:ring-rose-100 dark:border-rose-900/70 dark:focus:ring-rose-950'
                         : 'border-gray-200 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 dark:border-gray-700 dark:focus:ring-cyan-950'
                     }`} />
+                    <p className={`text-xs font-bold ${typingInputWrong ? 'text-rose-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                      Backspace is locked during a sprint. Keep going until the timer ends.
+                    </p>
                     <button disabled={!typingSession || typingBusy || (!typingEntries.length && !typingText.trim())} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 text-sm font-black text-white transition hover:bg-cyan-700 disabled:opacity-50">
                       <Zap size={17} />
                       Finish Early
@@ -803,9 +967,12 @@ export default function OpsArena() {
           </div>
         </div>
       </section>
+      )}
 
-      <section className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-5 2xl:order-2 2xl:sticky 2xl:top-4 2xl:self-start">
+      {(arenaView === 'report' || arenaView === 'developer') && (
+      <section className={`grid gap-5 ${arenaView === 'report' ? 'lg:grid-cols-[minmax(0,1fr)_380px]' : '2xl:grid-cols-[minmax(0,1fr)_360px]'}`}>
+        <div className={`space-y-5 ${arenaView === 'developer' ? '2xl:order-2 2xl:sticky 2xl:top-4 2xl:self-start' : 'lg:order-2 lg:sticky lg:top-4 lg:self-start'}`}>
+          {arenaView === 'report' && (
           <section className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="mb-3 flex items-center gap-3">
               <div className="rounded-2xl bg-gradient-to-br from-pink-500 to-cyan-500 p-2.5 text-white">
@@ -849,7 +1016,9 @@ export default function OpsArena() {
               </form>
             )}
           </section>
+          )}
 
+          {arenaView === 'developer' && (
           <section className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <div className="mb-3 flex items-center gap-3">
               <div className="rounded-2xl bg-gray-950 p-3 text-white dark:bg-white dark:text-gray-950">
@@ -877,6 +1046,7 @@ export default function OpsArena() {
               </form>
             )}
           </section>
+          )}
         </div>
 
         <section className="grid min-w-0 gap-5 2xl:order-1 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
@@ -1040,6 +1210,7 @@ export default function OpsArena() {
           </div>
         </section>
       </section>
+      )}
 
       <UserProfileModal isOpen={Boolean(profileUser)} user={profileUser} onClose={() => setProfileUser(null)} />
     </div>

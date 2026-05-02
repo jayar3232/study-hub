@@ -106,6 +106,20 @@ const palettes = {
     soft: 'bg-yellow-50 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-100',
     glow: 'rgba(250,204,21,0.95)',
     spark: 'bg-yellow-100'
+  },
+  'mythical-vanguard': {
+    gradient: 'from-orange-200 via-red-500 to-amber-950',
+    ring: 'ring-orange-200/90 dark:ring-orange-400/80',
+    soft: 'bg-orange-50 text-orange-800 dark:bg-orange-950/40 dark:text-orange-100',
+    glow: 'rgba(249,115,22,0.96)',
+    spark: 'bg-orange-100'
+  },
+  'mythical-legend': {
+    gradient: 'from-cyan-200 via-violet-500 to-indigo-950',
+    ring: 'ring-violet-200/90 dark:ring-violet-400/80',
+    soft: 'bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-100',
+    glow: 'rgba(139,92,246,0.98)',
+    spark: 'bg-cyan-100'
   }
 };
 
@@ -129,10 +143,15 @@ const rankPower = {
   dragon: 10,
   inferno: 11,
   celestial: 12,
-  apex: 13
+  apex: 13,
+  'mythical-vanguard': 14,
+  'mythical-legend': 15
 };
 
-const cycloneRankKeys = new Set(['celestial', 'apex']);
+const MAX_APEX_STARS = 500;
+const starRankKeys = new Set(['apex', 'mythical-vanguard', 'mythical-legend']);
+const cycloneRankKeys = new Set(['mythical-vanguard', 'mythical-legend']);
+const wingRankKeys = new Set(['mythical-vanguard', 'mythical-legend']);
 
 export const getGamePalette = (rank) => palettes[rank?.key] || palettes.recruit;
 
@@ -141,14 +160,16 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
   const sizes = sizeMap[size] || sizeMap.md;
   const MotionTag = animated ? motion.div : 'div';
   const apexStars = Number(stars ?? rank?.apexStars ?? 0);
-  const apexBoost = rank?.key === 'apex' ? Math.min(12, apexStars) : 0;
+  const apexBoost = starRankKeys.has(rank?.key) ? Math.min(18, apexStars / 18) : 0;
   const power = (rankPower[rank?.key] || 0) + (apexBoost * 0.28);
-  const hasGlow = power > 0;
+  const hasGlow = power >= 5;
   const isCycloneRank = cycloneRankKeys.has(rank?.key);
+  const hasWingAura = wingRankKeys.has(rank?.key);
+  const isLegendStar = rank?.key === 'mythical-legend';
   const isMythic = power >= 9;
   const lowScale = size === 'sm' ? 0.78 : size === 'lg' ? 0.86 : 0.82;
   const midScale = size === 'sm' ? 0.9 : size === 'lg' ? 1 : 0.94;
-  const maxScale = size === 'sm' ? 1.18 : size === 'lg' ? 1.34 : 1.26;
+  const maxScale = size === 'sm' ? 1.2 : size === 'lg' ? 1.42 : 1.32;
   const scale = power <= 2
     ? lowScale
     : power <= 4
@@ -156,8 +177,8 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
       : power <= 6
         ? 1
         : Math.min(maxScale, 1 + ((power - 6) * (size === 'sm' ? 0.025 : 0.035)));
-  const glowOpacity = !hasGlow ? 0 : isCycloneRank ? Math.min(0.92, 0.28 + ((power - 10) * 0.08)) : Math.min(0.28, 0.08 + (power * 0.018));
-  const sparkCount = isCycloneRank ? Math.min(10, 5 + Math.floor(apexBoost)) : 0;
+  const glowOpacity = !hasGlow ? 0 : isCycloneRank ? Math.min(0.95, 0.42 + ((power - 10) * 0.07)) : Math.min(0.28, 0.08 + (power * 0.018));
+  const sparkCount = isLegendStar ? Math.min(14, 8 + Math.floor(apexStars / 50)) : isCycloneRank ? 6 : 0;
   const visibleStars = Math.min(5, apexStars);
   const emblemShape = 'rounded-[1.35rem]';
   const shouldAnimate = animated && hasGlow;
@@ -205,6 +226,29 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
         />
       )}
 
+      {hasWingAura && (
+        <>
+          {['left', 'right'].map(side => (
+            <motion.span
+              key={side}
+              animate={shouldAnimate ? { opacity: [0.62, 1, 0.62], scaleX: [0.92, 1.08, 0.92] } : undefined}
+              transition={shouldAnimate ? { duration: isLegendStar ? 2.4 : 2.8, repeat: Infinity, ease: 'easeInOut' } : undefined}
+              className={`absolute top-[18%] z-10 h-[64%] w-[58%] rounded-full blur-[1px] ${
+                isLegendStar
+                  ? 'bg-[radial-gradient(ellipse_at_center,rgba(168,85,247,0.8),rgba(34,211,238,0.25)_54%,transparent_72%)]'
+                  : 'bg-[radial-gradient(ellipse_at_center,rgba(251,146,60,0.8),rgba(239,68,68,0.25)_54%,transparent_72%)]'
+              }`}
+              style={{
+                [side]: '-34%',
+                clipPath: side === 'left'
+                  ? 'polygon(100% 10%, 10% 30%, 0 70%, 100% 92%)'
+                  : 'polygon(0 10%, 90% 30%, 100% 70%, 0 92%)'
+              }}
+            />
+          ))}
+        </>
+      )}
+
       {sparkCount > 0 && Array.from({ length: sparkCount }).map((_, index) => (
         <motion.span
           key={`spark-${index}`}
@@ -245,7 +289,7 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
       {apexStars > 0 && (
         <span className="absolute -bottom-2 -right-2 z-30 inline-flex min-w-6 items-center justify-center gap-0.5 rounded-full border border-yellow-200 bg-gray-950 px-1.5 py-1 text-[10px] font-black text-yellow-100 shadow-lg shadow-yellow-500/30">
           <Star size={10} fill="currentColor" />
-          {apexStars > 99 ? '99+' : apexStars}
+          {apexStars >= MAX_APEX_STARS ? `${MAX_APEX_STARS}` : apexStars}
         </span>
       )}
 
@@ -273,14 +317,17 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
   const nextRank = stats?.nextRank;
   const palette = getGamePalette(rank);
   const apexStars = Number(stats?.apexStars ?? rank?.apexStars ?? 0);
-  const isApex = rank?.key === 'apex';
-  const cardPower = (rankPower[rank?.key] || 0) + (isApex ? Math.min(12, apexStars) * 0.28 : 0);
+  const isApex = starRankKeys.has(rank?.key);
+  const maxApexStars = Number(stats?.maxApexStars || rank?.maxApexStars || MAX_APEX_STARS);
+  const cardPower = (rankPower[rank?.key] || 0) + (isApex ? Math.min(18, apexStars / 18) * 0.28 : 0);
   const showCardAura = cardPower >= 7;
-  const progressValue = nextRank ? (stats?.progress ?? 0) : isApex ? (stats?.apexStarProgress ?? rank?.apexStarProgress ?? 0) : 100;
+  const progressValue = nextRank ? (stats?.progress ?? 0) : isApex ? Math.min(100, stats?.apexStarProgress ?? rank?.apexStarProgress ?? 0) : 100;
   const progressLabel = nextRank
     ? `${stats?.xpToNext || 0} pts to ${nextRank.shortName}`
     : isApex
-      ? `${stats?.apexStarXpToNext || rank?.apexStarXpToNext || 0} pts to Apex Star ${apexStars + 1}`
+      ? apexStars >= maxApexStars
+        ? `Max star power reached (${maxApexStars})`
+        : `${stats?.apexStarXpToNext || rank?.apexStarXpToNext || 0} pts to Star ${apexStars + 1}`
       : 'Max game rank reached';
 
   if (compact) {

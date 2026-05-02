@@ -11,7 +11,13 @@ export const getBackendOrigin = () => {
 
   if (typeof window === 'undefined') return '';
 
-  const { hostname, port } = window.location;
+  const { hostname, port, protocol } = window.location;
+  const isNativeShell = Boolean(window.Capacitor?.isNativePlatform?.()) ||
+    protocol === 'capacitor:' ||
+    protocol === 'ionic:';
+
+  if (isNativeShell) return DEFAULT_REMOTE_BACKEND;
+
   const isLocalFrontend = LOCAL_HOSTS.has(hostname) || SAME_ORIGIN_PORTS.has(port);
   const isKnownRemoteFrontend = REMOTE_FRONTEND_HOST_SUFFIXES.some(suffix => hostname.endsWith(suffix));
 
