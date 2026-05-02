@@ -7,6 +7,7 @@ const soundCache = new Map();
 const soundSources = {
   click: clickSoundUrl,
   tab: clickSoundUrl,
+  welcome: '/welcome.mp3',
   open: messageReceivedUrl,
   close: messageReceivedUrl,
   send: messageSendUrl,
@@ -67,8 +68,9 @@ export const installGlobalClickSound = () => {
       return;
     }
 
-    const soundName = interactive.getAttribute('data-sound') ||
-      (interactive.closest('nav') ? 'tab' : 'click');
+    const explicitSound = interactive.getAttribute('data-sound');
+    const soundName = explicitSound === 'tab' || interactive.closest('nav') ? 'tab' : '';
+    if (!soundName) return;
     playUiSound(soundName, 0.16);
   };
 

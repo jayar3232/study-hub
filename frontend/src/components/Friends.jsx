@@ -313,7 +313,7 @@ export default function Friends() {
                 <Users size={30} />
               </div>
               <div>
-                <p className="text-sm font-black uppercase text-pink-200">StudentHub Network</p>
+                <p className="text-sm font-black uppercase text-pink-200">SYNCROVA Network</p>
                 <h1 className="mt-1 text-3xl font-black tracking-normal sm:text-4xl">Friends</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
                   Manage your trusted teammates, review requests, and start conversations faster.
@@ -411,7 +411,7 @@ export default function Friends() {
               )}
 
               {friends.length === 0 ? (
-                <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing StudentHub users." />
+                <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing SYNCROVA users." />
               ) : (
                 <div className="mobile-card-list grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {friends.map(item => (

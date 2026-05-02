@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Activity,
@@ -88,6 +89,9 @@ export default function Profile() {
   const [stories, setStories] = useState([]);
   const [storyUploading, setStoryUploading] = useState(false);
   const [activeStory, setActiveStory] = useState(null);
+  const [storyComment, setStoryComment] = useState('');
+  const [storyCommenting, setStoryCommenting] = useState(false);
+  const [activeProfileTab, setActiveProfileTab] = useState('posts');
   const storyInputRef = useRef(null);
 
   useEffect(() => {
@@ -282,6 +286,17 @@ export default function Profile() {
     window.dispatchEvent(new CustomEvent('storiesUpdated'));
   };
 
+  const openStory = async (story) => {
+    setActiveStory(story);
+    setStoryComment('');
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/view`);
+      syncStory(res.data);
+    } catch {
+      // My Day viewer tracking should never block viewing media.
+    }
+  };
+
   const reactToStory = async (story, emoji) => {
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/react`, { emoji });
@@ -289,6 +304,23 @@ export default function Profile() {
       toast.success('Reaction sent');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Reaction failed');
+    }
+  };
+
+  const commentOnStory = async (event) => {
+    event?.preventDefault?.();
+    const text = storyComment.trim();
+    if (!activeStory || !text || storyCommenting) return;
+    setStoryCommenting(true);
+    try {
+      const res = await api.post(`/stories/${getEntityId(activeStory)}/comment`, { text });
+      syncStory(res.data?.story || res.data);
+      setStoryComment('');
+      toast.success('Sent to messages');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Comment failed');
+    } finally {
+      setStoryCommenting(false);
     }
   };
 
@@ -359,6 +391,13 @@ export default function Profile() {
       return summary;
     }, {})
   );
+  const profileTabs = [
+    { id: 'posts', label: 'Posts', icon: Activity, count: storyItems.length },
+    { id: 'about', label: 'About', icon: User, count: completion },
+    { id: 'groups', label: 'Groups', icon: Users, count: groups.length },
+    { id: 'ranks', label: 'Ranks', icon: Trophy, count: rankStats?.completedTasks || 0 },
+    { id: 'myday', label: 'My Day', icon: PlayCircle, count: myStoryCount }
+  ];
 
   return (
     <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
@@ -463,6 +502,31 @@ export default function Profile() {
         </div>
       </section>
 
+      <nav className="profile-tab-bar rounded-2xl border border-white/70 bg-white px-2 py-2 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10" aria-label="Profile sections">
+        <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {profileTabs.map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeProfileTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveProfileTab(tab.id)}
+                className={`profile-tab-button ${isActive ? 'is-active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <Icon size={17} />
+                <span>{tab.label}</span>
+                {typeof tab.count === 'number' && (
+                  <span className="profile-tab-count">{tab.id === 'about' ? `${tab.count}%` : tab.count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {(activeProfileTab === 'posts' || activeProfileTab === 'myday') && (
       <section className="rounded-2xl border border-white/70 bg-white p-4 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
         <input ref={storyInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleStoryUpload} />
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -474,7 +538,7 @@ export default function Profile() {
             type="button"
             onClick={() => storyInputRef.current?.click()}
             disabled={storyUploading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-pink-700 disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-60"
           >
             {storyUploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
             {myStoryCount ? 'Add more' : 'Post'}
@@ -485,10 +549,10 @@ export default function Profile() {
           <button
             type="button"
             onClick={() => storyInputRef.current?.click()}
-            className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl border border-dashed border-pink-200 bg-pink-50 text-left dark:border-pink-900/60 dark:bg-pink-950/20"
+            className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl border border-dashed border-blue-200 bg-blue-50 text-left dark:border-blue-900/60 dark:bg-blue-950/20"
           >
             <div className="absolute inset-0 grid place-items-center">
-              <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-pink-600 shadow-lg dark:bg-gray-950 dark:text-pink-300">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[#1877f2] shadow-lg dark:bg-gray-950 dark:text-sky-300">
                 {storyUploading ? <Loader2 size={22} className="animate-spin" /> : <Camera size={22} />}
               </div>
             </div>
@@ -504,7 +568,7 @@ export default function Profile() {
               <button
                 key={getEntityId(story)}
                 type="button"
-                onClick={() => setActiveStory(story)}
+                onClick={() => openStory(story)}
                 className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-950 text-left shadow-lg ring-1 ring-gray-200 dark:ring-gray-800"
               >
                 {story.fileType === 'image' ? (
@@ -513,7 +577,7 @@ export default function Profile() {
                   <video src={storyUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/20" />
-                <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-blue-400 bg-pink-500 shadow-lg shadow-blue-500/35">
+                <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-[#1877f2] bg-[#1877f2] shadow-lg shadow-blue-500/35">
                   {owner.avatar ? (
                     <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} className="h-full w-full object-cover" />
                   ) : (
@@ -527,7 +591,52 @@ export default function Profile() {
           })}
         </div>
       </section>
+      )}
 
+      {activeProfileTab === 'posts' && (
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+            <div className="flex items-start gap-3">
+              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-black text-white">
+                {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <button
+                type="button"
+                onClick={() => storyInputRef.current?.click()}
+                className="min-h-12 flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-gray-500 transition hover:bg-blue-50 hover:text-blue-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-blue-950/25 dark:hover:text-blue-200"
+              >
+                Share a professional update...
+              </button>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <button type="button" onClick={() => storyInputRef.current?.click()} className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-black text-[#1877f2] transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-sky-200">My Day</button>
+              <Link to="/groups" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Groups</Link>
+              <Link to="/messages" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Messages</Link>
+            </div>
+          </div>
+
+          <aside className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+            <h2 className="text-lg font-black text-gray-950 dark:text-white">Activity</h2>
+            <div className="mt-4 space-y-3">
+              <div className="rounded-2xl bg-blue-50 p-3 dark:bg-blue-950/25">
+                <p className="text-sm font-black text-blue-900 dark:text-blue-100">{storyItems.length} active My Day posts</p>
+                <p className="mt-1 text-xs font-semibold text-blue-700/75 dark:text-blue-200/75">Stories, reactions, replies, and viewers stay connected to Messenger.</p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-3 dark:bg-gray-950">
+                <p className="text-sm font-black text-gray-950 dark:text-white">{groups.length} joined groups</p>
+                <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{createdGroups.length} owned by you.</p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-3 dark:bg-gray-950">
+                <p className="text-sm font-black text-gray-950 dark:text-white">Rank progress</p>
+                <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{rankStats?.xp || 0} XP and {rankStats?.completedTasks || 0} completed tasks.</p>
+              </div>
+            </div>
+          </aside>
+        </section>
+      )}
+
+      {(activeProfileTab === 'posts' || activeProfileTab === 'ranks') && (
+      <>
       <div className="mobile-metric-strip grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={Users} label="Groups Joined" value={groups.length} helper="Workspaces you can access" />
         <StatCard icon={TrendingUp} label="Total Members" value={totalMembers} helper="Across your joined groups" />
@@ -575,7 +684,62 @@ export default function Profile() {
           </div>
         </div>
       </section>
+      </>
+      )}
 
+      {activeProfileTab === 'groups' && (
+        <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-gray-950 dark:text-white">Groups</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Your joined workspaces, styled like a profile community tab.</p>
+            </div>
+            <Link
+              to="/groups"
+              className="inline-flex items-center justify-center rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+            >
+              View all
+            </Link>
+          </div>
+          {groups.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {groups.map(group => {
+                const groupId = getEntityId(group);
+                const isOwner = getEntityId(group.creator) === getEntityId(user);
+                return (
+                  <Link
+                    key={groupId}
+                    to={`/group/${groupId}`}
+                    className="group rounded-2xl border border-gray-100 bg-gray-50 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-lg hover:shadow-blue-500/10 dark:border-gray-800 dark:bg-gray-950/60 dark:hover:border-blue-900/60 dark:hover:bg-gray-950"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-base font-black text-white">
+                        {(group.name || 'G').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="truncate font-black text-gray-950 dark:text-white">{group.name || 'Untitled group'}</h3>
+                          {isOwner && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-black text-[#1877f2] dark:bg-blue-950/40 dark:text-sky-200">Owner</span>}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">{group.description || 'No description yet.'}</p>
+                        <p className="mt-3 text-xs font-black uppercase text-gray-400">{group.members?.length || 0} members</p>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-950/50">
+              <Users className="mx-auto text-[#1877f2]" size={34} />
+              <p className="mt-3 font-black text-gray-950 dark:text-white">No groups yet</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Joined groups will appear here.</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {activeProfileTab === 'about' && (
       <div className="mobile-content-stack grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -739,6 +903,7 @@ export default function Profile() {
           </section>
         </aside>
       </div>
+      )}
 
       {activeStory && (
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm">
@@ -802,6 +967,44 @@ export default function Profile() {
                   </div>
                 )}
               </div>
+              <div className="flex flex-wrap gap-2 text-[11px] font-black text-white/75">
+                <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
+                  {(activeStory.viewers || []).length} viewers
+                </span>
+                <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
+                  {(activeStory.reactions || []).length} reactions
+                </span>
+              </div>
+              {getEntityId(activeStory.userId) === getEntityId(user) ? (
+                <div className="max-h-24 overflow-y-auto rounded-2xl bg-white/10 p-2 text-xs text-white/80">
+                  {(activeStory.viewers || []).length ? (activeStory.viewers || []).slice(0, 8).map(viewer => (
+                    <p key={getEntityId(viewer.userId || viewer)} className="truncate">
+                      Viewed by {(viewer.userId || viewer)?.name || 'Member'}
+                    </p>
+                  )) : <p>No viewers yet</p>}
+                  {(activeStory.reactions || []).slice(0, 8).map(reaction => (
+                    <p key={`${getEntityId(reaction.userId)}-${reaction.emoji}`} className="truncate">
+                      {reaction.emoji} {(reaction.userId)?.name || 'Member'}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <form onSubmit={commentOnStory} className="flex gap-2">
+                  <input
+                    value={storyComment}
+                    onChange={event => setStoryComment(event.target.value)}
+                    placeholder="Reply to My Day..."
+                    className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/45 focus:border-white/35"
+                  />
+                  <button
+                    type="submit"
+                    disabled={storyCommenting || !storyComment.trim()}
+                    className="rounded-full bg-pink-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-pink-500 disabled:opacity-50"
+                  >
+                    Send
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>

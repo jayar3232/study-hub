@@ -101,7 +101,7 @@ const notifications = require('./routes/notifications');
 app.use('/api/notifications', notifications.router);
 
 // MongoDB connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/studyhub';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/syncrova';
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB connected'))

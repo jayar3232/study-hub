@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, PlayCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -24,6 +25,8 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   const [friendAction, setFriendAction] = useState('');
   const [stories, setStories] = useState([]);
   const [activeStory, setActiveStory] = useState(null);
+  const [storyComment, setStoryComment] = useState('');
+  const [storyCommenting, setStoryCommenting] = useState(false);
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const profileId = userId || getEntityId(user);
@@ -95,6 +98,17 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     window.dispatchEvent(new CustomEvent('storiesUpdated'));
   };
 
+  const openStory = async (story) => {
+    setActiveStory(story);
+    setStoryComment('');
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/view`);
+      syncStory(res.data);
+    } catch {
+      // Viewing should stay smooth even if the analytics request fails.
+    }
+  };
+
   const reactToStory = async (story, emoji) => {
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/react`, { emoji });
@@ -102,6 +116,23 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
       toast.success('Reaction sent');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Reaction failed');
+    }
+  };
+
+  const commentOnStory = async (event) => {
+    event?.preventDefault?.();
+    const text = storyComment.trim();
+    if (!activeStory || !text || storyCommenting) return;
+    setStoryCommenting(true);
+    try {
+      const res = await api.post(`/stories/${getEntityId(activeStory)}/comment`, { text });
+      syncStory(res.data?.story || res.data);
+      setStoryComment('');
+      toast.success('Sent to messages');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Comment failed');
+    } finally {
+      setStoryCommenting(false);
     }
   };
 
@@ -226,18 +257,18 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     );
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-4"
           onMouseDown={closeModal}
         >
           <div
-            className="mobile-stalk-modal h-[92svh] max-h-[92svh] w-full overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:h-auto sm:max-h-[88vh] sm:max-w-[720px] sm:rounded-3xl"
+            className="mobile-stalk-modal h-auto max-h-[88svh] w-full max-w-[520px] overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
             onMouseDown={event => event.stopPropagation()}
           >
-            <div className="h-full max-h-[92svh] overflow-y-auto sm:max-h-[88vh]">
+            <div className="max-h-[88svh] overflow-y-auto">
               <div className="relative overflow-hidden bg-gray-950 p-4 text-white sm:p-5">
               {coverPhoto ? (
                 <img src={coverPhoto} alt="Profile cover" className="absolute inset-0 h-full w-full object-cover" />
@@ -300,7 +331,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                         <button
                           key={getEntityId(story)}
                           type="button"
-                          onClick={() => setActiveStory(story)}
+                          onClick={() => openStory(story)}
                           className="relative h-36 w-24 shrink-0 overflow-hidden rounded-2xl bg-gray-950"
                         >
                           {story.fileType === 'image' ? (
@@ -376,7 +407,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
           </div>
 
           {activeStory && (
-            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-3" onMouseDown={event => event.stopPropagation()}>
+            <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-3" onMouseDown={event => event.stopPropagation()}>
               <div className="relative h-[min(86svh,720px)] w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
                 {activeStory.fileType === 'image' ? (
                   <img src={resolveMediaUrl(activeStory.fileUrl)} alt={activeStory.caption || 'My Day'} className="h-full w-full object-contain" />
@@ -427,10 +458,48 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                       </div>
                     )}
                   </div>
+                  <div className="flex flex-wrap gap-2 text-[11px] font-black text-white/75">
+                    <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
+                      {(activeStory.viewers || []).length} viewers
+                    </span>
+                    <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
+                      {(activeStory.reactions || []).length} reactions
+                    </span>
+                  </div>
+                  {getEntityId(activeStory.userId) === getEntityId(currentUser) ? (
+                    <div className="max-h-24 overflow-y-auto rounded-2xl bg-white/10 p-2 text-xs text-white/80">
+                      {(activeStory.viewers || []).length ? (activeStory.viewers || []).slice(0, 8).map(viewer => (
+                        <p key={getEntityId(viewer.userId || viewer)} className="truncate">
+                          Viewed by {(viewer.userId || viewer)?.name || 'Member'}
+                        </p>
+                      )) : <p>No viewers yet</p>}
+                      {(activeStory.reactions || []).slice(0, 8).map(reaction => (
+                        <p key={`${getEntityId(reaction.userId)}-${reaction.emoji}`} className="truncate">
+                          {reaction.emoji} {(reaction.userId)?.name || 'Member'}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <form onSubmit={commentOnStory} className="flex gap-2">
+                      <input
+                        value={storyComment}
+                        onChange={event => setStoryComment(event.target.value)}
+                        placeholder="Reply to My Day..."
+                        className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/45 focus:border-white/35"
+                      />
+                      <button
+                        type="submit"
+                        disabled={storyCommenting || !storyComment.trim()}
+                        className="rounded-full bg-pink-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-pink-500 disabled:opacity-50"
+                      >
+                        Send
+                      </button>
+                    </form>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </div>
-  );
+  , document.body);
 }

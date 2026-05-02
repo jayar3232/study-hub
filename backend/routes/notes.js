@@ -7,7 +7,7 @@ const UserNote = require('../models/UserNote');
 const { createGroupActivity } = require('../services/activity');
 const router = express.Router();
 
-const NOTE_TTL_MS = 2 * 24 * 60 * 60 * 1000;
+const NOTE_TTL_MS = 24 * 60 * 60 * 1000;
 const USER_NOTE_MAX_LENGTH = 140;
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);

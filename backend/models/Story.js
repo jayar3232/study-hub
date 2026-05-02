@@ -15,6 +15,16 @@ const StorySchema = new mongoose.Schema({
     emoji: { type: String, required: true },
     createdAt: { type: Date, default: Date.now }
   }],
+  viewers: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    viewedAt: { type: Date, default: Date.now }
+  }],
+  comments: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    text: { type: String, required: true },
+    messageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
+    createdAt: { type: Date, default: Date.now }
+  }],
   expiresAt: { type: Date, required: true },
   createdAt: { type: Date, default: Date.now, index: true }
 });

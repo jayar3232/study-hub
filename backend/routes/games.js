@@ -16,6 +16,8 @@ const VALID_ISSUE_SEVERITIES = ['low', 'medium', 'high', 'critical'];
 const VALID_ISSUE_STATUSES = ['new', 'reviewing', 'approved', 'rejected', 'resolved', 'closed'];
 const ROUND_SIZE = 8;
 const DURATION_SECONDS = 75;
+const QUIZ_QUESTION_COUNT = 10;
+const QUIZ_SECONDS_PER_QUESTION = 10;
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_ACCESS_PASSWORD || '123!@#';
 
 const clampNumber = (value, min, max, fallback = 0) => {
@@ -190,6 +192,122 @@ const typingSentenceBank = [
   'Smooth collaboration feels quiet, fast, and clear even when the project is busy.'
 ];
 
+const quizBank = [
+  { title: 'JavaScript scope', brief: 'Which keyword declares a block-scoped variable?', options: ['var', 'let', 'global', 'static'], correctAnswer: 'let', basePoints: 150 },
+  { title: 'HTML document', brief: 'Which tag contains page metadata?', options: ['body', 'main', 'head', 'section'], correctAnswer: 'head', basePoints: 130 },
+  { title: 'CSS layout', brief: 'Which CSS module is best for one-dimensional layout?', options: ['Grid', 'Flexbox', 'Canvas', 'SVG'], correctAnswer: 'Flexbox', basePoints: 140 },
+  { title: 'HTTP success', brief: 'Which status code usually means the request succeeded?', options: ['200', '301', '404', '500'], correctAnswer: '200', basePoints: 120 },
+  { title: 'Database key', brief: 'What uniquely identifies a row in a relational table?', options: ['Primary key', 'Foreign key', 'Index only', 'Trigger'], correctAnswer: 'Primary key', basePoints: 145 },
+  { title: 'React state', brief: 'Which hook stores component state?', options: ['useMemo', 'useEffect', 'useState', 'useRef'], correctAnswer: 'useState', basePoints: 145 },
+  { title: 'API format', brief: 'Which data format is most common for REST API responses?', options: ['JSON', 'MP3', 'PNG', 'CSS'], correctAnswer: 'JSON', basePoints: 120 },
+  { title: 'Authentication', brief: 'What should never be stored in plain text?', options: ['Password', 'Display name', 'Theme color', 'Avatar URL'], correctAnswer: 'Password', basePoints: 160 },
+  { title: 'Git workflow', brief: 'Which command records staged changes into history?', options: ['git add', 'git commit', 'git clone', 'git status'], correctAnswer: 'git commit', basePoints: 135 },
+  { title: 'Algorithm', brief: 'Binary search requires data to be what?', options: ['Encrypted', 'Random', 'Sorted', 'Duplicated'], correctAnswer: 'Sorted', basePoints: 150 },
+  { title: 'OOP', brief: 'What is bundling data with methods called?', options: ['Encapsulation', 'Compilation', 'Recursion', 'Normalization'], correctAnswer: 'Encapsulation', basePoints: 150 },
+  { title: 'Security', brief: 'Which attack tries to inject database commands?', options: ['SQL injection', 'Phishing', 'DDoS', 'Brute force'], correctAnswer: 'SQL injection', basePoints: 165 },
+  { title: 'Networking', brief: 'Which protocol secures HTTP traffic?', options: ['FTP', 'SSH', 'TLS', 'SMTP'], correctAnswer: 'TLS', basePoints: 150 },
+  { title: 'Programming logic', brief: 'Which structure repeats code while a condition is true?', options: ['Loop', 'Array', 'Object', 'Module'], correctAnswer: 'Loop', basePoints: 115 },
+  { title: 'Node.js', brief: 'Which file usually lists npm dependencies?', options: ['package.json', 'index.html', 'README.md', 'style.css'], correctAnswer: 'package.json', basePoints: 135 },
+  { title: 'MongoDB', brief: 'MongoDB stores records as what?', options: ['Documents', 'Sheets', 'Slides', 'Frames'], correctAnswer: 'Documents', basePoints: 135 },
+  { title: 'UI testing', brief: 'What is a likely sign of poor mobile responsiveness?', options: ['Readable text', 'Clipped buttons', 'Fast loading', 'Clear spacing'], correctAnswer: 'Clipped buttons', basePoints: 145 },
+  { title: 'Performance', brief: 'What helps reduce initial JavaScript load?', options: ['Code splitting', 'More loops', 'Inline videos', 'Bigger images'], correctAnswer: 'Code splitting', basePoints: 155 },
+  { title: 'Accessibility', brief: 'What helps screen readers understand an image?', options: ['alt text', 'box-shadow', 'z-index', 'padding'], correctAnswer: 'alt text', basePoints: 140 },
+  { title: 'Cloud storage', brief: 'A CDN primarily helps deliver assets with lower what?', options: ['Latency', 'Contrast', 'Syntax', 'Schema'], correctAnswer: 'Latency', basePoints: 150 }
+];
+
+const quizFactBank = [
+  ['JavaScript', 'Which keyword declares a block-scoped variable?', 'let', ['var', 'global', 'static'], 150],
+  ['HTML', 'Which tag contains metadata for the document?', 'head', ['body', 'main', 'section'], 130],
+  ['CSS', 'Which layout tool is best for one-dimensional rows or columns?', 'Flexbox', ['Grid', 'Canvas', 'SVG'], 140],
+  ['HTTP', 'Which status code usually means a request succeeded?', '200', ['301', '404', '500'], 120],
+  ['Database', 'What uniquely identifies a row in a relational table?', 'Primary key', ['Foreign key', 'Index only', 'Trigger'], 145],
+  ['React', 'Which hook stores component state?', 'useState', ['useMemo', 'useEffect', 'useRef'], 145],
+  ['REST API', 'Which response format is most common for REST APIs?', 'JSON', ['MP3', 'PNG', 'CSS'], 120],
+  ['Security', 'What should never be stored in plain text?', 'Password', ['Display name', 'Theme color', 'Avatar URL'], 160],
+  ['Git', 'Which command records staged changes into history?', 'git commit', ['git add', 'git clone', 'git status'], 135],
+  ['Algorithm', 'Binary search requires data to be what?', 'Sorted', ['Encrypted', 'Random', 'Duplicated'], 150],
+  ['OOP', 'What is bundling data with methods called?', 'Encapsulation', ['Compilation', 'Recursion', 'Normalization'], 150],
+  ['Security', 'Which attack tries to inject database commands?', 'SQL injection', ['Phishing', 'DDoS', 'Brute force'], 165],
+  ['Networking', 'Which protocol secures HTTP traffic?', 'TLS', ['FTP', 'SSH', 'SMTP'], 150],
+  ['Logic', 'Which structure repeats code while a condition is true?', 'Loop', ['Array', 'Object', 'Module'], 115],
+  ['Node.js', 'Which file usually lists npm dependencies?', 'package.json', ['index.html', 'README.md', 'style.css'], 135],
+  ['MongoDB', 'MongoDB stores records as what?', 'Documents', ['Sheets', 'Slides', 'Frames'], 135],
+  ['Responsive UI', 'What is a likely sign of poor mobile responsiveness?', 'Clipped buttons', ['Readable text', 'Fast loading', 'Clear spacing'], 145],
+  ['Performance', 'What helps reduce initial JavaScript load?', 'Code splitting', ['More loops', 'Inline videos', 'Bigger images'], 155],
+  ['Accessibility', 'What helps screen readers understand an image?', 'alt text', ['box-shadow', 'z-index', 'padding'], 140],
+  ['Cloud', 'A CDN primarily helps deliver assets with lower what?', 'Latency', ['Contrast', 'Syntax', 'Schema'], 150],
+  ['JavaScript', 'Which method creates a new array by transforming each item?', 'map', ['filter', 'reduce', 'push'], 145],
+  ['JavaScript', 'Which method keeps only items that pass a test?', 'filter', ['map', 'splice', 'join'], 145],
+  ['JavaScript', 'Which operator checks strict equality?', '===', ['=', '==', '!='], 140],
+  ['Data Type', 'Which type represents true or false?', 'Boolean', ['String', 'Number', 'Array'], 115],
+  ['Error Handling', 'Which block catches thrown errors in JavaScript?', 'catch', ['finally only', 'select', 'render'], 140],
+  ['Async', 'What does a Promise represent?', 'Future result', ['CSS rule', 'Image file', 'Database table'], 150],
+  ['Async', 'Which keyword pauses inside an async function until a Promise settles?', 'await', ['yield', 'return', 'break'], 150],
+  ['API', 'Which HTTP method is commonly used to read data?', 'GET', ['POST', 'PUT', 'DELETE'], 125],
+  ['API', 'Which HTTP method is commonly used to create data?', 'POST', ['GET', 'HEAD', 'OPTIONS'], 125],
+  ['API', 'Which HTTP method is commonly used to replace or update data?', 'PUT', ['GET', 'TRACE', 'CONNECT'], 125],
+  ['API', 'Which HTTP method is commonly used to remove data?', 'DELETE', ['PATCH', 'POST', 'HEAD'], 125],
+  ['CSS', 'Which feature changes layout rules at different screen widths?', 'Media query', ['Box shadow', 'Opacity', 'Font weight'], 145],
+  ['CSS', 'Which property controls stacking order?', 'z-index', ['display', 'margin', 'outline'], 135],
+  ['CSS', 'Which layout tool is best for two-dimensional rows and columns?', 'CSS Grid', ['Float', 'Text align', 'Border radius'], 145],
+  ['HTML', 'Which element is best for primary page content?', 'main', ['span', 'br', 'meta'], 130],
+  ['HTML', 'Which attribute improves form label connection?', 'for', ['src', 'href', 'rel'], 130],
+  ['Accessibility', 'Which ARIA attribute names a control when visible text is missing?', 'aria-label', ['aria-grid', 'aria-color', 'aria-size'], 150],
+  ['Authentication', 'Which token format is often used for signed API sessions?', 'JWT', ['CSV', 'PNG', 'ZIP'], 150],
+  ['Security', 'Which library family is used for password hashing?', 'bcrypt', ['lodash', 'moment', 'vite'], 155],
+  ['Database', 'What links one relational table to another?', 'Foreign key', ['Primary color', 'CSS class', 'HTTP verb'], 145],
+  ['Database', 'Which structure speeds up database lookups?', 'Index', ['Comment', 'Canvas', 'Gradient'], 145],
+  ['MongoDB', 'Which field commonly stores MongoDB document identifiers?', '_id', ['class', 'href', 'alt'], 135],
+  ['NPM', 'Which command installs dependencies from package.json?', 'npm install', ['npm delete', 'npm paint', 'npm browse'], 130],
+  ['Vite', 'What is Vite mainly used for?', 'Frontend tooling', ['Database backup', 'Password hashing', 'Image compression only'], 135],
+  ['React', 'What passes data from a parent component to a child?', 'props', ['indexes', 'headers', 'cookies'], 140],
+  ['React', 'Which hook runs side effects after render?', 'useEffect', ['useState', 'useId', 'useMemo only'], 145],
+  ['React', 'What should you avoid mutating directly in state?', 'Existing state object', ['A new object copy', 'A callback argument', 'A local constant'], 150],
+  ['Algorithm', 'What technique solves a problem by calling itself?', 'Recursion', ['Minification', 'Hashing', 'Indexing'], 145],
+  ['Data Structure', 'Which structure follows last-in, first-out?', 'Stack', ['Queue', 'Tree', 'Graph'], 145],
+  ['Data Structure', 'Which structure follows first-in, first-out?', 'Queue', ['Stack', 'Heap', 'Set'], 145],
+  ['Version Control', 'Which command shows changed files in a Git repository?', 'git status', ['git init only', 'git paint', 'git serve'], 125]
+].map(([title, brief, correctAnswer, distractors, basePoints]) => ({
+  title,
+  brief,
+  options: [correctAnswer, ...distractors],
+  correctAnswer,
+  basePoints
+}));
+
+const quizPromptVariants = [
+  (fact) => fact.brief,
+  (fact) => `In ${fact.title}, ${fact.brief.charAt(0).toLowerCase()}${fact.brief.slice(1)}`,
+  (fact) => `Choose the correct answer: ${fact.brief}`,
+  (fact) => `Computer fundamentals check: ${fact.brief}`,
+  (fact) => `Programming language quiz: ${fact.brief}`,
+  (fact) => `Web development quiz: ${fact.brief}`,
+  (fact) => `Software engineering quiz: ${fact.brief}`,
+  (fact) => `Quick review: ${fact.brief}`,
+  (fact) => `Which option best answers this: ${fact.brief}`,
+  (fact) => `For a beginner developer, ${fact.brief.charAt(0).toLowerCase()}${fact.brief.slice(1)}`,
+  (fact) => `During a code review, ${fact.brief.charAt(0).toLowerCase()}${fact.brief.slice(1)}`,
+  (fact) => `In a real project, ${fact.brief.charAt(0).toLowerCase()}${fact.brief.slice(1)}`,
+  (fact) => `Pick the most accurate option: ${fact.brief}`,
+  (fact) => `Identify the correct concept: ${fact.brief}`,
+  (fact) => `What should a developer choose? ${fact.brief}`,
+  (fact) => `Classroom coding question: ${fact.brief}`,
+  (fact) => `Practical computing question: ${fact.brief}`,
+  (fact) => `Technical interview warmup: ${fact.brief}`,
+  (fact) => `Code basics challenge: ${fact.brief}`,
+  (fact) => `Developer knowledge check: ${fact.brief}`
+];
+
+const generatedQuizBank = quizFactBank.flatMap((fact, factIndex) => (
+  quizPromptVariants.map((buildBrief, variantIndex) => ({
+    title: `${fact.title} ${variantIndex + 1}`,
+    brief: buildBrief(fact),
+    options: fact.options,
+    correctAnswer: fact.correctAnswer,
+    basePoints: fact.basePoints + ((factIndex + variantIndex) % 4) * 5
+  }))
+));
+
 const createTypingSentences = (count = 18) => {
   const pool = [...typingSentenceBank];
   for (let index = pool.length - 1; index > 0; index -= 1) {
@@ -337,6 +455,7 @@ const publicChallenge = (challenge) => ({
   estimateHours: challenge.estimateHours,
   impact: challenge.impact,
   signal: challenge.signal,
+  options: challenge.options || [],
   basePoints: challenge.basePoints
 });
 
@@ -346,6 +465,67 @@ const createChallenges = () => shuffle(challengePool)
     ...challenge,
     challengeId: crypto.randomUUID()
   }));
+
+const createQuizQuestions = () => shuffle([...quizBank, ...generatedQuizBank])
+  .slice(0, QUIZ_QUESTION_COUNT)
+  .map(question => ({
+    challengeId: crypto.randomUUID(),
+    title: question.title,
+    brief: question.brief,
+    priority: 'medium',
+    dueInHours: 1,
+    estimateHours: 1,
+    impact: 'medium',
+    signal: 'Computer and programming knowledge check',
+    options: shuffle(question.options),
+    correctAnswer: question.correctAnswer,
+    basePoints: question.basePoints
+  }));
+
+const scoreQuizSession = (session, submittedAnswers, now) => {
+  const answerMap = new Map(
+    (Array.isArray(submittedAnswers) ? submittedAnswers : [])
+      .map(item => [String(item.challengeId), String(item.answer || '').trim()])
+  );
+
+  let score = 0;
+  let correctCount = 0;
+  let currentStreak = 0;
+  let maxStreak = 0;
+
+  const answers = session.challenges.map(challenge => {
+    const answer = answerMap.get(challenge.challengeId) || 'timeout';
+    const correct = answer === challenge.correctAnswer;
+    let points = 0;
+    if (correct) {
+      currentStreak += 1;
+      maxStreak = Math.max(maxStreak, currentStreak);
+      correctCount += 1;
+      points = challenge.basePoints + currentStreak * 25;
+      score += points;
+    } else {
+      currentStreak = 0;
+    }
+
+    return { challengeId: challenge.challengeId, answer, correct, points };
+  });
+
+  const elapsedMs = Math.max(0, now.getTime() - session.startedAt.getTime());
+  const elapsedSeconds = elapsedMs / 1000;
+  const speedBonus = correctCount === session.challenges.length
+    ? Math.max(0, Math.round((session.durationSeconds - elapsedSeconds) * 9))
+    : Math.max(0, Math.round((session.durationSeconds - elapsedSeconds) * 2));
+
+  return {
+    answers,
+    score: Math.max(0, Math.round(score + speedBonus)),
+    correctCount,
+    totalCount: session.challenges.length,
+    maxStreak,
+    elapsedMs,
+    accuracy: Math.round((correctCount / Math.max(1, session.challenges.length)) * 100)
+  };
+};
 
 const scoreSession = (session, submittedAnswers, now) => {
   const answerMap = new Map(
@@ -491,7 +671,9 @@ router.get('/summary/me', auth, async (req, res) => {
       myFocusFlowSessions,
       focusFlowLeaderboardSessions,
       myJetFighterSessions,
-      jetFighterLeaderboardSessions
+      jetFighterLeaderboardSessions,
+      myCodeQuizSessions,
+      codeQuizLeaderboardSessions
     ] = await Promise.all([
       GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
       GameSession.find({ completedAt: { $ne: null } })
@@ -522,6 +704,11 @@ router.get('/summary/me', auth, async (req, res) => {
       GameSession.find({ gameKey: 'jet-fighter', completedAt: { $ne: null } })
         .populate('userId', 'name email course avatar')
         .sort({ score: -1 })
+        .limit(300),
+      GameSession.find({ userId: req.user, gameKey: 'code-quiz', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'code-quiz', completedAt: { $ne: null } })
+        .populate('userId', 'name email course avatar')
+        .sort({ score: -1 })
         .limit(300)
     ]);
 
@@ -531,12 +718,14 @@ router.get('/summary/me', auth, async (req, res) => {
     const bugHuntLeaderboard = buildGameLeaderboard(bugHuntLeaderboardSessions);
     const focusFlowLeaderboard = buildGameLeaderboard(focusFlowLeaderboardSessions);
     const jetFighterLeaderboard = buildGameLeaderboard(jetFighterLeaderboardSessions);
+    const codeQuizLeaderboard = buildGameLeaderboard(codeQuizLeaderboardSessions);
     const myRank = leaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myTypingRank = typingLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBlockRank = blockLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBugHuntRank = bugHuntLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myFocusFlowRank = focusFlowLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myJetFighterRank = jetFighterLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myCodeQuizRank = codeQuizLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
 
     res.json({
       stats: buildGameStats(mySessions),
@@ -545,18 +734,21 @@ router.get('/summary/me', auth, async (req, res) => {
       bugHuntStats: buildGameStats(myBugHuntSessions),
       focusFlowStats: buildGameStats(myFocusFlowSessions),
       jetFighterStats: buildGameStats(myJetFighterSessions),
+      codeQuizStats: buildGameStats(myCodeQuizSessions),
       leaderboard: leaderboard.slice(0, 15),
       typingLeaderboard: typingLeaderboard.slice(0, 15),
       blockLeaderboard: blockLeaderboard.slice(0, 15),
       bugHuntLeaderboard: bugHuntLeaderboard.slice(0, 15),
       focusFlowLeaderboard: focusFlowLeaderboard.slice(0, 15),
       jetFighterLeaderboard: jetFighterLeaderboard.slice(0, 15),
+      codeQuizLeaderboard: codeQuizLeaderboard.slice(0, 15),
       myRank,
       myTypingRank,
       myBlockRank,
       myBugHuntRank,
       myFocusFlowRank,
       myJetFighterRank,
+      myCodeQuizRank,
       ranks: GAME_RANKS,
       decisions: decisionGuide
     });
@@ -1052,13 +1244,13 @@ router.post('/flappy-bird/submit', auth, async (req, res) => {
 
 router.post('/jet-fighter/submit', auth, async (req, res) => {
   try {
-    const score = clampNumber(req.body.score, 0, 1000000);
-    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
-
     const kills = clampNumber(req.body.kills, 0, 5000);
     const level = clampNumber(req.body.level, 1, 50, 1);
     const lives = clampNumber(req.body.lives, 0, 10, 0);
     const elapsedMs = clampNumber(req.body.elapsedMs, 1000, 30 * 60 * 1000, 1000);
+    const scoreCap = kills * 92 + level * 115 + Math.floor(elapsedMs / 1000) * 3 + lives * 55;
+    const score = clampNumber(Math.min(Number(req.body.score) || 0, scoreCap), 0, 1000000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
     const accuracy = clampNumber(58 + Math.min(35, kills * 2) + Math.min(7, level), 0, 100);
 
     const session = await createCompletedGameSession({
@@ -1092,6 +1284,92 @@ router.post('/jet-fighter/submit', auth, async (req, res) => {
       },
       stats: buildGameStats(mySessions),
       jetFighterStats: buildGameStats(myJetFighterSessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/code-quiz/start', auth, async (req, res) => {
+  try {
+    const startedAt = new Date();
+    const session = new GameSession({
+      userId: req.user,
+      gameKey: 'code-quiz',
+      durationSeconds: QUIZ_QUESTION_COUNT * QUIZ_SECONDS_PER_QUESTION,
+      challenges: createQuizQuestions(),
+      totalCount: QUIZ_QUESTION_COUNT,
+      startedAt,
+      expiresAt: new Date(startedAt.getTime() + ((QUIZ_QUESTION_COUNT * QUIZ_SECONDS_PER_QUESTION) + 20) * 1000)
+    });
+
+    await session.save();
+
+    res.status(201).json({
+      sessionId: session._id,
+      gameKey: session.gameKey,
+      durationSeconds: session.durationSeconds,
+      secondsPerQuestion: QUIZ_SECONDS_PER_QUESTION,
+      startedAt: session.startedAt,
+      expiresAt: session.expiresAt,
+      questions: session.challenges.map(publicChallenge)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/code-quiz/:sessionId/submit', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.sessionId)) {
+      return res.status(404).json({ msg: 'Quiz session not found' });
+    }
+
+    const session = await GameSession.findOne({ _id: req.params.sessionId, userId: req.user, gameKey: 'code-quiz' });
+    if (!session) return res.status(404).json({ msg: 'Quiz session not found' });
+    if (session.completedAt) return res.status(400).json({ msg: 'Quiz session already submitted' });
+
+    const now = new Date();
+    const result = now > session.expiresAt
+      ? {
+          answers: [],
+          score: 0,
+          correctCount: 0,
+          totalCount: session.challenges.length,
+          maxStreak: 0,
+          elapsedMs: Math.max(0, now.getTime() - session.startedAt.getTime()),
+          accuracy: 0
+        }
+      : scoreQuizSession(session, req.body.answers, now);
+
+    session.answers = result.answers;
+    session.score = result.score;
+    session.accuracy = result.accuracy;
+    session.correctCount = result.correctCount;
+    session.totalCount = result.totalCount;
+    session.maxStreak = result.maxStreak;
+    session.elapsedMs = result.elapsedMs;
+    session.completedAt = now;
+    await session.save();
+
+    const [mySessions, myQuizSessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'code-quiz', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.json({
+      result: {
+        sessionId: session._id,
+        score: session.score,
+        accuracy: session.accuracy,
+        correctCount: session.correctCount,
+        totalCount: session.totalCount,
+        maxStreak: session.maxStreak,
+        elapsedMs: session.elapsedMs,
+        answers: session.answers
+      },
+      stats: buildGameStats(mySessions),
+      codeQuizStats: buildGameStats(myQuizSessions)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

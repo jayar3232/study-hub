@@ -67,13 +67,13 @@ export const showAppNotification = async ({ title, body, tag, data } = {}) => {
         body,
         tag,
         data,
-        icon: '/new-logo.png',
+        icon: '/syncrova-app-logo.png',
         badge: '/pwa-192.png'
       });
       return;
     }
 
-    new window.Notification(title, { body, tag, data, icon: '/new-logo.png' });
+    new window.Notification(title, { body, tag, data, icon: '/syncrova-app-logo.png' });
   } catch {
     // Never block realtime chat if notification delivery fails.
   }

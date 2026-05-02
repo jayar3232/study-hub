@@ -418,8 +418,9 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
   useEffect(() => {
     if (compact || milestone < 100) return undefined;
     const seasonId = stats?.season?.id || 'current';
-    const storageKey = `studenthub-rank-milestone-${seasonId}`;
-    const previous = Number(localStorage.getItem(storageKey) || 0);
+    const storageKey = `syncrova-rank-milestone-${seasonId}`;
+    const legacyStorageKey = `studenthub-rank-milestone-${seasonId}`;
+    const previous = Number(localStorage.getItem(storageKey) || localStorage.getItem(legacyStorageKey) || 0);
     if (milestone <= previous) return undefined;
 
     localStorage.setItem(storageKey, String(milestone));

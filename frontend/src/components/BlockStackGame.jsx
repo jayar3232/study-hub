@@ -252,10 +252,10 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
       detail: `${cleared} clear${cleared > 1 ? 's' : ''}${nextCombo > 1 ? ` x${nextCombo}` : ''}`
     };
 
-    setScoreBursts(prev => [burst, ...prev].slice(0, 4));
+    setScoreBursts(prev => [burst, ...prev].slice(0, 2));
     window.setTimeout(() => {
       setScoreBursts(prev => prev.filter(item => item.id !== burst.id));
-    }, 950);
+    }, 520);
   };
 
   const commitPiecePlacement = (pieceIndex, row, col) => {
@@ -295,8 +295,8 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
         text: nextCombo > 1 ? `Combo x${nextCombo}` : 'Line clear',
         detail: `${clearedResult.cleared} sprint lane${clearedResult.cleared > 1 ? 's' : ''} completed`
       });
-      window.setTimeout(() => setFlashCells(new Set()), 520);
-      window.setTimeout(() => setComboBanner(null), 1150);
+      window.setTimeout(() => setFlashCells(new Set()), 280);
+      window.setTimeout(() => setComboBanner(null), 760);
     }
 
     setBoard(clearedResult.board);
@@ -372,7 +372,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
         </div>
       </div>
 
-      <div className="grid gap-5 p-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_260px]">
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-4">
             {[
@@ -392,18 +392,9 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
 
           <motion.div
             key={`${shakeKey}-${clearPulseKey}`}
-            animate={{
-              x: shakeKey ? [0, -8, 8, -5, 5, 0] : 0,
-              boxShadow: clearPulseKey
-                ? [
-                    '0 25px 50px -12px rgba(34,211,238,0.12)',
-                    '0 0 58px rgba(34,211,238,0.42), 0 0 84px rgba(236,72,153,0.28)',
-                    '0 25px 50px -12px rgba(34,211,238,0.12)'
-                  ]
-                : '0 25px 50px -12px rgba(34,211,238,0.12)'
-            }}
-            transition={{ duration: clearPulseKey ? 0.62 : 0.28 }}
-            className="relative mx-auto aspect-square w-full max-w-[640px] rounded-[2rem] bg-gray-900 p-3 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10"
+            animate={{ x: shakeKey ? [0, -6, 6, -3, 3, 0] : 0 }}
+            transition={{ duration: 0.22 }}
+            className={`relative mx-auto aspect-square w-full max-w-[450px] rounded-[1.65rem] bg-gray-900 p-2.5 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10 ${clearPulseKey ? 'block-board-cleared' : ''}`}
           >
             <div className="absolute inset-3 rounded-[1.45rem] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:12.5%_12.5%]" />
 
@@ -415,21 +406,13 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                   dragState.placement.row + pieceRow === rowIndex && dragState.placement.col + pieceCol === colIndex
                 ));
                 return (
-                  <motion.button
+                  <button
                     key={`${rowIndex}-${colIndex}`}
                     type="button"
-                    initial={false}
-                    animate={{
-                      scale: flash ? [1, 1.22, 0.72, 1] : 1,
-                      opacity: cell || flash ? 1 : 0.88
-                    }}
-                    whileHover={!cell && valid ? { scale: 1.06 } : undefined}
-                    whileTap={{ scale: 0.92 }}
-                    transition={{ duration: flash ? 0.45 : 0.16 }}
                     onClick={() => handleCellClick(rowIndex, colIndex)}
-                    className={`relative aspect-square overflow-hidden rounded-xl border ${
+                    className={`relative aspect-square overflow-hidden rounded-lg border transition-colors duration-150 ${
                       flash
-                        ? 'border-white bg-white shadow-[0_0_28px_rgba(255,255,255,0.75)]'
+                        ? 'block-cell-flash border-white bg-white shadow-[0_0_22px_rgba(255,255,255,0.6)]'
                         : cell
                           ? `border-white/25 bg-gradient-to-br ${cell} shadow-lg shadow-black/30`
                           : ghost
@@ -442,7 +425,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                   >
                     {cell && <span className="absolute inset-1 rounded-lg border border-white/20 bg-white/10" />}
                     {ghost && !cell && <span className="absolute inset-1 rounded-lg border border-white/30 bg-white/15" />}
-                  </motion.button>
+                  </button>
                 );
               }))}
             </div>
@@ -469,7 +452,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                   initial={{ opacity: 0, y: 18, scale: 0.75 }}
                   animate={{ opacity: 1, y: -28, scale: 1 }}
                   exit={{ opacity: 0, y: -60, scale: 0.9 }}
-                  transition={{ duration: 0.75 }}
+                  transition={{ duration: 0.46 }}
                   className="pointer-events-none absolute z-30 rounded-2xl border border-white/20 bg-white px-3 py-2 text-center text-gray-950 shadow-2xl"
                   style={{
                     left: `${Math.min(82, Math.max(8, ((burst.col + 0.5) / BOARD_SIZE) * 100))}%`,
@@ -507,8 +490,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                   onPointerMove={handlePiecePointerMove}
                   onPointerUp={handlePiecePointerEnd}
                   onPointerCancel={handlePiecePointerEnd}
-                  whileHover={piece && !gameOver ? { y: -2 } : undefined}
-                  whileTap={piece && !gameOver ? { scale: 0.98 } : undefined}
+                  whileTap={piece && !gameOver ? { scale: 0.99 } : undefined}
                   className={`block-tray-piece touch-none w-full rounded-2xl border p-3 text-left transition ${
                     selectedIndex === index && piece
                       ? 'border-pink-300/60 bg-pink-400/15 shadow-lg shadow-pink-500/10'
@@ -585,7 +567,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
               top: dragState.y
             }}
           >
-            {renderPiecePreview(dragState.piece, 'h-3.5 w-3.5')}
+            {renderPiecePreview(dragState.piece, 'h-2.5 w-2.5')}
           </motion.div>
         )}
       </AnimatePresence>
@@ -598,7 +580,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
         saving={saving}
         saved={Boolean(savedScore)}
         onRetry={resetGame}
-        onExit={onExit}
+        onExit={() => setGameOver(false)}
       />
     </section>
   );

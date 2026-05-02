@@ -5,6 +5,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Story = require('../models/Story');
+const Message = require('../models/Message');
 const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification } = require('../services/notifications');
 const router = express.Router();
@@ -57,7 +58,28 @@ const uploadStory = (req, res, next) => {
 const activeStoryQuery = () => ({ expiresAt: { $gt: new Date() } });
 const populateStory = (query) => query
   .populate('userId', 'name avatar course campus')
-  .populate('reactions.userId', 'name avatar');
+  .populate('reactions.userId', 'name avatar')
+  .populate('viewers.userId', 'name avatar')
+  .populate('comments.userId', 'name avatar')
+  .populate('comments.messageId');
+
+const populateStoryDocument = async (story) => {
+  await story.populate('userId', 'name avatar course campus');
+  await story.populate('reactions.userId', 'name avatar');
+  await story.populate('viewers.userId', 'name avatar');
+  await story.populate('comments.userId', 'name avatar');
+  await story.populate('comments.messageId');
+  return story;
+};
+
+const populateMessage = (id) => Message.findById(id)
+  .populate('from', 'name email avatar lastSeen')
+  .populate('to', 'name email avatar lastSeen')
+  .populate('reactions.userId', 'name avatar')
+  .populate({
+    path: 'replyTo',
+    populate: { path: 'from', select: 'name email avatar lastSeen' }
+  });
 
 router.get('/active', auth, async (req, res) => {
   try {
@@ -118,8 +140,7 @@ router.post('/', auth, uploadStory, async (req, res) => {
     });
 
     await story.save();
-    await story.populate('userId', 'name avatar course campus');
-    await story.populate('reactions.userId', 'name avatar');
+    await populateStoryDocument(story);
     req.app.get('io')?.emit('story-updated', story);
     res.status(201).json(story);
   } catch (err) {
@@ -153,8 +174,7 @@ router.post('/:storyId/react', auth, async (req, res) => {
     }
 
     await story.save();
-    await story.populate('userId', 'name avatar course campus');
-    await story.populate('reactions.userId', 'name avatar');
+    await populateStoryDocument(story);
 
     if (String(story.userId?._id || story.userId) !== String(req.user)) {
       await createNotification({
@@ -171,6 +191,91 @@ router.post('/:storyId/react', auth, async (req, res) => {
 
     req.app.get('io')?.emit('story-updated', story);
     res.json(story);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/:storyId/view', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.storyId)) {
+      return res.status(404).json({ msg: 'Story not found' });
+    }
+
+    const story = await Story.findOne({ _id: req.params.storyId, ...activeStoryQuery() });
+    if (!story) return res.status(404).json({ msg: 'Story not found' });
+
+    const viewerIndex = (story.viewers || []).findIndex(viewer => String(viewer.userId) === String(req.user));
+    if (viewerIndex >= 0) {
+      story.viewers[viewerIndex].viewedAt = new Date();
+    } else {
+      story.viewers.push({ userId: req.user, viewedAt: new Date() });
+    }
+
+    await story.save();
+    await populateStoryDocument(story);
+    req.app.get('io')?.emit('story-updated', story);
+    res.json(story);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/:storyId/comment', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.storyId)) {
+      return res.status(404).json({ msg: 'Story not found' });
+    }
+
+    const text = String(req.body.text || '').trim().slice(0, 500);
+    if (!text) return res.status(400).json({ msg: 'Comment is required' });
+
+    const story = await Story.findOne({ _id: req.params.storyId, ...activeStoryQuery() });
+    if (!story) return res.status(404).json({ msg: 'Story not found' });
+
+    const ownerId = story.userId?._id || story.userId;
+    if (String(ownerId) === String(req.user)) {
+      return res.status(400).json({ msg: 'You cannot reply to your own My Day' });
+    }
+
+    const message = new Message({
+      from: req.user,
+      to: ownerId,
+      text: `Replied to your My Day: ${text}`,
+      fileUrl: story.fileUrl,
+      fileType: story.fileType,
+      fileName: story.fileName || 'My Day',
+      mimeType: story.mimeType || '',
+      fileSize: story.fileSize || 0,
+      storagePath: story.storagePath || '',
+      storageProvider: story.storageProvider || ''
+    });
+    await message.save();
+    const populatedMessage = await populateMessage(message._id);
+
+    story.comments.push({ userId: req.user, text, messageId: message._id });
+    await story.save();
+    await populateStoryDocument(story);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${ownerId}`).emit('receiveMessage', populatedMessage);
+      io.to(`user_${req.user}`).emit('receiveMessage', populatedMessage);
+      io.emit('story-updated', story);
+    }
+
+    await createNotification({
+      io,
+      userId: ownerId,
+      actorId: req.user,
+      type: 'message',
+      title: 'New My Day reply',
+      body: text,
+      href: '/messages',
+      meta: { storyId: story._id, messageId: message._id }
+    });
+
+    res.status(201).json({ story, message: populatedMessage });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }

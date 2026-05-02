@@ -7,6 +7,7 @@ import GameOverModal from './GameOverModal';
 
 const MAX_MISSES = 5;
 const TARGET_WIDTH = 18;
+const FRAME_INTERVAL = 1000 / 45;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -125,8 +126,17 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
     if (!running) return undefined;
 
     const tick = (time) => {
-      const last = lastFrameRef.current ?? time;
-      const delta = Math.min(34, time - last);
+      if (lastFrameRef.current === null) {
+        lastFrameRef.current = time;
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const last = lastFrameRef.current;
+      if (time - last < FRAME_INTERVAL) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const delta = Math.min(42, time - last);
       lastFrameRef.current = time;
 
       setPosition(current => {
@@ -348,7 +358,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
         saving={saving}
         saved={Boolean(result && !saving)}
         onRetry={resetGame}
-        onExit={onExit}
+        onExit={() => setResult(null)}
       />
     </section>
   );

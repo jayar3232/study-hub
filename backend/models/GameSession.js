@@ -9,6 +9,7 @@ const GameChallengeSchema = new mongoose.Schema({
   estimateHours: { type: Number, default: 2 },
   impact: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   signal: { type: String, default: '' },
+  options: [{ type: String }],
   correctAnswer: { type: String, required: true },
   basePoints: { type: Number, default: 100 }
 }, { _id: false });

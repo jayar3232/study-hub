@@ -20,10 +20,10 @@ const Friends = lazy(() => import('./components/Friends'));
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) return <LoadingSpinner fullScreen label="Preparing StudentHub" />;
+  if (loading) return <LoadingSpinner fullScreen label="Preparing SYNCROVA" />;
   const protectedLayout = isAuthenticated ? <Layout /> : <Navigate to="/login" replace />;
   return (
-    <Suspense fallback={<LoadingSpinner fullScreen label="Loading StudentHub" />}>
+    <Suspense fallback={<LoadingSpinner fullScreen label="Loading SYNCROVA" />}>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />} />

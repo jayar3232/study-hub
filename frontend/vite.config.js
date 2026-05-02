@@ -26,11 +26,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-192.png', 'pwa-512.png', 'apple-touch-icon.png', 'updatedlogofinal.png', 'new-logo.png'],
+      includeAssets: ['pwa-192.png', 'pwa-512.png', 'apple-touch-icon.png', 'syncrova-logo.png', 'syncrova-app-logo.png'],
       manifest: {
-        name: 'StudentHub',
-        short_name: 'StudentHub',
-        description: 'StudentHub workspace, messaging, tasks, reports, and team collaboration for NEMSU students.',
+        name: 'SYNCROVA',
+        short_name: 'SYNCROVA',
+        description: 'SYNCROVA workspace, messaging, reports, games, and team collaboration for NEMSU students.',
         theme_color: '#ec4899',
         background_color: '#0f172a',
         display: 'standalone',
@@ -39,13 +39,13 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/pwa-192.png',
+            src: '/syncrova-app-logo.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: '/pwa-512.png',
+            src: '/syncrova-app-logo.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'

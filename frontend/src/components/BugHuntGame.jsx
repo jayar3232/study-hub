@@ -193,7 +193,7 @@ export default function BugHuntGame({ stats, onScoreSaved, onExit }) {
         </div>
       </div>
 
-      <div className="grid gap-5 p-4 2xl:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-4 p-4 2xl:grid-cols-[minmax(0,1fr)_270px]">
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-4">
             {[
@@ -218,13 +218,13 @@ export default function BugHuntGame({ stats, onScoreSaved, onExit }) {
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') registerMiss();
             }}
-            className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 p-4 shadow-2xl shadow-rose-500/10"
+            className="bug-hunt-stage relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950 p-3 shadow-2xl shadow-rose-500/10 sm:p-4"
             aria-label="Bug hunt stage"
           >
 
-            <div className="relative z-10 pointer-events-none grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="bug-hunt-screen relative z-10 pointer-events-none grid gap-3 lg:grid-cols-[190px_minmax(0,1fr)] xl:grid-cols-[210px_minmax(0,1fr)]">
               <aside className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
-                <p className="text-sm font-black text-white">StudentHub</p>
+                <p className="text-sm font-black text-white">SYNCROVA</p>
                 <div className="mt-4 space-y-2">
                   {['Dashboard', 'Workspaces', 'Messages 4', 'Fix Arena'].map(item => (
                     <div key={item} className="rounded-2xl bg-white/[0.07] px-3 py-2 text-xs font-bold text-white/65">{item}</div>
@@ -380,7 +380,7 @@ export default function BugHuntGame({ stats, onScoreSaved, onExit }) {
         saving={saving}
         saved={Boolean(result && !saving)}
         onRetry={resetRound}
-        onExit={onExit}
+        onExit={() => setResult(null)}
       />
     </section>
   );

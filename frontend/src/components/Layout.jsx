@@ -12,7 +12,7 @@ import { AppLogoMark, AppWordmark } from './AppLogo';
 import { getNotificationPermissionState, requestNotificationPermission, showAppNotification } from '../utils/notifications';
 import OnlineRoster from './OnlineRoster';
 
-const APP_NAME = 'StudentHub';
+const APP_NAME = 'SYNCROVA';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -282,7 +282,7 @@ export default function Layout({ children }) {
     <button
       type="button"
       onClick={toggleTheme}
-      className={`${compact ? 'rounded-full p-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-3 rounded-xl px-4 py-2.5'} text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 hover:text-pink-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-pink-300`}
+      className={`${compact ? 'rounded-full p-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-3 rounded-xl px-4 py-2.5'} text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-blue-300`}
       title={currentTheme?.helper || 'Toggle theme'}
       aria-label={currentTheme?.label || 'Toggle theme'}
     >
@@ -315,7 +315,7 @@ export default function Layout({ children }) {
         className="flex w-full items-center gap-3 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:-translate-y-0.5 hover:bg-cyan-400/15 dark:border-cyan-300/20 dark:text-cyan-200"
       >
         <Download size={19} />
-        <span>Install StudentHub</span>
+        <span>Install SYNCROVA</span>
       </button>
     );
   };
@@ -337,7 +337,7 @@ export default function Layout({ children }) {
       <button
         type="button"
         onClick={enableNotifications}
-        className={`${compact ? 'rounded-full p-2' : 'flex w-full items-center gap-3 rounded-xl border border-pink-300/30 bg-pink-500/10 px-4 py-2.5 text-sm font-bold'} text-pink-700 transition hover:-translate-y-0.5 hover:bg-pink-500/15 dark:text-pink-200`}
+        className={`${compact ? 'rounded-full p-2' : 'flex w-full items-center gap-3 rounded-xl border border-blue-300/30 bg-blue-500/10 px-4 py-2.5 text-sm font-bold'} text-blue-700 transition hover:-translate-y-0.5 hover:bg-blue-500/15 dark:text-blue-200`}
         title="Enable phone notifications"
         aria-label="Enable phone notifications"
       >
@@ -375,15 +375,15 @@ export default function Layout({ children }) {
     const isFriends = item.path === '/friends';
     const badgeCount = isMessages ? unreadCount : isGroups ? groupBadgeCount : isFriends ? friendBadgeCount : 0;
     const activeClasses = isActive
-      ? 'border-pink-300/35 bg-white/35 text-pink-700 shadow-sm shadow-pink-500/10 backdrop-blur dark:border-pink-400/25 dark:bg-white/10 dark:text-pink-200'
+      ? 'border-blue-300/35 bg-white/40 text-blue-700 shadow-sm shadow-blue-500/10 backdrop-blur dark:border-blue-400/25 dark:bg-white/10 dark:text-blue-200'
       : 'border-transparent bg-transparent text-gray-700 hover:border-white/45 hover:bg-white/25 hover:text-gray-950 dark:text-gray-300 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-white';
-    const baseClasses = `flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 font-semibold transition-all duration-300 hover:-translate-y-0.5 ${activeClasses}`;
+    const baseClasses = `flex w-full items-center gap-3 rounded-xl border px-3 py-2 font-semibold transition-all duration-200 hover:bg-white/30 dark:hover:bg-white/10 ${activeClasses}`;
     const linkContent = (
       <>
         <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
           <item.icon size={isMobile ? 24 : 20} />
           {badgeCount > 0 && (
-            <span className="absolute -top-1 -right-2 bg-pink-500 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center">
+            <span className="absolute -top-1 -right-2 bg-blue-600 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center">
               {badgeCount > 9 ? '9+' : badgeCount}
             </span>
           )}
@@ -420,22 +420,22 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen text-gray-900 dark:text-gray-100">
-      <aside className="group/sidebar fixed z-30 hidden h-full w-64 flex-col overflow-hidden border-r border-white/45 bg-white/45 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/45 dark:shadow-black/20 md:flex">
-        <div className="border-b border-white/40 p-3 dark:border-white/10">
+      <aside className="group/sidebar fixed z-30 hidden h-full w-64 min-h-0 flex-col overflow-hidden border-r border-white/45 bg-white/45 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/45 dark:shadow-black/20 md:flex">
+        <div className="shrink-0 border-b border-white/40 p-2.5 dark:border-white/10">
           <BrandLogo compact />
         </div>
-        <nav className="flex-1 space-y-2 p-3">
+        <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2.5">
           {navItems.map(item => renderNavLink(item, false))}
           <OnlineRoster compact limit={5} title="Active users" />
         </nav>
-        <div className="space-y-2 border-t border-white/40 p-3 dark:border-white/10">
+        <div className="shrink-0 space-y-1.5 border-t border-white/40 p-2.5 dark:border-white/10">
           <InstallButton />
           <NotificationButton />
           <DndToggle />
           <ThemeToggle />
           {user && (
             <div className="mb-3 flex items-center gap-3 rounded-2xl border border-white/45 bg-white/35 p-2 shadow-sm backdrop-blur transition-[gap] duration-300 ease-out dark:border-white/10 dark:bg-white/5" title={user.email}>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
                 {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
               </div>
               <div className="min-w-0 max-w-[10rem] overflow-hidden opacity-100 transition-all duration-300 ease-out">
@@ -463,7 +463,7 @@ export default function Layout({ children }) {
             <NotificationButton compact />
             <DndToggle compact />
             {user && (
-              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
                 {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
               </div>
             )}
@@ -473,7 +473,7 @@ export default function Layout({ children }) {
           </div>
         </header>
 
-        <div className="mobile-context-panel sticky top-[calc(4.45rem_+_env(safe-area-inset-top))] z-[18] px-3 pt-2 md:hidden">
+        <div className="mobile-context-panel sticky top-[calc(3.65rem_+_env(safe-area-inset-top))] z-[18] px-2 pt-1.5 md:hidden">
           {!isOnline && (
             <div
               className="mb-2 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 shadow-lg shadow-amber-500/10 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
@@ -529,7 +529,7 @@ export default function Layout({ children }) {
                 <item.icon size={21} strokeWidth={isActive ? 2.6 : 2.2} />
                 <span className="max-w-full truncate text-[10px] font-black leading-none">{item.mobileLabel || item.label}</span>
                 {badgeCount > 0 && (
-                  <span className="absolute right-1 top-0 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-pink-500 px-1 text-xs text-white">
+                  <span className="absolute right-1 top-0 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-blue-600 px-1 text-xs text-white">
                     {badgeCount > 9 ? '9+' : badgeCount}
                   </span>
                 )}
@@ -549,19 +549,19 @@ export default function Layout({ children }) {
                 key={popup.id}
                 type="button"
                 onClick={() => openMessagePopup(popup)}
-                className="pointer-events-auto overflow-hidden rounded-2xl border border-pink-100 bg-white/95 p-4 text-left shadow-2xl shadow-pink-500/15 backdrop-blur transition hover:-translate-y-1 hover:border-pink-200 dark:border-pink-900/50 dark:bg-gray-900/95"
+                className="pointer-events-auto overflow-hidden rounded-2xl border border-blue-100 bg-white/95 p-4 text-left shadow-2xl shadow-blue-500/15 backdrop-blur transition hover:-translate-y-1 hover:border-blue-200 dark:border-blue-900/50 dark:bg-gray-900/95"
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
                     {popupAvatar ? <img src={popupAvatar} alt={senderName} className="h-full w-full object-cover" /> : senderName.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-bold text-gray-950 dark:text-white">{senderName}</p>
-                      <span className="rounded-full bg-pink-50 px-2 py-0.5 text-[11px] font-bold text-pink-600 dark:bg-pink-950/30 dark:text-pink-300">New</span>
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">New</span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{popup.body}</p>
-                    <p className="mt-2 text-xs font-semibold text-pink-600 dark:text-pink-300">Open Messages</p>
+                    <p className="mt-2 text-xs font-semibold text-blue-600 dark:text-blue-300">Open Messages</p>
                   </div>
                 </div>
               </button>

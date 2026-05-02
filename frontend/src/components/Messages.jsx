@@ -87,36 +87,62 @@ const getMessageSnippet = (message) => {
   return 'Message';
 };
 
-const readStoredIdSet = (key) => {
+const readStoredValue = (key, legacyKey) => {
+  if (typeof window === 'undefined') return null;
+  const currentValue = window.localStorage.getItem(key);
+  if (currentValue !== null || !legacyKey) return currentValue;
+
+  const legacyValue = window.localStorage.getItem(legacyKey);
+  if (legacyValue !== null) window.localStorage.setItem(key, legacyValue);
+  return legacyValue;
+};
+
+const readStoredIdSet = (key, legacyKey) => {
   if (typeof window === 'undefined') return new Set();
   try {
-    return new Set(JSON.parse(window.localStorage.getItem(key) || '[]').map(String));
+    return new Set(JSON.parse(readStoredValue(key, legacyKey) || '[]').map(String));
   } catch {
     return new Set();
   }
 };
 
-const readStoredObject = (key) => {
+const readStoredObject = (key, legacyKey) => {
   if (typeof window === 'undefined') return {};
   try {
-    return JSON.parse(window.localStorage.getItem(key) || '{}') || {};
+    return JSON.parse(readStoredValue(key, legacyKey) || '{}') || {};
   } catch {
     return {};
   }
+};
+
+const STORAGE_KEYS = {
+  favoriteChats: 'syncrova-favorite-chats',
+  mutedChats: 'syncrova-muted-chats',
+  pinnedChats: 'syncrova-pinned-chats',
+  chatNicknames: 'syncrova-chat-nicknames',
+  chatThemes: 'syncrova-chat-themes'
+};
+
+const LEGACY_STORAGE_KEYS = {
+  favoriteChats: 'studenthub-favorite-chats',
+  mutedChats: 'studenthub-muted-chats',
+  pinnedChats: 'studenthub-pinned-chats',
+  chatNicknames: 'studenthub-chat-nicknames',
+  chatThemes: 'studenthub-chat-themes'
 };
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '✅'];
 
 const CHAT_THEMES = {
   default: {
-    label: 'StudentHub',
-    own: 'from-pink-600 to-slate-800',
-    accent: 'text-pink-600 dark:text-pink-300'
+    label: 'Messenger Blue',
+    own: 'from-[#0084ff] to-[#00b2ff]',
+    accent: 'text-[#0084ff] dark:text-sky-300'
   },
   blue: {
-    label: 'Focus Blue',
-    own: 'from-blue-600 to-cyan-600',
-    accent: 'text-blue-600 dark:text-blue-300'
+    label: 'Facebook',
+    own: 'from-[#1877f2] to-[#0a58ca]',
+    accent: 'text-[#1877f2] dark:text-blue-300'
   },
   violet: {
     label: 'Violet',
@@ -136,11 +162,11 @@ export default function Messages() {
   const [conversations, setConversations] = useState([]);
   const [conversationSearch, setConversationSearch] = useState('');
   const [conversationFilter, setConversationFilter] = useState('all');
-  const [favoriteConversationIds, setFavoriteConversationIds] = useState(() => readStoredIdSet('studenthub-favorite-chats'));
-  const [mutedConversationIds, setMutedConversationIds] = useState(() => readStoredIdSet('studenthub-muted-chats'));
-  const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet('studenthub-pinned-chats'));
-  const [conversationNicknames, setConversationNicknames] = useState(() => readStoredObject('studenthub-chat-nicknames'));
-  const [conversationThemes, setConversationThemes] = useState(() => readStoredObject('studenthub-chat-themes'));
+  const [favoriteConversationIds, setFavoriteConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.favoriteChats, LEGACY_STORAGE_KEYS.favoriteChats));
+  const [mutedConversationIds, setMutedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.mutedChats, LEGACY_STORAGE_KEYS.mutedChats));
+  const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.pinnedChats, LEGACY_STORAGE_KEYS.pinnedChats));
+  const [conversationNicknames, setConversationNicknames] = useState(() => readStoredObject(STORAGE_KEYS.chatNicknames, LEGACY_STORAGE_KEYS.chatNicknames));
+  const [conversationThemes, setConversationThemes] = useState(() => readStoredObject(STORAGE_KEYS.chatThemes, LEGACY_STORAGE_KEYS.chatThemes));
   const [selectedUser, setSelectedUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -169,6 +195,7 @@ export default function Messages() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [actionMenuMessageId, setActionMenuMessageId] = useState(null);
   const [showPinnedPanel, setShowPinnedPanel] = useState(false);
+  const [showChatDetails, setShowChatDetails] = useState(false);
   const [focusedMessageId, setFocusedMessageId] = useState(null);
   const [lastSeenByUser, setLastSeenByUser] = useState({});
   const [myNote, setMyNote] = useState(null);
@@ -213,15 +240,15 @@ export default function Messages() {
   }, []);
 
   const toggleFavoriteConversation = useCallback((rawId) => {
-    toggleStoredId('studenthub-favorite-chats', setFavoriteConversationIds, rawId);
+    toggleStoredId(STORAGE_KEYS.favoriteChats, setFavoriteConversationIds, rawId);
   }, [toggleStoredId]);
 
   const toggleMuteConversation = useCallback((rawId) => {
-    toggleStoredId('studenthub-muted-chats', setMutedConversationIds, rawId);
+    toggleStoredId(STORAGE_KEYS.mutedChats, setMutedConversationIds, rawId);
   }, [toggleStoredId]);
 
   const togglePinnedConversation = useCallback((rawId) => {
-    toggleStoredId('studenthub-pinned-chats', setPinnedConversationIds, rawId);
+    toggleStoredId(STORAGE_KEYS.pinnedChats, setPinnedConversationIds, rawId);
   }, [toggleStoredId]);
 
   const updateStoredObject = useCallback((storageKey, setter, rawId, value) => {
@@ -242,11 +269,11 @@ export default function Messages() {
   }, []);
 
   const updateConversationNickname = useCallback((rawId, value) => {
-    updateStoredObject('studenthub-chat-nicknames', setConversationNicknames, rawId, value.trim());
+    updateStoredObject(STORAGE_KEYS.chatNicknames, setConversationNicknames, rawId, value.trim());
   }, [updateStoredObject]);
 
   const updateConversationTheme = useCallback((rawId, value) => {
-    updateStoredObject('studenthub-chat-themes', setConversationThemes, rawId, value === 'default' ? '' : value);
+    updateStoredObject(STORAGE_KEYS.chatThemes, setConversationThemes, rawId, value === 'default' ? '' : value);
   }, [updateStoredObject]);
 
   const clearTargetUserParam = useCallback(() => {
@@ -805,7 +832,7 @@ export default function Messages() {
       setMyNote(res.data);
       setUserNotes(prev => ({ ...prev, [currentUserId]: res.data }));
       playUiSound('success');
-      toast.success('Note posted for 2 days');
+      toast.success('Note posted for 1 day');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to post note');
     } finally {
@@ -1140,6 +1167,10 @@ export default function Messages() {
     setMessageSearchIndex(0);
   }, [messageSearch, selectedUserId]);
 
+  useEffect(() => {
+    setShowChatDetails(false);
+  }, [selectedUserId]);
+
   const goToSearchMatch = (direction = 0) => {
     if (!messageSearchMatches.length) return;
     const nextIndex = direction === 0
@@ -1202,7 +1233,7 @@ export default function Messages() {
     const avatar = getUserAvatar(person);
 
     return (
-      <div className={`${sizeClass} relative overflow-hidden rounded-full bg-gradient-to-br from-pink-600 to-cyan-600 shadow-sm`}>
+      <div className={`${sizeClass} relative overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] shadow-sm`}>
         {avatar ? (
           <img src={avatar} alt={getDisplayName(person)} className="h-full w-full object-cover" />
         ) : (
@@ -1238,7 +1269,7 @@ export default function Messages() {
         className={`mb-1 block w-full rounded-xl border-l-2 px-3 py-2 text-left text-xs ${
         isMe
           ? 'border-white/70 bg-white/15 text-white/90'
-          : 'border-pink-400 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+          : 'border-[#1877f2] bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
       }`}>
         <div className="font-semibold">{replySender}</div>
         <div className="line-clamp-2 opacity-80">{getMessageSnippet(message.replyTo)}</div>
@@ -1319,6 +1350,153 @@ export default function Messages() {
     return null;
   };
 
+  const ChatDetailsContent = ({ compact = false }) => (
+    <div className={`${compact ? 'max-h-[76svh] overflow-y-auto px-4 pb-4' : ''}`}>
+      <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
+        <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
+          <span className="relative block">
+            {renderAvatar(selectedUser, 'h-20 w-20', 32)}
+            <span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white dark:border-gray-950 ${
+              selectedIsOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+            }`} />
+          </span>
+        </button>
+        <h3 className="mt-3 truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>
+        <p className={`text-sm font-semibold ${selectedIsOnline ? 'text-emerald-500' : 'text-slate-500 dark:text-gray-400'}`}>
+          {otherUserTyping ? 'Typing...' : presenceText}
+        </p>
+        {userNotes[selectedUserId] && (
+          <p className="mx-auto mt-3 line-clamp-2 rounded-2xl bg-pink-50 px-3 py-2 text-sm font-semibold text-pink-700 dark:bg-pink-950/30 dark:text-pink-200">
+            {userNotes[selectedUserId].text}
+          </p>
+        )}
+      </div>
+
+      <div className={`${compact ? 'pt-4' : 'p-4'} space-y-4`}>
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => togglePinnedConversation(selectedUserId)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <Pin size={18} className={`mb-2 ${selectedIsPinned ? 'fill-pink-500 text-pink-500' : 'text-pink-500'}`} />
+            {selectedIsPinned ? 'Pinned' : 'Pin chat'}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleMuteConversation(selectedUserId)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            {selectedIsMuted ? <BellOff size={18} className="mb-2 text-pink-500" /> : <Bell size={18} className="mb-2 text-pink-500" />}
+            {selectedIsMuted ? 'Muted' : 'Alerts on'}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleFavoriteConversation(selectedUserId)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <Star size={18} className={`mb-2 ${selectedIsFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-pink-500'}`} />
+            {selectedIsFavorite ? 'Favorite' : 'Star'}
+          </button>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+          <label className="text-xs font-black uppercase text-slate-400">Nickname</label>
+          <input
+            value={selectedNickname}
+            onChange={event => updateConversationNickname(selectedUserId, event.target.value)}
+            placeholder={selectedUser?.name || 'Friend'}
+            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+          />
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+          <label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400">
+            <Palette size={14} />
+            Chat theme
+          </label>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {Object.entries(CHAT_THEMES).map(([key, theme]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => updateConversationTheme(selectedUserId, key)}
+                className={`rounded-2xl border p-2 text-left text-xs font-black ${
+                  selectedThemeKey === key
+                    ? 'border-pink-300 bg-white text-slate-950 dark:bg-gray-950 dark:text-white'
+                    : 'border-transparent bg-white/70 text-slate-500 dark:bg-gray-950/60 dark:text-gray-400'
+                }`}
+              >
+                <span className={`mb-1 block h-4 rounded-full bg-gradient-to-r ${theme.own}`} />
+                {theme.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-sm font-black text-slate-950 dark:text-white">Media</h4>
+            <span className="text-xs font-bold text-slate-400">{sharedMediaItems.length}</span>
+          </div>
+          {sharedMediaItems.length > 0 ? (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-3">
+              {sharedMediaItems.slice(0, 8).map(message => {
+                const mediaUrl = resolveMediaUrl(message.fileUrl);
+                return (
+                  <button
+                    key={getEntityId(message)}
+                    type="button"
+                    onClick={() => {
+                      setShowChatDetails(false);
+                      setMediaPreview({ type: message.fileType, url: mediaUrl, name: message.fileName || 'Media' });
+                    }}
+                    className="aspect-square overflow-hidden rounded-2xl bg-slate-100 dark:bg-gray-900"
+                    aria-label="Open shared media"
+                  >
+                    {message.fileType === 'image' ? (
+                      <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="grid h-full w-full place-items-center text-pink-500">
+                        <Video size={22} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">Shared photos and videos will appear here.</p>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-sm font-black text-slate-950 dark:text-white">Files and voice</h4>
+            <span className="text-xs font-bold text-slate-400">{sharedFileItems.length}</span>
+          </div>
+          <div className="space-y-2">
+            {sharedFileItems.length > 0 ? sharedFileItems.map(message => (
+              <a
+                key={getEntityId(message)}
+                href={resolveMediaUrl(message.fileUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {message.fileType === 'audio' ? <Mic size={18} className="text-pink-500" /> : <FileText size={18} className="text-pink-500" />}
+                <span className="min-w-0 flex-1 truncate">{message.fileName || (message.fileType === 'audio' ? 'Voice message' : 'Attachment')}</span>
+                <Download size={15} className="text-slate-400" />
+              </a>
+            )) : (
+              <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">No files shared yet.</p>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
   if (initialLoading) {
     return (
       <div className="flex h-[70vh] items-center justify-center">
@@ -1333,10 +1511,10 @@ export default function Messages() {
         <aside className="messages-tools-rail hidden w-60 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
           <div className="flex items-center gap-3 px-1 py-2">
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-gray-900 dark:ring-gray-800">
-              <img src="/new-logo.png" alt="StudentHub" className="h-full w-full object-cover" />
+              <img src="/syncrova-logo.png" alt="SYNCROVA" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-lg font-black text-slate-950 dark:text-white">StudentHub</p>
+              <p className="truncate text-lg font-black text-slate-950 dark:text-white">SYNCROVA</p>
               <p className="truncate text-[10px] font-black uppercase text-slate-400">Messenger</p>
             </div>
           </div>
@@ -1380,10 +1558,10 @@ export default function Messages() {
           <form onSubmit={handleSaveNote} className="mt-auto rounded-3xl border border-slate-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-2 text-sm font-black text-slate-950 dark:text-white">
-                <StickyNote size={16} className="text-pink-600 dark:text-pink-300" />
+                <StickyNote size={16} className="text-[#1877f2] dark:text-sky-300" />
                 Your note
               </span>
-              <span className="text-[11px] font-bold text-slate-400">2 days</span>
+              <span className="text-[11px] font-bold text-slate-400">1 day</span>
             </div>
             <input
               value={noteText}
@@ -1429,7 +1607,7 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={() => setShowModal(true)}
-                  className="grid h-10 w-10 place-items-center rounded-2xl bg-pink-600 text-white shadow-sm hover:bg-pink-700"
+                  className="grid h-10 w-10 place-items-center rounded-2xl bg-[#1877f2] text-white shadow-sm hover:bg-[#0f63d5]"
                   aria-label="Start new chat"
                 >
                   <Plus size={19} />
@@ -1455,7 +1633,7 @@ export default function Messages() {
                   onClick={() => setConversationFilter(filter.id)}
                   className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-black ${
                     conversationFilter === filter.id
-                      ? 'bg-pink-600 text-white'
+                      ? 'bg-[#1877f2] text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
                   }`}
                 >
@@ -1464,6 +1642,36 @@ export default function Messages() {
                 </button>
               ))}
             </div>
+
+            <form onSubmit={handleSaveNote} className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900 2xl:hidden">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-2 text-xs font-black uppercase text-slate-500 dark:text-gray-400">
+                  <StickyNote size={14} className="text-[#1877f2] dark:text-sky-300" />
+                  My note
+                </span>
+                <span className="text-[11px] font-bold text-slate-400">1 day</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={noteText}
+                  onChange={event => setNoteText(event.target.value.slice(0, 140))}
+                  placeholder="Share a quick note..."
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                />
+                <button
+                  type="submit"
+                  disabled={savingNote || !noteText.trim()}
+                  className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white disabled:opacity-45 dark:bg-white dark:text-gray-950"
+                >
+                  Post
+                </button>
+                {myNote && (
+                  <button type="button" onClick={handleClearNote} disabled={savingNote} className="rounded-xl px-2 text-xs font-black text-rose-500">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </form>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -1495,7 +1703,7 @@ export default function Messages() {
                     onClick={() => setSelectedUser(otherUser)}
                     className={`mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
                       isActive
-                        ? 'bg-pink-50 ring-1 ring-pink-100 dark:bg-pink-950/30 dark:ring-pink-900/50'
+                        ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/50'
                         : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
                     }`}
                   >
@@ -1516,17 +1724,17 @@ export default function Messages() {
                         <div className="shrink-0 text-xs text-gray-400">{formatMessageTime(conversation.lastTime)}</div>
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-2">
-                        <p className={`truncate text-sm ${isTyping ? 'font-semibold text-pink-600 dark:text-pink-300' : conversation.unreadCount ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                        <p className={`truncate text-sm ${isTyping ? 'font-semibold text-[#1877f2] dark:text-sky-300' : conversation.unreadCount ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
                           {isTyping ? 'Typing...' : conversation.lastMessage}
                         </p>
                         {conversation.unreadCount > 0 && (
-                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-pink-600 px-1.5 text-xs font-bold text-white">
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#1877f2] px-1.5 text-xs font-bold text-white">
                             {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
                           </span>
                         )}
                       </div>
                       {activeNote && (
-                        <p className="mt-1 line-clamp-1 rounded-full bg-slate-50 px-2 py-1 text-xs font-medium text-pink-700 dark:bg-gray-900 dark:text-pink-300">
+                        <p className="mt-1 line-clamp-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950/30 dark:text-sky-300">
                           Note: {activeNote.text}
                         </p>
                       )}
@@ -1556,11 +1764,11 @@ export default function Messages() {
                 </button>
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="min-w-0 flex-1 text-left" title="View profile">
                   <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedDisplayName}</div>
-                  <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-pink-600 dark:text-pink-300' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
+                  <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-[#1877f2] dark:text-sky-300' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
                   {userNotes[selectedUserId] && (
-                    <div className="mt-1 line-clamp-1 text-xs font-medium text-pink-600 dark:text-pink-300">
+                    <div className="mt-1 line-clamp-1 text-xs font-medium text-[#1877f2] dark:text-sky-300">
                       Note: {userNotes[selectedUserId].text}
                     </div>
                   )}
@@ -1570,8 +1778,8 @@ export default function Messages() {
                   onClick={() => togglePinnedConversation(selectedUserId)}
                   className={`relative rounded-full p-2 transition ${
                     selectedIsPinned
-                      ? 'bg-pink-50 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300'
-                      : 'text-gray-500 hover:bg-pink-50 hover:text-pink-600 dark:hover:bg-pink-950/30'
+                      ? 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-300'
+                      : 'text-gray-500 hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30'
                   }`}
                   aria-label={selectedIsPinned ? 'Unpin chat' : 'Pin chat'}
                   title={selectedIsPinned ? 'Unpin chat' : 'Pin chat'}
@@ -1591,6 +1799,15 @@ export default function Messages() {
                       {pinnedMessages.length > 9 ? '9+' : pinnedMessages.length}
                     </span>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowChatDetails(true)}
+                  className="rounded-full p-2 text-gray-500 transition hover:bg-cyan-50 hover:text-cyan-600 dark:hover:bg-cyan-950/30 xl:hidden"
+                  aria-label="Open chat settings"
+                  title="Chat settings"
+                >
+                  <Settings size={18} />
                 </button>
                 <button
                   onClick={handleDeleteConversation}
@@ -1702,7 +1919,7 @@ export default function Messages() {
                             {showUnreadDivider && (
                               <div className="my-4 flex items-center gap-3">
                                 <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
-                                <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-600 dark:bg-pink-950/40 dark:text-pink-200">New messages</span>
+                                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#1877f2] dark:bg-blue-950/40 dark:text-sky-200">New messages</span>
                                 <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
                               </div>
                             )}
@@ -1737,9 +1954,9 @@ export default function Messages() {
                                 }}
                                   className={`message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${
                                 isMe
-                                  ? `own-message-bubble rounded-br-lg bg-gradient-to-br ${selectedTheme.own} text-white shadow-pink-500/15`
+                                ? `own-message-bubble rounded-br-lg bg-gradient-to-br ${selectedTheme.own} text-white shadow-blue-500/15`
                                   : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
-                              } ${isMe && isLatestOwn ? 'ring-2 ring-pink-300/40 shadow-xl shadow-pink-500/20' : ''}`}
+                              } ${isMe && isLatestOwn ? 'ring-2 ring-blue-300/40 shadow-xl shadow-blue-500/20' : ''}`}
                               >
                                 <ReplyPreview message={message} isMe={isMe} />
                                 <div className="space-y-2">
@@ -1785,7 +2002,7 @@ export default function Messages() {
                                         setReplyingTo(message);
                                         inputRef.current?.focus();
                                       }}
-                                      className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-pink-600 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-pink-300"
+                                      className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-[#1877f2] group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-sky-300"
                                       aria-label="Reply"
                                     >
                                       <Reply size={13} />
@@ -1793,7 +2010,7 @@ export default function Messages() {
                                     <div className="relative">
                                       <button
                                         onClick={() => setEmojiPickerMessageId(emojiPickerMessageId === messageId ? null : messageId)}
-                                        className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-pink-600 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-pink-300"
+                                        className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-[#1877f2] group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-sky-300"
                                         aria-label="React"
                                       >
                                         <Smile size={14} />
@@ -1889,7 +2106,7 @@ export default function Messages() {
                             {[0, 1, 2].map(dot => (
                               <span
                                 key={dot}
-                                className="h-2 w-2 animate-bounce rounded-full bg-pink-400"
+                                className="h-2 w-2 animate-bounce rounded-full bg-[#0084ff]"
                                 style={{ animationDelay: `${dot * 120}ms` }}
                               />
                             ))}
@@ -1946,8 +2163,8 @@ export default function Messages() {
                         <div className="flex min-w-0 items-center gap-3">
                           {selectedAttachment.fileType === 'image' && attachmentPreview && <img src={attachmentPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
                           {selectedAttachment.fileType === 'video' && attachmentPreview && <video src={attachmentPreview} className="h-12 w-12 rounded-xl object-cover" />}
-                          {selectedAttachment.fileType === 'audio' && <Mic size={22} className="text-pink-600 dark:text-pink-300" />}
-                          {selectedAttachment.fileType === 'file' && <FileText size={22} className="text-pink-600 dark:text-pink-300" />}
+                                {selectedAttachment.fileType === 'audio' && <Mic size={22} className="text-[#1877f2] dark:text-sky-300" />}
+                          {selectedAttachment.fileType === 'file' && <FileText size={22} className="text-[#1877f2] dark:text-sky-300" />}
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{selectedAttachment.file.name}</p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{formatBytes(selectedAttachment.file.size)}</p>
@@ -1959,7 +2176,7 @@ export default function Messages() {
                       </div>
                       {sending && uploadProgress > 0 && (
                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                          <div className="h-full rounded-full bg-pink-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+                          <div className="h-full rounded-full bg-[#1877f2] transition-all" style={{ width: `${uploadProgress}%` }} />
                         </div>
                       )}
                     </div>
@@ -2042,7 +2259,7 @@ export default function Messages() {
           ) : (
             <section className="hidden flex-1 items-center justify-center bg-slate-50/90 p-8 text-center dark:bg-gray-950/70 md:flex">
               <div className="max-w-sm">
-                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-pink-100 to-cyan-100 text-pink-600 dark:from-pink-950/40 dark:to-cyan-950/40 dark:text-pink-300">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 text-[#1877f2] dark:from-blue-950/40 dark:to-cyan-950/40 dark:text-sky-300">
                   <MessageCircle size={38} />
                 </div>
                 <h3 className="text-xl font-bold text-gray-950 dark:text-white">Pick a conversation</h3>
@@ -2228,6 +2445,28 @@ export default function Messages() {
         user={profileUser}
         onClose={() => setProfileUser(null)}
       />
+
+      {selectedUser && showChatDetails && (
+        <div className="fixed inset-0 z-[88] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm xl:hidden">
+          <div className="mobile-bottom-sheet w-full max-w-lg overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-gray-800">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-pink-500">Chat settings</p>
+                <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChatDetails(false)}
+                className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                aria-label="Close chat settings"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <ChatDetailsContent compact />
+          </div>
+        </div>
+      )}
 
       {selectedMessageInfo && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">

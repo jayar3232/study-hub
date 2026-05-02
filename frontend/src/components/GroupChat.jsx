@@ -447,6 +447,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
 
   const memberPreview = members.slice(0, 5);
   const memberCount = members.length || group?.members?.length || 0;
+  const groupPhotoUrl = resolveMediaUrl(group?.photo);
 
   if (loading) {
     return (
@@ -461,15 +462,19 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
       <div className="border-b border-gray-200/80 bg-white/95 p-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 sm:p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex -space-x-2">
-              {memberPreview.length > 0 ? memberPreview.slice(0, 3).map(member => (
-                <div key={getEntityId(member)} className="rounded-full border-2 border-white dark:border-gray-900">
-                  {renderAvatar(member, 'h-10 w-10', true)}
+            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-pink-50 text-pink-600 shadow-sm ring-1 ring-gray-200 dark:bg-pink-950/30 dark:text-pink-300 dark:ring-gray-800">
+              {groupPhotoUrl ? (
+                <img src={groupPhotoUrl} alt={group?.name || 'Team Chat'} className="h-full w-full object-cover" />
+              ) : memberPreview.length > 0 ? (
+                <div className="flex -space-x-3">
+                  {memberPreview.slice(0, 3).map(member => (
+                    <div key={getEntityId(member)} className="rounded-full border-2 border-white dark:border-gray-900">
+                      {renderAvatar(member, 'h-8 w-8', true)}
+                    </div>
+                  ))}
                 </div>
-              )) : (
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-pink-50 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300">
-                  <Users size={21} />
-                </div>
+              ) : (
+                <Users size={21} />
               )}
             </div>
             <div className="min-w-0">

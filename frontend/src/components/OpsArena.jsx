@@ -34,6 +34,7 @@ const BlockStackGame = lazy(() => import('./BlockStackGame'));
 const BugHuntGame = lazy(() => import('./BugHuntGame'));
 const FocusFlowGame = lazy(() => import('./FocusFlowGame'));
 const JetFighterGame = lazy(() => import('./JetFighterGame'));
+const CodeQuizGame = lazy(() => import('./CodeQuizGame'));
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -154,6 +155,13 @@ const FocusFlowLogo = ({ compact = false }) => (
   <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-emerald-500/20 ring-1 ring-emerald-300/20`}>
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(52,211,153,0.42),transparent_34%),radial-gradient(circle_at_75%_80%,rgba(34,211,238,0.3),transparent_35%)]" />
     <Target size={compact ? 25 : 31} className="relative z-10 text-emerald-100 drop-shadow" />
+  </div>
+);
+
+const CodeQuizLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-violet-500/20 ring-1 ring-violet-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(139,92,246,0.5),transparent_34%),radial-gradient(circle_at_75%_80%,rgba(34,211,238,0.3),transparent_35%)]" />
+    <Code2 size={compact ? 24 : 30} className="relative z-10 text-violet-100 drop-shadow" />
   </div>
 );
 
@@ -590,6 +598,16 @@ export default function OpsArena() {
       accent: 'from-emerald-400 to-cyan-400'
     },
     {
+      key: 'code-quiz',
+      title: 'Code Quiz',
+      label: 'Programming Quiz',
+      description: 'Answer 10 timed computer and programming questions.',
+      status: 'Live',
+      best: summary?.codeQuizStats?.highScore || 0,
+      Logo: CodeQuizLogo,
+      accent: 'from-violet-400 to-cyan-400'
+    },
+    {
       key: 'coming',
       title: 'More Games',
       label: 'Coming Soon',
@@ -637,7 +655,7 @@ export default function OpsArena() {
     {
       key: 'games',
       title: 'Enter Games',
-      description: 'WorkGrid Blocks, Jet Fighter, Bug Hunt, and Focus Flow.',
+      description: 'WorkGrid Blocks, Jet Fighter, Bug Hunt, Focus Flow, and Code Quiz.',
       icon: Gamepad2,
       tone: 'from-cyan-400 to-pink-500',
       meta: `${summary?.stats?.highScore || 0} best score`
@@ -761,7 +779,7 @@ export default function OpsArena() {
         </div>
 
         <div className="space-y-4 p-4">
-          <div className="mobile-game-tabs grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mobile-game-tabs grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             {gameCards.map(game => {
               const Logo = game.Logo;
               const isActive = activeGame === game.key;
@@ -942,6 +960,10 @@ export default function OpsArena() {
 
             {activeGame === 'focus-flow' && (
               <FocusFlowGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
+            )}
+
+            {activeGame === 'code-quiz' && (
+              <CodeQuizGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
             </Suspense>
             </div>

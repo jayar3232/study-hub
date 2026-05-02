@@ -40,7 +40,7 @@ export default function Landing() {
               Chat, collaborate, and manage student projects in one polished hub.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-white/70 sm:text-lg">
-              StudentHub keeps group work, realtime messages, reports, rankings, and shared media organized for teams that need a clean mobile-first workspace.
+              SYNCROVA keeps group work, realtime messages, reports, rankings, and shared media organized for teams that need a clean mobile-first workspace.
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <button
