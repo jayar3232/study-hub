@@ -34,7 +34,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
-import { getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
+import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import RankBadge, { RankEmblem } from './RankBadge';
 import GameRankBadge, { getProfileFrameClass } from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
@@ -726,6 +726,11 @@ export default function Profile() {
                 {group.count > 1 && (
                   <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
                     {group.count}
+                  </span>
+                )}
+                {formatStoryAge(story) && (
+                  <span className="absolute left-2 top-12 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
+                    {formatStoryAge(story)}
                   </span>
                 )}
                 {story.fileType === 'video' && <PlayCircle className={`absolute right-2 text-white ${group.count > 1 ? 'top-9' : 'top-3'}`} size={22} />}

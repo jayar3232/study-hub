@@ -2936,15 +2936,15 @@ export default function Messages() {
 
           {selectedUser ? (
             <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
-              <header className="mobile-chat-header flex items-center gap-3 border-b border-gray-200/80 bg-white/95 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/95">
+              <header className="mobile-chat-header flex items-center gap-2 border-b border-gray-200/80 bg-white/95 px-3 py-3 dark:border-gray-800 dark:bg-gray-950/95 sm:gap-3 sm:px-4">
                 <button
                   onClick={() => setSelectedUser(null)}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
+                  className="mobile-chat-icon-button flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
                   aria-label="Back to conversations"
                 >
                   <ArrowLeft size={21} strokeWidth={2.7} />
                 </button>
-                <button type="button" onClick={() => setProfileUser(selectedUser)} className="relative shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-pink-300" title="View profile">
+                <button type="button" onClick={() => setProfileUser(selectedUser)} className="mobile-chat-avatar relative shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-pink-300" title="View profile">
                   {renderAvatar(selectedUser, 'h-12 w-12', 22)}
                   <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
                     selectedIsOnline ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]' : 'bg-gray-300 dark:bg-gray-600'
@@ -2970,7 +2970,7 @@ export default function Messages() {
                   type="button"
                   onClick={() => startCall('audio')}
                   disabled={!canStartCall}
-                  className="rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                  className="mobile-chat-icon-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
                   aria-label="Start audio call"
                   title={selectedIsOnline ? 'Audio call' : 'User must be online to call'}
                 >
@@ -2980,7 +2980,7 @@ export default function Messages() {
                   type="button"
                   onClick={() => startCall('video')}
                   disabled={!canStartCall}
-                  className="rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                  className="mobile-chat-icon-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
                   aria-label="Start video call"
                   title={selectedIsOnline ? 'Video call' : 'User must be online to call'}
                 >
@@ -2989,7 +2989,7 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={() => setShowChatDetails(true)}
-                  className="rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
+                  className="mobile-chat-icon-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
                   aria-label="Open chat details"
                   title="Chat details"
                 >

@@ -35,8 +35,8 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 12),
-    versionName: process.env.APP_VERSION_NAME || '2.0.1',
+    versionCode: Number(process.env.APP_VERSION_CODE || 13),
+    versionName: process.env.APP_VERSION_NAME || '3.0.3',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),

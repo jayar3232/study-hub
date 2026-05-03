@@ -12,6 +12,24 @@ export const isActiveStory = (story) => {
   return expiresAt > Date.now();
 };
 
+export const formatStoryAge = (storyOrDate, now = Date.now()) => {
+  const value = typeof storyOrDate === 'object'
+    ? storyOrDate?.createdAt || storyOrDate?.updatedAt
+    : storyOrDate;
+  const timestamp = new Date(value || 0).getTime();
+  if (!timestamp || Number.isNaN(timestamp)) return '';
+
+  const diffMs = Math.max(0, Number(now) - timestamp);
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return 'now';
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+
+  return '24h';
+};
+
 export const groupActiveStoriesByOwner = (stories = []) => {
   const groups = new Map();
 

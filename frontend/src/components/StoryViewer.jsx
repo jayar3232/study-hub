@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Eye, Heart, Loader2, MessageCircle, Send, Trash2, X } from 'lucide-react';
 import { resolveMediaUrl } from '../utils/media';
+import { formatStoryAge } from '../utils/stories';
 
 const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
@@ -61,6 +62,7 @@ export default function StoryViewer({
   const [showOwnerActivity, setShowOwnerActivity] = useState(false);
   const [storyProgress, setStoryProgress] = useState(0);
   const [progressPaused, setProgressPaused] = useState(false);
+  const [storyClock, setStoryClock] = useState(Date.now());
 
   const storyList = useMemo(() => {
     const source = Array.isArray(stories) && stories.length ? stories : story ? [story] : [];
@@ -100,6 +102,7 @@ export default function StoryViewer({
   }, [reactions]);
   const currentUserReaction = reactionByUser.get(getEntityId(currentUser));
   const activeStoryId = getEntityId(currentStory);
+  const storyAge = formatStoryAge(currentStory, storyClock);
 
   useEffect(() => {
     if (!currentStory) return undefined;
@@ -111,6 +114,12 @@ export default function StoryViewer({
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousRootOverflow;
     };
+  }, [currentStory]);
+
+  useEffect(() => {
+    if (!currentStory) return undefined;
+    const interval = window.setInterval(() => setStoryClock(Date.now()), 60000);
+    return () => window.clearInterval(interval);
   }, [currentStory]);
 
   useEffect(() => {
@@ -249,9 +258,9 @@ export default function StoryViewer({
                 {ownerAvatar ? <img src={ownerAvatar} alt={owner?.name || 'Member'} className="h-full w-full object-cover" /> : (owner?.name || 'M').charAt(0).toUpperCase()}
               </span>
               <h2 className="mt-3 truncate text-base font-black">{owner?.name || 'Member'}</h2>
-              <p className="text-sm font-semibold text-white/60">My Day</p>
+              <p className="text-sm font-semibold text-white/60">My Day{storyAge ? ` - ${storyAge}` : ''}</p>
               {formatStoryTime(currentStory.createdAt) && (
-                <p className="mt-2 text-xs font-bold text-white/45">{formatStoryTime(currentStory.createdAt)}</p>
+                <p className="mt-2 text-xs font-bold text-white/45">Posted {formatStoryTime(currentStory.createdAt)}</p>
               )}
               {currentStory.caption && (
                 <p className="mt-4 line-clamp-5 text-sm font-semibold leading-6 text-white/75">{currentStory.caption}</p>
@@ -299,7 +308,9 @@ export default function StoryViewer({
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-black">{owner?.name || 'Member'}</span>
-                  <span className="block truncate text-xs font-semibold text-white/60">My Day{hasMultipleStories ? ` - ${activeIndex + 1} of ${storyList.length}` : ''}</span>
+                  <span className="block truncate text-xs font-semibold text-white/70">
+                    My Day{storyAge ? ` - ${storyAge}` : ''}{hasMultipleStories ? ` - ${activeIndex + 1} of ${storyList.length}` : ''}
+                  </span>
                 </span>
               </div>
               <div className="flex items-center gap-2">

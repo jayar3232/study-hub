@@ -690,7 +690,7 @@ export default function Layout({ children }) {
           <AppLogoMark size="xs" className="rounded-full bg-white p-1 shadow-none ring-1 ring-white/25" />
           <div className="min-w-0">
             <p className="truncate text-sm font-black tracking-normal">SYNCROVA</p>
-            <p className="truncate text-[11px] font-semibold text-white/70">Professional collaboration portal</p>
+            <p className="truncate text-[11px] font-semibold text-white/70">made by Eeerrreerrrriirrriivvi</p>
           </div>
         </div>
         <div className="flex min-w-0 items-center gap-2">
