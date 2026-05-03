@@ -41,7 +41,7 @@ const formatNotificationTime = (value) => {
 };
 
 export default function Layout({ children }) {
-  const { theme, currentTheme, toggleTheme } = useTheme();
+  const { theme, currentTheme, toggleTheme, mobileLightOnly } = useTheme();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -384,9 +384,9 @@ export default function Layout({ children }) {
             <div className="truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">{user.email}</div>
           </div>
         </Link>
-        <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-950/80" title="Quick account controls">
+        <div className={`mt-2 grid ${mobileLightOnly ? 'grid-cols-2' : 'grid-cols-3'} gap-1.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-950/80`} title="Quick account controls">
           <DndToggle compact />
-          <ThemeToggle compact />
+          {!mobileLightOnly && <ThemeToggle compact />}
           <button
             type="button"
             onClick={handleLogout}

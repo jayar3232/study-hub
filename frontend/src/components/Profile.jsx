@@ -128,7 +128,7 @@ const buildAchievementBadges = ({ completion, groups, createdGroups, rankStats, 
 
 export default function Profile() {
   const { user, login, logout } = useAuth();
-  const { currentTheme, toggleTheme } = useTheme();
+  const { currentTheme, toggleTheme, mobileLightOnly } = useTheme();
 
   const [name, setName] = useState('');
   const [course, setCourse] = useState('');
@@ -528,8 +528,36 @@ export default function Profile() {
     { id: 'settings', label: 'Settings', icon: Settings, count: null }
   ];
 
+  const renderProfileTabs = (extraClassName = '') => (
+    <nav className={`profile-tab-bar ${extraClassName} rounded-2xl border border-gray-200 bg-white px-2 py-2 shadow-sm dark:border-gray-800 dark:bg-gray-900`} aria-label="Profile sections">
+      <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {profileTabs.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeProfileTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveProfileTab(tab.id)}
+              className={`profile-tab-button ${isActive ? 'is-active' : ''}`}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              <Icon size={17} />
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' && (
+                <span className="profile-tab-count">{tab.id === 'about' ? `${tab.count}%` : tab.count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+
   return (
     <div className="mobile-page profile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+      {renderProfileTabs('profile-tab-bar--mobile md:hidden')}
+
       <section className="mobile-profile-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
           {coverSrc && !coverLoadFailed ? (
@@ -630,29 +658,7 @@ export default function Profile() {
         </div>
       </section>
 
-      <nav className="profile-tab-bar rounded-2xl border border-gray-200 bg-white px-2 py-2 shadow-sm dark:border-gray-800 dark:bg-gray-900" aria-label="Profile sections">
-        <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {profileTabs.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeProfileTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveProfileTab(tab.id)}
-                className={`profile-tab-button ${isActive ? 'is-active' : ''}`}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <Icon size={17} />
-                <span>{tab.label}</span>
-                {typeof tab.count === 'number' && (
-                  <span className="profile-tab-count">{tab.id === 'about' ? `${tab.count}%` : tab.count}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      {renderProfileTabs('hidden md:block')}
 
       {(activeProfileTab === 'posts' || activeProfileTab === 'myday') && (
       <section className="rounded-2xl border border-white/70 bg-white p-4 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
@@ -1091,10 +1097,12 @@ export default function Profile() {
               <h2 className="font-bold text-gray-950 dark:text-white">Account actions</h2>
             </div>
             <div className="space-y-2">
-              <button onClick={toggleTheme} className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
-                <span className="inline-flex items-center gap-2"><Palette size={17} /> Appearance</span>
-                <span>{currentTheme?.label || 'Theme'}</span>
-              </button>
+              {!mobileLightOnly && (
+                <button onClick={toggleTheme} className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+                  <span className="inline-flex items-center gap-2"><Palette size={17} /> Appearance</span>
+                  <span>{currentTheme?.label || 'Theme'}</span>
+                </button>
+              )}
               <button onClick={logout} className="flex w-full items-center justify-between rounded-lg border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
                 <span className="inline-flex items-center gap-2"><LogOut size={17} /> Sign out</span>
                 <span>Logout</span>
