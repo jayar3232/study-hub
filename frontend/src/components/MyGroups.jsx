@@ -311,7 +311,7 @@ export default function MyGroups() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)]">
-        <div className="workspace-toolbar rounded-[1.1rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+        <div className="mobile-filter-dock workspace-toolbar rounded-[1.1rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_160px]">
             <label className="relative">
               <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

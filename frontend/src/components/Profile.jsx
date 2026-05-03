@@ -556,7 +556,7 @@ export default function Profile() {
 
   return (
     <div className="mobile-page profile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      {renderProfileTabs('profile-tab-bar--mobile md:hidden')}
+      {renderProfileTabs('profile-tab-bar--mobile mobile-fixed-tabbar md:hidden')}
 
       <section className="mobile-profile-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">

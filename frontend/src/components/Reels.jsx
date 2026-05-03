@@ -628,7 +628,7 @@ export default function Reels() {
             </div>
           )}
           {memories.length > 1 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="mobile-fixed-tabbar mobile-fixed-tabbar--gallery mt-3 flex gap-2 overflow-x-auto pb-1">
               {memories.map((memory, index) => (
                 <button
                   key={`mobile-queue-${getMemoryId(memory)}`}

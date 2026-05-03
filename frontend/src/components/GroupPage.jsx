@@ -2263,7 +2263,7 @@ export default function GroupPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          <div className="mobile-fixed-tabbar mt-4 flex gap-2 overflow-x-auto pb-1">
             {focusedQuickLinks.map(tab => {
               const Icon = tab.icon;
               return (

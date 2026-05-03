@@ -605,6 +605,11 @@ export default function Layout({ children }) {
   ];
   const toolNavItems = [];
   const mobileBottomItems = mainNavItems;
+  const tabHeavyMobileRoute = location.pathname.startsWith('/profile')
+    || location.pathname.startsWith('/friends')
+    || location.pathname.startsWith('/groups')
+    || location.pathname.startsWith('/group/')
+    || location.pathname.startsWith('/arena');
   const isNavItemActive = (path) => location.pathname === path
     || (path === '/groups' && location.pathname.startsWith('/group/'))
     || (path !== '/dashboard' && location.pathname.startsWith(`${path}/`));
@@ -763,6 +768,7 @@ export default function Layout({ children }) {
           </div>
         </header>
 
+        {!tabHeavyMobileRoute && (
         <div className="mobile-context-panel sticky top-[calc(3.65rem_+_env(safe-area-inset-top))] z-[18] px-2 pt-1.5 md:hidden">
           {!isOnline && (
             <div
@@ -792,6 +798,7 @@ export default function Layout({ children }) {
             </div>
           )}
         </div>
+        )}
 
         <div className="flex min-h-0 flex-1">
           <main className={`app-main min-w-0 flex-1 overflow-x-hidden ${isCompactRoute ? 'app-main--compact' : ''}`}>

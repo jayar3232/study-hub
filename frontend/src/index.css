@@ -178,14 +178,20 @@
   }
 
   .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.25rem;
     padding: 0.45rem 0.55rem calc(0.45rem + env(safe-area-inset-bottom));
+    min-height: calc(4.35rem + env(safe-area-inset-bottom));
   }
 
   .mobile-nav-item {
     min-width: 0;
+    min-height: 3.15rem;
     border-radius: 1rem;
     padding: 0.42rem 0.16rem;
     color: rgb(100 116 139);
@@ -653,6 +659,9 @@
     }
 
     .mobile-topbar {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 75 !important;
       padding-top: calc(0.48rem + env(safe-area-inset-top));
       padding-bottom: 0.48rem;
       padding-left: 0.65rem;
@@ -662,6 +671,16 @@
     .mobile-bottom-nav {
       gap: 0.18rem;
       padding: 0.32rem 0.34rem calc(0.32rem + env(safe-area-inset-bottom));
+      position: fixed !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      z-index: 80 !important;
+      min-height: calc(4.15rem + env(safe-area-inset-bottom));
+      border-top-left-radius: 1.15rem;
+      border-top-right-radius: 1.15rem;
+      transform: translateZ(0);
+      will-change: transform;
     }
 
     .mobile-nav-item {
@@ -1038,6 +1057,76 @@
       min-height: 2.65rem;
     }
 
+    .mobile-fixed-tabbar {
+      position: sticky !important;
+      top: calc(3.72rem + env(safe-area-inset-top)) !important;
+      z-index: 42 !important;
+      display: flex !important;
+      max-width: 100%;
+      min-height: 3.25rem;
+      align-items: center;
+      gap: 0.45rem !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scroll-padding-inline: 0.5rem;
+      scrollbar-width: none;
+      border: 1px solid rgba(203, 213, 225, 0.9) !important;
+      border-radius: 1.05rem !important;
+      background: rgba(255, 255, 255, 0.98) !important;
+      padding: 0.45rem !important;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14) !important;
+      backdrop-filter: blur(16px);
+      transform: translateZ(0);
+    }
+
+    .mobile-fixed-tabbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mobile-fixed-tabbar > button,
+    .mobile-fixed-tabbar > a {
+      flex: 0 0 auto !important;
+      min-height: 2.42rem !important;
+      max-width: min(12rem, 72vw);
+      white-space: nowrap;
+    }
+
+    .mobile-fixed-tabbar select,
+    .mobile-fixed-tabbar input {
+      min-height: 2.55rem !important;
+    }
+
+    .mobile-fixed-tabbar--chat {
+      top: 0 !important;
+      z-index: 10 !important;
+      margin-left: -0.15rem;
+      margin-right: -0.15rem;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    .mobile-fixed-tabbar--gallery {
+      top: calc(3.72rem + env(safe-area-inset-top)) !important;
+    }
+
+    .mobile-filter-dock {
+      position: sticky !important;
+      top: calc(3.72rem + env(safe-area-inset-top)) !important;
+      z-index: 38 !important;
+      border-radius: 1.05rem !important;
+      background: rgba(255, 255, 255, 0.98) !important;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12) !important;
+      backdrop-filter: blur(16px);
+      transform: translateZ(0);
+    }
+
+    .mobile-filter-dock > div {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.55rem !important;
+    }
+
     .mobile-card-list {
       display: grid !important;
       grid-template-columns: minmax(0, 1fr) !important;
@@ -1160,9 +1249,13 @@
     }
 
     .profile-tab-bar--mobile {
-      position: relative;
-      top: auto;
-      margin-bottom: 0.7rem;
+      position: fixed !important;
+      top: calc(3.72rem + env(safe-area-inset-top)) !important;
+      left: 0.5rem;
+      right: 0.5rem;
+      z-index: 72 !important;
+      margin: 0 !important;
+      max-width: calc(100vw - 1rem);
       border-radius: 1.05rem !important;
       background: rgba(255, 255, 255, 0.96) !important;
       box-shadow: 0 12px 30px rgba(15, 23, 42, 0.1) !important;
@@ -1185,6 +1278,10 @@
     .profile-tab-bar--mobile .profile-tab-count {
       padding: 0.08rem 0.36rem;
       font-size: 0.66rem;
+    }
+
+    .profile-page {
+      padding-top: calc(3.55rem + env(safe-area-inset-top)) !important;
     }
 
     .mobile-profile-hero > div:first-child {

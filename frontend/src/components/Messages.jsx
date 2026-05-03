@@ -2837,7 +2837,7 @@ export default function Messages() {
               </form>
             )}
 
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="mobile-fixed-tabbar mobile-fixed-tabbar--chat mt-3 flex gap-2 overflow-x-auto pb-1">
               {conversationFilters.map(filter => (
                 <button
                   key={filter.id}

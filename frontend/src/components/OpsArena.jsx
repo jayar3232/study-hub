@@ -927,7 +927,7 @@ export default function OpsArena() {
             </div>
           </section>
 
-          <div className="mobile-game-tabs grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          <div className="mobile-fixed-tabbar mobile-game-tabs grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             {gameCards.map(game => {
               const Logo = game.Logo;
               const isActive = activeGame === game.key;
