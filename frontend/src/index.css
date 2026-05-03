@@ -483,6 +483,11 @@
     transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
   }
 
+  .mobile-message-thread {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .message-composer-input:focus {
     border-color: rgb(147 197 253);
     background: white;

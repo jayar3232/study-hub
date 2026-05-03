@@ -8,7 +8,6 @@ import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
 import AppUpdatePrompt from './components/AppUpdatePrompt';
 
-const Landing = lazy(() => import('./components/Landing'));
 const Login = lazy(() => import('./components/Login'));
 const Register = lazy(() => import('./components/Register'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -26,7 +25,7 @@ function AppRoutes() {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen label="Loading SYNCROVA" />}>
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
         <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" />} />
         <Route element={protectedLayout}>
@@ -39,6 +38,7 @@ function AppRoutes() {
           <Route path="/friends" element={<Friends />} />
           <Route path="/arena" element={<OpsArena />} />
         </Route>
+        <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
       </Routes>
     </Suspense>
   );

@@ -35,12 +35,12 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 5),
-    versionName: process.env.APP_VERSION_NAME || '1.0.4',
+    versionCode: Number(process.env.APP_VERSION_CODE || 6),
+    versionName: process.env.APP_VERSION_NAME || '1.0.5',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Facebook-style feed, notification center, privacy settings, and mobile polish.'
+    notes: process.env.APP_UPDATE_NOTES || 'Ultra-smooth Messenger typing, instant latest-chat opening, cleaner app launch, and mobile performance polish.'
   });
 });
 

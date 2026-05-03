@@ -52,8 +52,8 @@ import VideoThumbnail from './VideoThumbnail';
 let socket;
 
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
-const MESSAGE_RENDER_BATCH = 120;
-const MOBILE_MESSAGE_RENDER_BATCH = 70;
+const MESSAGE_RENDER_BATCH = 100;
+const MOBILE_MESSAGE_RENDER_BATCH = 48;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
 const shouldAutoFocusComposer = () => (
@@ -190,7 +190,7 @@ export default function Messages() {
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(() => getMessageRenderBatch());
-  const [newMessage, setNewMessage] = useState('');
+  const [composerHasText, setComposerHasText] = useState(false);
   const [editingMessage, setEditingMessage] = useState(null);
   const [messageSearch, setMessageSearch] = useState('');
   const [messageSearchIndex, setMessageSearchIndex] = useState(0);
@@ -226,6 +226,7 @@ export default function Messages() {
   const [mediaPreview, setMediaPreview] = useState(null);
   const [, setPresenceClock] = useState(0);
 
+  const messageThreadRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -235,6 +236,10 @@ export default function Messages() {
   const recordingCancelledRef = useRef(false);
   const recordingTimerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const lastTypingEmitRef = useRef(0);
+  const latestFetchIdRef = useRef(0);
+  const openingConversationRef = useRef(false);
+  const composerTextRef = useRef('');
   const typingUsersTimeoutRef = useRef({});
   const selectedUserRef = useRef(null);
   const messageRefs = useRef({});
@@ -317,9 +322,25 @@ export default function Messages() {
 
   const scrollToBottom = useCallback((behavior = 'smooth') => {
     requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior });
+      const thread = messageThreadRef.current;
+      if (thread) {
+        thread.scrollTo({ top: thread.scrollHeight, behavior });
+        return;
+      }
+
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
     });
   }, []);
+
+  const setComposerText = useCallback((value = '') => {
+    composerTextRef.current = value;
+    if (inputRef.current) inputRef.current.value = value;
+    setComposerHasText(Boolean(value.trim()));
+  }, []);
+
+  const clearComposerText = useCallback(() => {
+    setComposerText('');
+  }, [setComposerText]);
 
   const clearAttachment = useCallback(() => {
     setSelectedAttachment(null);
@@ -409,9 +430,16 @@ export default function Messages() {
     const id = getEntityId(userId);
     if (!id) return;
 
+    const fetchId = latestFetchIdRef.current + 1;
+    latestFetchIdRef.current = fetchId;
+    openingConversationRef.current = true;
     setLoading(true);
+    setVisibleMessageCount(getMessageRenderBatch());
+
     try {
       const res = await api.get(`/messages/${id}`);
+      if (latestFetchIdRef.current !== fetchId) return;
+
       const loadedMessages = res.data || [];
       setMessages(loadedMessages);
       const firstUnreadIncoming = loadedMessages.find(message => (
@@ -424,10 +452,17 @@ export default function Messages() {
       rememberLastSeen(loadedMessages.flatMap(message => [message.from, message.to]));
       await markChatAsRead(id);
       scrollToBottom('auto');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (latestFetchIdRef.current !== fetchId) return;
+          scrollToBottom('auto');
+          openingConversationRef.current = false;
+        });
+      });
     } catch (err) {
       toast.error('Failed to load messages');
     } finally {
-      setLoading(false);
+      if (latestFetchIdRef.current === fetchId) setLoading(false);
     }
   }, [currentUserId, markChatAsRead, scrollToBottom]);
 
@@ -716,10 +751,14 @@ export default function Messages() {
 
   useEffect(() => {
     if (selectedUser) {
+      setMessages([]);
+      setVisibleMessageCount(getMessageRenderBatch());
+      openingConversationRef.current = true;
       fetchMessages(selectedUser._id || selectedUser.id);
       focusComposerInput();
     } else {
       setMessages([]);
+      openingConversationRef.current = false;
     }
 
     setReplyingTo(null);
@@ -732,12 +771,22 @@ export default function Messages() {
     setShowPinnedPanel(false);
     setFocusedMessageId(null);
     clearAttachment();
+    clearComposerText();
     setOtherUserTyping(false);
-  }, [clearAttachment, fetchMessages, focusComposerInput, selectedUser]);
+  }, [clearAttachment, clearComposerText, fetchMessages, focusComposerInput, selectedUser]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (!messages.length) return undefined;
+
+    scrollToBottom(openingConversationRef.current ? 'auto' : 'smooth');
+    if (!openingConversationRef.current) return undefined;
+
+    const timer = window.setTimeout(() => {
+      openingConversationRef.current = false;
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [messages.length, selectedUserId, scrollToBottom]);
 
   useEffect(() => {
     return () => {
@@ -772,13 +821,14 @@ export default function Messages() {
   };
 
   const sendMessage = async (overrideAttachment = null) => {
-    if ((!newMessage.trim() && !selectedAttachment && !overrideAttachment) || !selectedUser || sending) return;
+    const draftText = composerTextRef.current;
+    const text = draftText.trim();
+    if ((!text && !selectedAttachment && !overrideAttachment) || !selectedUser || sending) return;
 
-    const text = newMessage.trim();
     const attachment = overrideAttachment || selectedAttachment;
 
     setSending(true);
-    setNewMessage('');
+    clearComposerText();
     stopTyping();
 
     try {
@@ -802,7 +852,7 @@ export default function Messages() {
       scrollToBottom();
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to send');
-      if (!overrideAttachment) setNewMessage(text);
+      if (!overrideAttachment) setComposerText(draftText);
     } finally {
       setSending(false);
       setUploadProgress(0);
@@ -811,7 +861,7 @@ export default function Messages() {
 
   const handleEditMessage = async () => {
     const messageId = getEntityId(editingMessage);
-    const text = newMessage.trim();
+    const text = composerTextRef.current.trim();
     if (!messageId || !text || sending) return;
 
     setSending(true);
@@ -819,7 +869,7 @@ export default function Messages() {
       const res = await api.put(`/messages/${messageId}`, { text });
       setMessages(prev => prev.map(message => getEntityId(message) === messageId ? res.data : message));
       setEditingMessage(null);
-      setNewMessage('');
+      clearComposerText();
       setActionMenuMessageId(null);
       fetchConversations();
       toast.success('Message edited');
@@ -842,7 +892,7 @@ export default function Messages() {
     setEditingMessage(message);
     setReplyingTo(null);
     clearAttachment();
-    setNewMessage(message.text || '');
+    setComposerText(message.text || '');
     setActionMenuMessageId(null);
     requestAnimationFrame(focusComposerInput);
   };
@@ -889,7 +939,12 @@ export default function Messages() {
     const selectedId = getEntityId(selectedUser);
     if (!socket || !selectedId || !currentUserId) return;
 
-    socket.emit('typing', { to: selectedId, from: currentUserId });
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current > 700) {
+      lastTypingEmitRef.current = now;
+      socket.emit('typing', { to: selectedId, from: currentUserId });
+    }
+
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit('stop-typing', { to: selectedId, from: currentUserId });
@@ -901,6 +956,7 @@ export default function Messages() {
     if (!socket || !selectedId || !currentUserId) return;
 
     clearTimeout(typingTimeoutRef.current);
+    lastTypingEmitRef.current = 0;
     socket.emit('stop-typing', { to: selectedId, from: currentUserId });
   };
 
@@ -2030,7 +2086,7 @@ export default function Messages() {
                   </div>
                 )}
 
-              <div className="mobile-message-thread min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-5">
+              <div ref={messageThreadRef} className="mobile-message-thread min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-5">
                 {loading ? (
                   <div className="space-y-4">
                     {[0, 1, 2].map(item => (
@@ -2278,7 +2334,7 @@ export default function Messages() {
                       <button
                         onClick={() => {
                           setEditingMessage(null);
-                          setNewMessage('');
+                          clearComposerText();
                         }}
                         className="rounded-full p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-900"
                         aria-label="Cancel edit"
@@ -2387,9 +2443,13 @@ export default function Messages() {
                   <input
                     ref={inputRef}
                     type="text"
-                    value={newMessage}
                     onChange={event => {
-                      setNewMessage(event.target.value);
+                      const value = event.target.value;
+                      composerTextRef.current = value;
+                      setComposerHasText(prev => {
+                        const next = Boolean(value.trim());
+                        return prev === next ? prev : next;
+                      });
                       handleTyping();
                     }}
                     onKeyDown={event => {
@@ -2404,7 +2464,7 @@ export default function Messages() {
                   />
                   <button
                     onClick={submitComposer}
-                    disabled={(!newMessage.trim() && !selectedAttachment) || sending || recording}
+                    disabled={(!composerHasText && !selectedAttachment) || sending || recording}
                     className="message-composer-send"
                     aria-label="Send message"
                   >
