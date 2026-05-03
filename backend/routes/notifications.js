@@ -90,6 +90,39 @@ router.put('/:notificationId/read', auth, async (req, res) => {
   }
 });
 
+router.put('/:notificationId/unread', auth, async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.notificationId, userId: req.user },
+      { read: false },
+      { new: true }
+    ).populate('actorId', 'name avatar');
+
+    if (!notification) return res.status(404).json({ msg: 'Notification not found' });
+
+    await emitNotificationState(req.app.get('io'), req.user);
+    res.json(notification);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.delete('/:notificationId', auth, async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndDelete({
+      _id: req.params.notificationId,
+      userId: req.user
+    });
+
+    if (!notification) return res.status(404).json({ msg: 'Notification not found' });
+
+    await emitNotificationState(req.app.get('io'), req.user);
+    res.json({ msg: 'Notification deleted' });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 // Function to send push notification (used elsewhere)
 async function sendPushNotification(userId, title, body, url) {
   if (!pushEnabled) return;

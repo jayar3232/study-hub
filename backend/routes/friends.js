@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const { normalizeCampus, normalizeCourse } = require('../utils/academics');
+const { createNotification } = require('../services/notifications');
 
 const router = express.Router();
 
@@ -178,6 +179,16 @@ router.post('/request/:userId', auth, async (req, res) => {
 
     await friendship.save();
     emitFriendSync(req.app.get('io'), [req.user, targetId]);
+    await createNotification({
+      io: req.app.get('io'),
+      userId: targetId,
+      actorId: req.user,
+      type: 'friend',
+      title: 'New friend request',
+      body: 'wants to connect with you.',
+      href: '/friends',
+      meta: { friendshipId: friendship._id }
+    });
 
     res.status(201).json({
       msg: 'Friend request sent',
@@ -211,6 +222,16 @@ router.put('/requests/:requestId/accept', auth, async (req, res) => {
     await friendship.save();
 
     emitFriendSync(req.app.get('io'), [friendship.requester, friendship.recipient]);
+    await createNotification({
+      io: req.app.get('io'),
+      userId: friendship.requester,
+      actorId: req.user,
+      type: 'friend',
+      title: 'Friend request accepted',
+      body: 'accepted your friend request.',
+      href: '/friends',
+      meta: { friendshipId: friendship._id }
+    });
     res.json({ msg: 'Friend request accepted', friendship: relationPayload(friendship, req.user) });
   } catch (err) {
     res.status(500).json({ msg: err.message });

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, BellOff, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, Trash2, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -29,11 +29,26 @@ const getMessageSnippet = (message) => {
   return 'New message';
 };
 
+const formatNotificationTime = (value) => {
+  if (!value) return 'Now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Now';
+  const diffMins = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (diffMins < 1) return 'Now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
 export default function Layout({ children }) {
   const { theme, currentTheme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [groupBadgeCount, setGroupBadgeCount] = useState(0);
   const [friendBadgeCount, setFriendBadgeCount] = useState(0);
   const [developerAccess, setDeveloperAccess] = useState(Boolean(user?.isDeveloper));
@@ -206,6 +221,48 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (!user) return undefined;
 
+    let cancelled = false;
+    const loadNotifications = async () => {
+      try {
+        const res = await api.get('/notifications');
+        if (cancelled) return;
+        setNotifications(res.data?.notifications || []);
+        setNotificationUnreadCount(res.data?.unreadCount || 0);
+      } catch {
+        // Notification center is non-blocking.
+      }
+    };
+
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 45000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const socket = getSocket();
+    const refreshNotifications = ({ unreadCount: nextUnreadCount, notification } = {}) => {
+      if (typeof nextUnreadCount === 'number') setNotificationUnreadCount(nextUnreadCount);
+      if (notification) setNotifications(prev => [notification, ...prev.filter(item => getEntityId(item) !== getEntityId(notification))].slice(0, 40));
+      api.get('/notifications')
+        .then(res => {
+          setNotifications(res.data?.notifications || []);
+          setNotificationUnreadCount(res.data?.unreadCount || 0);
+        })
+        .catch(() => {});
+    };
+
+    socket.on('notifications-updated', refreshNotifications);
+    return () => socket.off('notifications-updated', refreshNotifications);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
     const currentUserId = getEntityId(user);
     const socket = getSocket();
 
@@ -332,6 +389,61 @@ export default function Layout({ children }) {
     }
   };
 
+  const loadNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const res = await api.get('/notifications');
+      setNotifications(res.data?.notifications || []);
+      setNotificationUnreadCount(res.data?.unreadCount || 0);
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to load notifications');
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  const openNotificationCenter = () => {
+    setNotificationPanelOpen(value => {
+      const next = !value;
+      if (!value) loadNotifications();
+      return next;
+    });
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.put('/notifications/read-all');
+      setNotifications(prev => prev.map(item => ({ ...item, read: true })));
+      setNotificationUnreadCount(0);
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to update notifications');
+    }
+  };
+
+  const openNotification = async (notification) => {
+    const id = getEntityId(notification);
+    if (!notification.read && id) {
+      api.put(`/notifications/${id}/read`).catch(() => {});
+      setNotifications(prev => prev.map(item => getEntityId(item) === id ? { ...item, read: true } : item));
+      setNotificationUnreadCount(count => Math.max(0, count - 1));
+    }
+    setNotificationPanelOpen(false);
+    if (notification.href) navigate(notification.href);
+  };
+
+  const deleteNotification = async (event, notification) => {
+    event.stopPropagation();
+    const id = getEntityId(notification);
+    if (!id) return;
+    try {
+      await api.delete(`/notifications/${id}`);
+      setNotifications(prev => prev.filter(item => getEntityId(item) !== id));
+      if (!notification.read) setNotificationUnreadCount(count => Math.max(0, count - 1));
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Delete failed');
+    }
+  };
+
   const NotificationButton = ({ compact = false }) => {
     if (notificationPermission === 'granted' || notificationPermission === 'unsupported') return null;
 
@@ -348,6 +460,84 @@ export default function Layout({ children }) {
       </button>
     );
   };
+
+  const NotificationCenterButton = ({ compact = false }) => (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={openNotificationCenter}
+        className={`${compact ? 'grid h-10 w-10 place-items-center rounded-full' : 'flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold'} relative text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700`}
+        title="Notifications"
+        aria-label="Notifications"
+      >
+        <Bell size={compact ? 21 : 19} />
+        {!compact && <span>Notifications</span>}
+        {notificationUnreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-black text-white">
+            {notificationUnreadCount > 9 ? '9+' : notificationUnreadCount}
+          </span>
+        )}
+      </button>
+
+      {notificationPanelOpen && (
+        <div className={`${compact ? 'fixed right-2 top-[4.25rem] w-[min(94vw,24rem)]' : 'absolute bottom-full left-0 mb-2 w-[min(22rem,86vw)]'} z-[80] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-gray-950/20 dark:border-gray-800 dark:bg-gray-950`}>
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-3 dark:border-gray-800">
+            <div>
+              <p className="text-sm font-black text-gray-950 dark:text-white">Notifications</p>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{notificationUnreadCount} unread</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={markAllNotificationsRead} className="grid h-9 w-9 place-items-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Mark all read">
+                <CheckCheck size={17} />
+              </button>
+              <button type="button" onClick={() => setNotificationPanelOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close notifications">
+                <X size={17} />
+              </button>
+            </div>
+          </div>
+          <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-2">
+            {notificationsLoading ? (
+              <p className="rounded-xl p-4 text-center text-sm font-semibold text-gray-500">Loading...</p>
+            ) : notifications.length ? notifications.map(notification => {
+              const actor = notification.actorId || {};
+              const actorAvatar = resolveMediaUrl(actor.avatar);
+              return (
+                <button
+                  key={getEntityId(notification)}
+                  type="button"
+                  onClick={() => openNotification(notification)}
+                  className={`group flex w-full items-start gap-3 rounded-2xl p-3 text-left transition hover:bg-gray-50 dark:hover:bg-gray-900 ${notification.read ? '' : 'bg-blue-50/80 dark:bg-blue-950/20'}`}
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-black text-white">
+                    {actorAvatar ? <img src={actorAvatar} alt={actor.name || 'User'} className="h-full w-full object-cover" /> : (actor.name || notification.type || 'N').charAt(0).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-1 text-sm font-black text-gray-950 dark:text-white">{notification.title}</span>
+                    {notification.body && <span className="mt-0.5 line-clamp-2 text-xs font-semibold text-gray-600 dark:text-gray-300">{notification.body}</span>}
+                    <span className="mt-1 block text-[11px] font-black uppercase text-[#1877f2] dark:text-sky-300">{formatNotificationTime(notification.createdAt)}</span>
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={event => deleteNotification(event, notification)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') deleteNotification(event, notification);
+                    }}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-gray-400 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 dark:hover:bg-rose-950/30"
+                    title="Delete notification"
+                  >
+                    <Trash2 size={15} />
+                  </span>
+                </button>
+              );
+            }) : (
+              <p className="rounded-xl p-5 text-center text-sm font-semibold text-gray-500 dark:text-gray-400">No notifications yet.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const mainNavItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard', mobileLabel: 'Home' },
@@ -449,6 +639,7 @@ export default function Layout({ children }) {
 
         <div className="shrink-0 space-y-2 border-t border-white/40 p-3 dark:border-white/10">
           <InstallButton />
+          <NotificationCenterButton />
           <NotificationButton />
           <div className="rounded-2xl border border-white/45 bg-white/30 p-1.5 dark:border-white/10 dark:bg-white/5">
             <p className="mb-1 px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Preferences</p>
@@ -482,6 +673,7 @@ export default function Layout({ children }) {
         <header className="mobile-topbar sticky top-0 z-20 flex items-center justify-between border-b border-white/45 bg-white/70 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/10 md:hidden">
           <BrandLogo mobile />
           <div className="flex items-center gap-2">
+            <NotificationCenterButton compact />
             <NotificationButton compact />
             {user && (
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
@@ -648,6 +840,7 @@ export default function Layout({ children }) {
                 <section className="space-y-2">
                   <p className="px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Preferences</p>
                   <InstallButton />
+                  <NotificationCenterButton />
                   <NotificationButton />
                   <DndToggle />
                   <ThemeToggle />

@@ -35,12 +35,12 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 4),
-    versionName: process.env.APP_VERSION_NAME || '1.0.3',
+    versionCode: Number(process.env.APP_VERSION_CODE || 5),
+    versionName: process.env.APP_VERSION_NAME || '1.0.4',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Optimized games, smoother media viewing, and improved My Day mobile activity.'
+    notes: process.env.APP_UPDATE_NOTES || 'Facebook-style feed, notification center, privacy settings, and mobile polish.'
   });
 });
 

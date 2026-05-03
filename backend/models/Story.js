@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const StorySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   caption: { type: String, default: '' },
+  privacy: { type: String, enum: ['friends', 'public', 'private'], default: 'friends', index: true },
   fileUrl: { type: String, required: true },
   fileType: { type: String, enum: ['image', 'video'], required: true },
   fileName: { type: String, default: '' },

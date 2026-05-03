@@ -1361,12 +1361,14 @@
 .workspace-card,
 .fix-arena-action-card,
 .fix-arena-stat-card,
+.feed-card,
 .message-row {
   content-visibility: auto;
 }
 
 .workspace-card,
-.fix-arena-action-card {
+.fix-arena-action-card,
+.feed-card {
   contain-intrinsic-size: auto 10rem;
 }
 

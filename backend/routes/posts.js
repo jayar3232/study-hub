@@ -25,11 +25,32 @@ const canManageGroup = (group, userId) => (
 );
 
 const populatePost = async (post) => {
+  await post.populate('groupId', 'name subject description');
   await post.populate('userId', 'name avatar');
   await post.populate('comments.userId', 'name avatar');
   await post.populate('reactions.userId', 'name avatar');
   return post;
 };
+
+router.get('/feed', auth, async (req, res) => {
+  try {
+    const groups = await Group.find({ members: req.user }).select('_id');
+    const groupIds = groups.map(group => group._id);
+    if (!groupIds.length) return res.json([]);
+
+    const posts = await Post.find({ groupId: { $in: groupIds } })
+      .populate('groupId', 'name subject description')
+      .populate('userId', 'name avatar')
+      .populate('comments.userId', 'name avatar')
+      .populate('reactions.userId', 'name avatar')
+      .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 })
+      .limit(Math.min(Number(req.query.limit || 60), 100));
+
+    res.json(posts);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
 
 router.get('/group/:groupId', auth, async (req, res) => {
   try {
@@ -37,6 +58,7 @@ router.get('/group/:groupId', auth, async (req, res) => {
     if (!group) return res.status(403).json({ msg: 'You are not a member of this group' });
 
     const posts = await Post.find({ groupId: req.params.groupId })
+      .populate('groupId', 'name subject description')
       .populate('userId', 'name avatar')
       .populate('comments.userId', 'name avatar')
       .populate('reactions.userId', 'name avatar')

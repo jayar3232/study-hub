@@ -5,7 +5,7 @@ const NotificationSchema = new mongoose.Schema({
   actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   type: {
     type: String,
-    enum: ['message', 'post', 'comment', 'reaction', 'task', 'file', 'memory', 'note', 'group'],
+    enum: ['message', 'post', 'comment', 'reaction', 'task', 'file', 'memory', 'note', 'group', 'friend', 'story'],
     required: true
   },
   title: { type: String, required: true },

@@ -186,6 +186,9 @@ router.post('/', auth, uploadStory, async (req, res) => {
     const story = new Story({
       userId: req.user,
       caption: req.body.caption?.trim() || '',
+      privacy: ['friends', 'public', 'private'].includes(String(req.body.privacy || '').toLowerCase())
+        ? String(req.body.privacy).toLowerCase()
+        : 'friends',
       fileUrl: uploadedFile.url,
       fileType,
       fileName: req.file.originalname,

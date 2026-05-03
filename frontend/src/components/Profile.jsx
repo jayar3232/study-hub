@@ -5,12 +5,14 @@ import toast from 'react-hot-toast';
 import {
   Activity,
   Award,
+  Bell,
   BookOpen,
   Building2,
   Camera,
   CheckCircle,
   Eye,
   EyeOff,
+  Globe2,
   Image as ImageIcon,
   Loader2,
   Lock,
@@ -19,7 +21,9 @@ import {
   Palette,
   PlayCircle,
   Save,
+  Settings,
   Shield,
+  Smartphone,
   Trophy,
   TrendingUp,
   User,
@@ -88,8 +92,28 @@ export default function Profile() {
   const [storyUploading, setStoryUploading] = useState(false);
   const [activeStory, setActiveStory] = useState(null);
   const [storyCommenting, setStoryCommenting] = useState(false);
+  const [storyPrivacy, setStoryPrivacy] = useState(() => localStorage.getItem('syncrova-story-privacy') || 'friends');
+  const [profilePrivacy, setProfilePrivacy] = useState(() => localStorage.getItem('syncrova-profile-privacy') || 'friends');
+  const [showOnlineStatus, setShowOnlineStatus] = useState(() => localStorage.getItem('syncrova-show-online') !== 'false');
+  const [notifyStoryActivity, setNotifyStoryActivity] = useState(() => localStorage.getItem('syncrova-notify-story') !== 'false');
   const [activeProfileTab, setActiveProfileTab] = useState('posts');
   const storyInputRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('syncrova-story-privacy', storyPrivacy);
+  }, [storyPrivacy]);
+
+  useEffect(() => {
+    localStorage.setItem('syncrova-profile-privacy', profilePrivacy);
+  }, [profilePrivacy]);
+
+  useEffect(() => {
+    localStorage.setItem('syncrova-show-online', String(showOnlineStatus));
+  }, [showOnlineStatus]);
+
+  useEffect(() => {
+    localStorage.setItem('syncrova-notify-story', String(notifyStoryActivity));
+  }, [notifyStoryActivity]);
 
   useEffect(() => {
     if (!user) return;
@@ -260,6 +284,7 @@ export default function Profile() {
 
     const formData = new FormData();
     formData.append('media', uploadFile);
+    formData.append('privacy', storyPrivacy);
     setStoryUploading(true);
     try {
       const res = await api.post('/stories', formData);
@@ -393,7 +418,8 @@ export default function Profile() {
     { id: 'about', label: 'About', icon: User, count: completion },
     { id: 'groups', label: 'Workspaces', icon: Users, count: groups.length },
     { id: 'ranks', label: 'Ranks', icon: Trophy, count: rankStats?.completedTasks || 0 },
-    { id: 'myday', label: 'My Day', icon: PlayCircle, count: myStoryCount }
+    { id: 'myday', label: 'My Day', icon: PlayCircle, count: myStoryCount },
+    { id: 'settings', label: 'Settings', icon: Settings, count: null }
   ];
 
   return (
@@ -530,15 +556,25 @@ export default function Profile() {
             <h2 className="text-lg font-black text-gray-950 dark:text-white">My Day</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">Stories expire after 24 hours.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => storyInputRef.current?.click()}
-            disabled={storyUploading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-60"
-          >
-            {storyUploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-            {myStoryCount ? 'Add more' : 'Post'}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-black text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200">
+              <Globe2 size={15} />
+              <select value={storyPrivacy} onChange={event => setStoryPrivacy(event.target.value)} className="bg-transparent outline-none">
+                <option value="friends">Friends</option>
+                <option value="public">Public</option>
+                <option value="private">Only me</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => storyInputRef.current?.click()}
+              disabled={storyUploading}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-60"
+            >
+              {storyUploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+              {myStoryCount ? 'Add more' : 'Post'}
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -905,6 +941,90 @@ export default function Profile() {
           </section>
         </aside>
       </div>
+      )}
+
+      {activeProfileTab === 'settings' && (
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-200">
+                <Settings size={22} />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-gray-950 dark:text-white">Privacy & Preferences</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Quick controls for profile, My Day, and app behavior.</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              <label className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
+                <span className="mb-2 flex items-center gap-2 text-sm font-black text-gray-950 dark:text-white">
+                  <Globe2 size={17} className="text-[#1877f2]" />
+                  Profile visibility
+                </span>
+                <select value={profilePrivacy} onChange={event => setProfilePrivacy(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 outline-none focus:border-blue-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                  <option value="friends">Friends can view full profile</option>
+                  <option value="public">Everyone in SYNCROVA</option>
+                  <option value="private">Only me</option>
+                </select>
+              </label>
+
+              {[
+                {
+                  icon: Smartphone,
+                  title: 'Show active status',
+                  helper: 'Let friends know when you are active.',
+                  value: showOnlineStatus,
+                  setValue: setShowOnlineStatus
+                },
+                {
+                  icon: Bell,
+                  title: 'My Day activity alerts',
+                  helper: 'Keep story viewers, reactions, and replies prominent.',
+                  value: notifyStoryActivity,
+                  setValue: setNotifyStoryActivity
+                }
+              ].map(item => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.title}
+                    type="button"
+                    onClick={() => item.setValue(value => !value)}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-[#1877f2] dark:bg-gray-900 dark:text-sky-200">
+                        <Icon size={18} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-black text-gray-950 dark:text-white">{item.title}</span>
+                        <span className="block text-xs font-semibold text-gray-500 dark:text-gray-400">{item.helper}</span>
+                      </span>
+                    </span>
+                    <span className={`relative h-7 w-12 shrink-0 rounded-full transition ${item.value ? 'bg-[#1877f2]' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                      <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${item.value ? 'left-6' : 'left-1'}`} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <aside className="space-y-4">
+            <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+              <h3 className="font-black text-gray-950 dark:text-white">Mobile app</h3>
+              <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">SYNCROVA checks for Android updates automatically after the app opens.</p>
+              <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm font-bold text-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
+                Current build target: 1.0.4
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+              <h3 className="font-black text-gray-950 dark:text-white">Saved locally</h3>
+              <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">These preferences are stored on this device so the app feels consistent between sessions.</p>
+            </div>
+          </aside>
+        </section>
       )}
 
       <StoryViewer

@@ -28,6 +28,7 @@ import LoadingSpinner from './LoadingSpinner';
 import { playUiSound } from '../utils/sound';
 import StoryViewer from './StoryViewer';
 import VideoThumbnail from './VideoThumbnail';
+import SocialFeed from './SocialFeed';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -557,6 +558,8 @@ export default function Dashboard() {
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
+          <SocialFeed groups={groups} currentUser={user} />
+
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <SectionHeader title="Priority Work" helper="Tasks that need attention first." />
             {taskSummary.priorityTasks.length ? (
