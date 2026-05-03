@@ -246,6 +246,7 @@ export default function Messages() {
   const reactionPressTimerRef = useRef(null);
 
   const currentUserId = getEntityId(user);
+  const selectedUserId = getEntityId(selectedUser);
   const targetUserId = searchParams.get('user');
 
   const focusComposerInput = useCallback(() => {
@@ -1206,7 +1207,6 @@ export default function Messages() {
     });
   }, [conversationFilter, conversationSearch, conversations, favoriteConversationIds, mutedConversationIds, pinnedConversationIds]);
 
-  const selectedUserId = getEntityId(selectedUser);
   const selectedIsOnline = selectedUserId ? onlineUsers.has(selectedUserId) : false;
   const selectedIsFavorite = selectedUserId ? favoriteConversationIds.has(selectedUserId) : false;
   const selectedIsMuted = selectedUserId ? mutedConversationIds.has(selectedUserId) : false;

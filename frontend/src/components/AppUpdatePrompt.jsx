@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, RefreshCw, X } from 'lucide-react';
 import { getBackendOrigin } from '../utils/media';
 
-const CURRENT_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSION_CODE || 6);
+const CURRENT_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSION_CODE || 7);
 const CHECK_AFTER_MS = 1200;
 
 const isNativeAndroid = () => {
