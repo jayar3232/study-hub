@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft,
@@ -74,6 +74,17 @@ const shouldPreloadAdjacentMedia = () => (
 
 const getDisplayName = (entity, fallback = 'User') => entity?.name || fallback;
 
+const MY_DAY_REPLY_PREFIX = 'Replied to your My Day:';
+
+const isMyDayReplyMessage = (message) => (
+  typeof message?.text === 'string'
+  && message.text.trim().toLowerCase().startsWith(MY_DAY_REPLY_PREFIX.toLowerCase())
+);
+
+const getMyDayReplyBody = (text = '') => (
+  text.replace(new RegExp(`^${MY_DAY_REPLY_PREFIX}\\s*`, 'i'), '').trim()
+);
+
 const formatBytes = (bytes = 0) => {
   if (!bytes) return '';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -98,6 +109,7 @@ const getFileType = (file) => {
 const getMessageSnippet = (message) => {
   if (!message) return '';
   if (message.unsent) return 'Message unsent';
+  if (isMyDayReplyMessage(message)) return `My Day reply: ${getMyDayReplyBody(message.text) || 'Reply'}`;
   if (message.text?.trim()) return message.text;
   if (message.fileType === 'image') return 'Photo';
   if (message.fileType === 'video') return 'Video';
@@ -246,6 +258,7 @@ export default function Messages() {
   const reactionPressTimerRef = useRef(null);
 
   const currentUserId = getEntityId(user);
+  const deferredConversationSearch = useDeferredValue(conversationSearch);
   const selectedUserId = getEntityId(selectedUser);
   const targetUserId = searchParams.get('user');
 
@@ -347,6 +360,37 @@ export default function Messages() {
       messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
     });
   }, []);
+
+  const stabilizeOpeningScroll = useCallback(() => {
+    const frames = [];
+    const timers = [];
+    const run = () => scrollThreadToBottomNow();
+
+    run();
+    frames.push(requestAnimationFrame(() => {
+      run();
+      frames.push(requestAnimationFrame(run));
+    }));
+
+    if (typeof window !== 'undefined') {
+      timers.push(
+        window.setTimeout(run, 80),
+        window.setTimeout(run, 220),
+        window.setTimeout(run, 520)
+      );
+    }
+
+    return () => {
+      frames.forEach(cancelAnimationFrame);
+      timers.forEach(window.clearTimeout);
+    };
+  }, [scrollThreadToBottomNow]);
+
+  const keepOpeningThreadPinned = useCallback(() => {
+    if (!openingConversationRef.current) return;
+    scrollThreadToBottomNow();
+    if (typeof window !== 'undefined') window.setTimeout(scrollThreadToBottomNow, 60);
+  }, [scrollThreadToBottomNow]);
 
   const setComposerText = useCallback((value = '') => {
     composerTextRef.current = value;
@@ -763,7 +807,6 @@ export default function Messages() {
       setVisibleMessageCount(getMessageRenderBatch());
       openingConversationRef.current = true;
       fetchMessages(selectedUser._id || selectedUser.id);
-      focusComposerInput();
     } else {
       setMessages([]);
       openingConversationRef.current = false;
@@ -781,7 +824,7 @@ export default function Messages() {
     clearAttachment();
     clearComposerText();
     setOtherUserTyping(false);
-  }, [clearAttachment, clearComposerText, fetchMessages, focusComposerInput, selectedUser]);
+  }, [clearAttachment, clearComposerText, fetchMessages, selectedUser]);
 
   useLayoutEffect(() => {
     if (loading || !messages.length || !selectedUserId || !openingConversationRef.current) return;
@@ -792,27 +835,22 @@ export default function Messages() {
     if (!messages.length || loading) return undefined;
 
     if (openingConversationRef.current) {
-      let firstFrame = 0;
-      let secondFrame = 0;
-
-      firstFrame = requestAnimationFrame(() => {
+      const cleanupScroll = stabilizeOpeningScroll();
+      const finishTimer = window.setTimeout(() => {
         scrollThreadToBottomNow();
-        secondFrame = requestAnimationFrame(() => {
-          scrollThreadToBottomNow();
-          openingConversationRef.current = false;
-        });
-      });
+        openingConversationRef.current = false;
+      }, 700);
 
       return () => {
-        cancelAnimationFrame(firstFrame);
-        cancelAnimationFrame(secondFrame);
+        cleanupScroll();
+        window.clearTimeout(finishTimer);
       };
     }
 
     scrollToBottom('smooth');
 
     return undefined;
-  }, [loading, messages.length, scrollThreadToBottomNow, scrollToBottom, selectedUserId]);
+  }, [loading, messages.length, scrollThreadToBottomNow, scrollToBottom, selectedUserId, stabilizeOpeningScroll]);
 
   useEffect(() => {
     return () => {
@@ -1190,11 +1228,11 @@ export default function Messages() {
   };
 
   const latestOwnMessageId = useMemo(() => {
-    const latestOwnMessage = [...messages]
-      .reverse()
-      .find(message => getEntityId(message.from) === currentUserId);
-
-    return getEntityId(latestOwnMessage);
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (getEntityId(message.from) === currentUserId) return getEntityId(message);
+    }
+    return '';
   }, [currentUserId, messages]);
 
   const pinnedMessages = useMemo(() => messages.filter(message => message.pinned), [messages]);
@@ -1209,7 +1247,7 @@ export default function Messages() {
   );
 
   const filteredConversations = useMemo(() => {
-    const query = conversationSearch.trim().toLowerCase();
+    const query = deferredConversationSearch.trim().toLowerCase();
 
     return conversations.filter(({ user: conversationUser, lastMessage, unreadCount }) => {
       const conversationId = getEntityId(conversationUser);
@@ -1230,7 +1268,7 @@ export default function Messages() {
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return new Date(b.lastTime || 0) - new Date(a.lastTime || 0);
     });
-  }, [conversationFilter, conversationSearch, conversations, favoriteConversationIds, mutedConversationIds, pinnedConversationIds]);
+  }, [conversationFilter, conversations, deferredConversationSearch, favoriteConversationIds, mutedConversationIds, pinnedConversationIds]);
 
   const selectedIsOnline = selectedUserId ? onlineUsers.has(selectedUserId) : false;
   const selectedIsFavorite = selectedUserId ? favoriteConversationIds.has(selectedUserId) : false;
@@ -1295,6 +1333,7 @@ export default function Messages() {
       .map(message => getEntityId(message))
       .filter(Boolean);
   }, [messageSearch, messages]);
+  const messageSearchMatchSet = useMemo(() => new Set(messageSearchMatches), [messageSearchMatches]);
 
   useEffect(() => {
     setMessageSearchIndex(0);
@@ -1487,7 +1526,7 @@ export default function Messages() {
     );
   };
 
-  const MessageAttachment = ({ message, isMe }) => {
+  const MessageAttachment = ({ message, isMe, isMyDayReply = false }) => {
     if (message.unsent) {
       return <p className="text-sm italic opacity-75">This message was unsent</p>;
     }
@@ -1499,10 +1538,20 @@ export default function Messages() {
         <button
           type="button"
           onClick={() => openMediaPreview(message)}
-          className="message-media-attachment block overflow-hidden rounded-2xl bg-black/5 dark:bg-white/5"
+          className={`message-media-attachment block overflow-hidden rounded-2xl ${
+            isMyDayReply ? 'bg-gray-100 p-1 dark:bg-gray-950/80' : 'bg-black/5 dark:bg-white/5'
+          }`}
           aria-label="View photo"
         >
-          <img src={mediaUrl} alt={message.fileName || 'Attachment'} loading="lazy" decoding="async" draggable={false} className="max-h-80 w-full object-contain" />
+          <img
+            src={mediaUrl}
+            alt={message.fileName || 'Attachment'}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            onLoad={keepOpeningThreadPinned}
+            className={`${isMyDayReply ? 'max-h-72 rounded-[1rem]' : 'max-h-80'} w-full object-contain`}
+          />
         </button>
       );
     }
@@ -1522,6 +1571,7 @@ export default function Messages() {
               videoClassName="max-h-80 object-contain opacity-95"
               iconSize={25}
               label={message.fileName || 'Video attachment'}
+              onReady={keepOpeningThreadPinned}
             />
           </span>
         </button>
@@ -2141,8 +2191,18 @@ export default function Messages() {
                         const sender = isMe ? user : selectedUser;
                         const reactions = message.reactions || [];
                         const isLatestOwn = messageId === latestOwnMessageId;
-                        const isSearchMatch = messageSearchMatches.includes(messageId);
+                        const isSearchMatch = messageSearchMatchSet.has(messageId);
                         const showUnreadDivider = unreadDividerMessageId && unreadDividerMessageId === messageId;
+                        const isMyDayReply = isMyDayReplyMessage(message);
+                        const bubbleClassName = isMyDayReply
+                          ? `my-day-reply-bubble relative rounded-3xl border border-gray-200 bg-white px-3 py-3 text-gray-950 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white ${
+                              isMe ? 'rounded-br-xl' : 'rounded-bl-xl'
+                            }`
+                          : `message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${
+                              isMe
+                                ? `own-message-bubble rounded-br-lg bg-gradient-to-br ${selectedTheme.own} text-white shadow-blue-500/15`
+                                : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
+                            } ${isMe && isLatestOwn ? 'ring-2 ring-blue-300/40 shadow-xl shadow-blue-500/20' : ''}`;
 
                         return (
                           <React.Fragment key={messageId}>
@@ -2182,24 +2242,29 @@ export default function Messages() {
                                   setActionMenuMessageId(null);
                                   setEmojiPickerMessageId(messageId);
                                 }}
-                                  className={`message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${
-                                isMe
-                                ? `own-message-bubble rounded-br-lg bg-gradient-to-br ${selectedTheme.own} text-white shadow-blue-500/15`
-                                  : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
-                              } ${isMe && isLatestOwn ? 'ring-2 ring-blue-300/40 shadow-xl shadow-blue-500/20' : ''}`}
+                                  className={bubbleClassName}
                               >
                                 <ReplyPreview message={message} isMe={isMe} />
                                 <div className="space-y-2">
-                                  <MessageAttachment message={message} isMe={isMe} />
+                                  <MessageAttachment message={message} isMe={isMe} isMyDayReply={isMyDayReply} />
                                   {message.text && !message.unsent && (
-                                    <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{message.text}</p>
+                                    isMyDayReply ? (
+                                      <div className="rounded-2xl bg-gray-50 px-3 py-2.5 text-left ring-1 ring-gray-100 dark:bg-gray-950/60 dark:ring-gray-800">
+                                        <p className="text-[11px] font-black uppercase tracking-normal text-gray-400 dark:text-gray-500">My Day reply</p>
+                                        <p className="mt-1 whitespace-pre-wrap break-words text-[15px] font-semibold leading-relaxed text-gray-950 dark:text-white">
+                                          {getMyDayReplyBody(message.text) || 'Reply'}
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{message.text}</p>
+                                    )
                                   )}
                                   {message.editedAt && !message.unsent && (
-                                    <span className={`text-[11px] font-semibold ${isMe ? 'text-white/65' : 'text-gray-400'}`}>Edited</span>
+                                    <span className={`text-[11px] font-semibold ${isMe && !isMyDayReply ? 'text-white/65' : 'text-gray-400'}`}>Edited</span>
                                   )}
                                   {message.pinned && !message.unsent && (
                                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                      isMe ? 'bg-white/15 text-white/85' : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200'
+                                      isMe && !isMyDayReply ? 'bg-white/15 text-white/85' : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200'
                                     }`}>
                                       <Pin size={11} />
                                       Pinned

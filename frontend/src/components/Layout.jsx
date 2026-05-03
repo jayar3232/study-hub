@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, BellOff, CheckCheck, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, Trash2, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Clapperboard, Home, Users, MessageCircle, User, LogOut, Menu, Moon, Sun, Trash2, X, Volume2, Target, UserPlus, Download, PlusCircle, WifiOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -66,13 +66,15 @@ export default function Layout({ children }) {
   const location = useLocation();
   const avatarSrc = resolveMediaUrl(user?.avatar);
   const pageContent = children || <Outlet />;
-  const isCompactRoute = location.pathname.startsWith('/messages') || location.pathname.startsWith('/arena') || location.pathname.startsWith('/group/');
+  const isCompactRoute = location.pathname.startsWith('/messages') || location.pathname.startsWith('/arena') || location.pathname.startsWith('/group/') || location.pathname.startsWith('/reels');
   const isDashboardRoute = location.pathname === '/dashboard';
-  const shouldShowSocialRail = !isCompactRoute && !isDashboardRoute;
+  const isWorkspaceRoute = location.pathname === '/groups';
+  const shouldShowSocialRail = !isCompactRoute && !isDashboardRoute && !isWorkspaceRoute;
 
   const pageMeta = (() => {
     if (location.pathname.startsWith('/groups')) return { title: 'Workspaces', helper: 'Projects, teams, invites', action: () => navigate('/groups') };
     if (location.pathname.startsWith('/messages')) return { title: 'Messages', helper: 'Realtime chats and media', action: () => navigate('/messages') };
+    if (location.pathname.startsWith('/reels')) return { title: 'Gallery', helper: 'Photos and videos', action: () => navigate('/reels') };
     if (location.pathname.startsWith('/friends')) return { title: 'Friends', helper: 'Requests and teammates', action: () => navigate('/friends') };
     if (location.pathname.startsWith('/arena')) return { title: developerAccess ? 'Developer Console' : 'Fix Arena', helper: 'Reports, games, ranks', action: () => navigate('/arena') };
     if (location.pathname.startsWith('/profile')) return { title: 'Me', helper: 'Profile and settings', action: () => navigate('/profile') };
@@ -321,14 +323,14 @@ export default function Layout({ children }) {
       type="button"
       aria-pressed={dndEnabled}
       onClick={() => setDndEnabled(value => !value)}
-      className={`${compact ? 'rounded-full p-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-3 rounded-lg px-4 py-2'} transition ${
+      className={`${compact ? 'flex h-9 min-w-0 flex-1 items-center justify-center rounded-lg px-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm'} transition ${
         dndEnabled
           ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-300'
           : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
       }`}
       title={dndEnabled ? 'Do not disturb is on' : 'Message popups are on'}
     >
-      {dndEnabled ? <BellOff size={compact ? 22 : 20} /> : <Volume2 size={compact ? 22 : 20} />}
+      {dndEnabled ? <BellOff size={compact ? 18 : 20} /> : <Volume2 size={compact ? 18 : 20} />}
       {!compact && (
         <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[9rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[9rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[9rem] opacity-100'} overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
           {dndEnabled ? 'Do not disturb' : 'Message alerts'}
@@ -341,11 +343,11 @@ export default function Layout({ children }) {
     <button
       type="button"
       onClick={toggleTheme}
-      className={`${compact ? 'rounded-full p-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-3 rounded-xl px-4 py-2.5'} text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-blue-300`}
+      className={`${compact ? 'flex h-9 min-w-0 flex-1 items-center justify-center rounded-lg px-2' : collapsed ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5' : 'flex w-full items-center gap-2.5 rounded-xl px-3 py-1.5 text-sm'} text-gray-700 transition hover:bg-gray-100 hover:text-blue-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-blue-300`}
       title={currentTheme?.helper || 'Toggle theme'}
       aria-label={currentTheme?.label || 'Toggle theme'}
     >
-      {theme === 'dark' ? <Moon size={compact ? 22 : 20} /> : <Sun size={compact ? 22 : 20} />}
+      {theme === 'dark' ? <Moon size={compact ? 18 : 20} /> : <Sun size={compact ? 18 : 20} />}
       {!compact && (
         <span className={`${collapsed ? 'max-w-0 opacity-0 md:group-hover/sidebar:max-w-[9rem] md:group-hover/sidebar:opacity-100 md:group-focus-within/sidebar:max-w-[9rem] md:group-focus-within/sidebar:opacity-100' : 'max-w-[9rem] opacity-100'} overflow-hidden whitespace-nowrap transition-all duration-300 ease-out`}>
           {currentTheme?.label || 'Theme'}
@@ -371,7 +373,7 @@ export default function Layout({ children }) {
       <button
         type="button"
         onClick={handleInstallApp}
-        className="flex w-full items-center gap-3 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:-translate-y-0.5 hover:bg-cyan-400/15 dark:border-cyan-300/20 dark:text-cyan-200"
+        className="flex w-full items-center gap-2.5 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-3 py-1.5 text-sm font-bold text-cyan-700 transition hover:-translate-y-0.5 hover:bg-cyan-400/15 dark:border-cyan-300/20 dark:text-cyan-200"
       >
         <Download size={19} />
         <span>Install SYNCROVA</span>
@@ -451,7 +453,7 @@ export default function Layout({ children }) {
       <button
         type="button"
         onClick={enableNotifications}
-        className={`${compact ? 'rounded-full p-2' : 'flex w-full items-center gap-3 rounded-xl border border-blue-300/30 bg-blue-500/10 px-4 py-2.5 text-sm font-bold'} text-blue-700 transition hover:-translate-y-0.5 hover:bg-blue-500/15 dark:text-blue-200`}
+        className={`${compact ? 'rounded-full p-2' : 'flex w-full items-center gap-2.5 rounded-xl border border-blue-300/30 bg-blue-500/10 px-3 py-1.5 text-sm font-bold'} text-blue-700 transition hover:-translate-y-0.5 hover:bg-blue-500/15 dark:text-blue-200`}
         title="Enable phone notifications"
         aria-label="Enable phone notifications"
       >
@@ -466,7 +468,7 @@ export default function Layout({ children }) {
       <button
         type="button"
         onClick={openNotificationCenter}
-        className={`${compact ? 'grid h-10 w-10 place-items-center rounded-full' : 'flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold'} relative text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700`}
+        className={`${compact ? 'grid h-10 w-10 place-items-center rounded-full' : 'flex w-full items-center gap-2.5 rounded-xl px-3 py-1.5 text-sm font-bold'} relative text-gray-700 transition hover:-translate-y-0.5 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700`}
         title="Notifications"
         aria-label="Notifications"
       >
@@ -543,12 +545,12 @@ export default function Layout({ children }) {
     { path: '/dashboard', icon: Home, label: 'Dashboard', mobileLabel: 'Home' },
     { path: '/groups', icon: Users, label: 'Workspaces', mobileLabel: 'Spaces' },
     { path: '/messages', icon: MessageCircle, label: 'Messages', mobileLabel: 'Chats' },
+    { path: '/reels', icon: Clapperboard, label: 'Gallery', mobileLabel: 'Gallery' },
     { path: '/friends', icon: UserPlus, label: 'Friends', mobileLabel: 'Friends' },
+    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena', mobileLabel: developerAccess ? 'Console' : 'Arena' },
     { path: '/profile', icon: User, label: 'Profile', mobileLabel: 'Me' }
   ];
-  const toolNavItems = [
-    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena', mobileLabel: developerAccess ? 'Console' : 'Arena' }
-  ];
+  const toolNavItems = [];
   const mobileBottomItems = mainNavItems;
   const isNavItemActive = (path) => location.pathname === path
     || (path === '/groups' && location.pathname.startsWith('/group/'))
@@ -574,11 +576,11 @@ export default function Layout({ children }) {
     const activeClasses = isActive
       ? 'border-blue-300/35 bg-white/40 text-blue-700 shadow-sm shadow-blue-500/10 backdrop-blur dark:border-blue-400/25 dark:bg-white/10 dark:text-blue-200'
       : 'border-transparent bg-transparent text-gray-700 hover:border-white/45 hover:bg-white/25 hover:text-gray-950 dark:text-gray-300 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-white';
-    const baseClasses = `flex w-full items-center gap-3 rounded-xl border px-3 py-2 font-semibold transition-all duration-200 hover:bg-white/30 dark:hover:bg-white/10 ${activeClasses}`;
+    const baseClasses = `flex w-full items-center gap-2 rounded-xl border px-2.5 py-1 text-[0.84rem] font-semibold transition-all duration-200 hover:bg-white/30 dark:hover:bg-white/10 ${activeClasses}`;
     const linkContent = (
       <>
-        <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
-          <item.icon size={isMobile ? 24 : 20} />
+        <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">
+          <item.icon size={isMobile ? 22 : 18} />
           {badgeCount > 0 && (
             <span className="absolute -top-1 -right-2 bg-blue-600 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center">
               {badgeCount > 9 ? '9+' : badgeCount}
@@ -586,7 +588,7 @@ export default function Layout({ children }) {
           )}
         </div>
         {!isMobile && (
-          <span className="max-w-[10rem] overflow-hidden whitespace-nowrap opacity-100 transition-all duration-300 ease-out">
+          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap opacity-100 transition-all duration-300 ease-out">
             {item.label}
           </span>
         )}
@@ -600,7 +602,7 @@ export default function Layout({ children }) {
           to={item.path}
           data-sound="tab"
           onClick={() => setSidebarOpen(false)}
-          className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 font-semibold transition ${activeClasses}`}
+          className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm font-semibold transition ${activeClasses}`}
         >
           {linkContent}
           <span>{item.label}</span>
@@ -617,38 +619,32 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen text-gray-900 dark:text-gray-100">
-      <aside className="group/sidebar fixed z-30 hidden h-full w-64 min-h-0 flex-col overflow-hidden border-r border-white/45 bg-white/68 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/20 md:flex">
-        <div className="shrink-0 border-b border-white/40 p-3 dark:border-white/10">
+      <aside className="group/sidebar fixed z-30 hidden h-full w-72 min-h-0 flex-col overflow-hidden border-r border-white/45 bg-white/68 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/20 md:flex">
+        <div className="shrink-0 border-b border-white/40 p-2 dark:border-white/10">
           <BrandLogo compact />
         </div>
-        <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
+        <nav className="min-h-0 flex-1 space-y-1.5 overflow-hidden p-2">
           <section>
-            <p className="mb-2 px-3 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Main</p>
-            <div className="space-y-1.5">
+            <p className="mb-1 px-2.5 text-[9px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Main</p>
+            <div className="space-y-1">
               {mainNavItems.map(item => renderNavLink(item, false))}
             </div>
           </section>
 
+          {toolNavItems.length > 0 && (
           <section>
-            <p className="mb-2 px-3 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Tools</p>
-            <div className="space-y-1.5">
+            <p className="mb-1.5 px-2.5 text-[10px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Tools</p>
+            <div className="space-y-1">
               {toolNavItems.map(item => renderNavLink(item, false))}
             </div>
           </section>
+          )}
         </nav>
 
-        <div className="shrink-0 space-y-2 border-t border-white/40 p-3 dark:border-white/10">
-          <InstallButton />
-          <NotificationCenterButton />
-          <NotificationButton />
-          <div className="rounded-2xl border border-white/45 bg-white/30 p-1.5 dark:border-white/10 dark:bg-white/5">
-            <p className="mb-1 px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Preferences</p>
-            <DndToggle />
-            <ThemeToggle />
-          </div>
+        <div className="shrink-0 space-y-1 border-t border-white/40 p-2 dark:border-white/10">
           {user && (
-            <div className="mb-3 flex items-center gap-3 rounded-2xl border border-white/45 bg-white/35 p-2 shadow-sm backdrop-blur transition-[gap] duration-300 ease-out dark:border-white/10 dark:bg-white/5" title={user.email}>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
+            <div className="flex items-center gap-2 rounded-xl border border-white/45 bg-white/35 p-1.5 shadow-sm backdrop-blur transition-[gap] duration-300 ease-out dark:border-white/10 dark:bg-white/5" title={user.email}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
                 {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
               </div>
               <div className="min-w-0 max-w-[10rem] overflow-hidden opacity-100 transition-all duration-300 ease-out">
@@ -657,24 +653,27 @@ export default function Layout({ children }) {
               </div>
             </div>
           )}
+          <div className="flex items-center gap-1 rounded-xl border border-white/45 bg-white/30 p-1 dark:border-white/10 dark:bg-white/5" title="Sound and theme">
+            <DndToggle compact />
+            <span className="h-5 w-px bg-gray-200 dark:bg-gray-700" />
+            <ThemeToggle compact />
+          </div>
           <button
             onClick={handleLogout}
             data-sound="close"
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-red-600 transition hover:bg-red-50 dark:hover:bg-red-900/30"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-900/30"
             title="Logout"
           >
-            <LogOut size={20} />
+            <LogOut size={18} />
             <span className="max-w-[8rem] overflow-hidden whitespace-nowrap opacity-100 transition-all duration-300 ease-out">Logout</span>
           </button>
         </div>
       </aside>
 
-      <div className="flex min-h-screen flex-col md:ml-64">
+      <div className="flex min-h-screen flex-col md:ml-72">
         <header className="mobile-topbar sticky top-0 z-20 flex items-center justify-between border-b border-white/45 bg-white/70 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/10 md:hidden">
           <BrandLogo mobile />
           <div className="flex items-center gap-2">
-            <NotificationCenterButton compact />
-            <NotificationButton compact />
             {user && (
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
                 {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
@@ -695,7 +694,7 @@ export default function Layout({ children }) {
               Offline mode. Some actions will retry when connection returns.
             </div>
           )}
-          {!location.pathname.startsWith('/messages') && (
+          {!location.pathname.startsWith('/messages') && !location.pathname.startsWith('/reels') && (
             <div className="space-y-2">
               <div className="mobile-page-titlebar flex items-center justify-between gap-3 rounded-2xl border border-white/55 bg-white/72 px-3 py-2.5 shadow-lg shadow-gray-200/30 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/72 dark:shadow-black/20">
                 <div className="min-w-0">
@@ -736,6 +735,10 @@ export default function Layout({ children }) {
                       <MessageCircle size={17} />
                       Messages
                     </Link>
+                    <Link to="/reels" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
+                      <Clapperboard size={17} />
+                      Gallery
+                    </Link>
                     <Link to="/groups" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
                       <Users size={17} />
                       Workspaces
@@ -743,6 +746,10 @@ export default function Layout({ children }) {
                     <Link to="/profile" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
                       <User size={17} />
                       Profile
+                    </Link>
+                    <Link to="/arena" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
+                      <Target size={17} />
+                      {developerAccess ? 'Developer Console' : 'Fix Arena'}
                     </Link>
                   </div>
                 </section>
@@ -830,18 +837,17 @@ export default function Layout({ children }) {
                   {mainNavItems.map(item => renderNavLink(item, true))}
                 </section>
 
+                {toolNavItems.length > 0 && (
                 <section className="space-y-2">
                   <p className="px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Tools</p>
                   {toolNavItems.map(item => renderNavLink(item, true))}
                 </section>
+                )}
 
                 <OnlineRoster compact limit={8} title="Online now" />
 
                 <section className="space-y-2">
                   <p className="px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Preferences</p>
-                  <InstallButton />
-                  <NotificationCenterButton />
-                  <NotificationButton />
                   <DndToggle />
                   <ThemeToggle />
                 </section>

@@ -1016,7 +1016,7 @@ export default function Profile() {
               <h3 className="font-black text-gray-950 dark:text-white">Mobile app</h3>
               <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">SYNCROVA checks for Android updates automatically after the app opens.</p>
               <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm font-bold text-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
-                Current build target: 1.0.8
+                Current build target: 2.0.1
               </div>
             </div>
             <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">

@@ -1,670 +1,649 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Grid3X3, MousePointerClick, RotateCcw, Save, Sparkles, Trophy, Zap } from 'lucide-react';
+import { Bomb, RotateCcw, Save, Sword, Timer, Trophy, XCircle, Zap } from 'lucide-react';
 import api from '../services/api';
 import GameOverModal from './GameOverModal';
 
-const BOARD_SIZE = 8;
+const GAME_DURATION_MS = 60_000;
+const MAX_STRIKES = 3;
+const FRUIT_POOL = ['Mango', 'Berry', 'Apple', 'Kiwi', 'Melon', 'Peach'];
 
-const shapeBank = [
-  { name: 'Task Duo', cells: [[0, 0], [0, 1]], tone: 'from-cyan-300 to-blue-500', color: 'bg-cyan-400' },
-  { name: 'Sprint Trio', cells: [[0, 0], [0, 1], [0, 2]], tone: 'from-pink-400 to-rose-500', color: 'bg-pink-400' },
-  { name: 'Review Line', cells: [[0, 0], [1, 0], [2, 0]], tone: 'from-emerald-300 to-teal-500', color: 'bg-emerald-400' },
-  { name: 'Standup Block', cells: [[0, 0], [0, 1], [1, 0], [1, 1]], tone: 'from-amber-300 to-orange-500', color: 'bg-amber-400' },
-  { name: 'Launch L', cells: [[0, 0], [1, 0], [2, 0], [2, 1]], tone: 'from-violet-400 to-fuchsia-500', color: 'bg-violet-400' },
-  { name: 'QA Corner', cells: [[0, 0], [0, 1], [1, 0]], tone: 'from-sky-300 to-cyan-600', color: 'bg-sky-400' },
-  { name: 'Deploy Bar', cells: [[0, 0], [0, 1], [0, 2], [0, 3]], tone: 'from-lime-300 to-emerald-500', color: 'bg-lime-400' },
-  { name: 'Focus Pillar', cells: [[0, 0], [1, 0], [2, 0], [3, 0]], tone: 'from-indigo-400 to-blue-600', color: 'bg-indigo-400' },
-  { name: 'Bug Fix', cells: [[0, 1], [1, 0], [1, 1], [1, 2]], tone: 'from-red-400 to-pink-600', color: 'bg-red-400' }
-];
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-const emptyBoard = () => Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
+const pickFruitStyle = () => {
+  const styles = [
+    { top: '#22d3ee', bottom: '#3b82f6' },
+    { top: '#f472b6', bottom: '#ec4899' },
+    { top: '#fb7185', bottom: '#ef4444' },
+    { top: '#34d399', bottom: '#10b981' },
+    { top: '#fbbf24', bottom: '#f97316' },
+    { top: '#a78bfa', bottom: '#8b5cf6' }
+  ];
+  return styles[Math.floor(Math.random() * styles.length)];
+};
 
-const randomPiece = () => {
-  const base = shapeBank[Math.floor(Math.random() * shapeBank.length)];
+const buildEntity = (bounds, now, difficulty) => {
+  const isBomb = Math.random() < clamp(0.14 + difficulty * 0.02, 0.14, 0.26);
+  const radius = isBomb ? 20 + Math.random() * 5 : 22 + Math.random() * 8;
+  const xPadding = radius + 18;
+  const x = xPadding + Math.random() * Math.max(1, bounds.width - xPadding * 2);
+  const y = bounds.height + radius + 14;
+  const upwardBase = bounds.height * (0.7 + Math.random() * 0.22);
+  const vx = (Math.random() - 0.5) * (110 + difficulty * 18);
+  const vy = -upwardBase;
+  const style = pickFruitStyle();
+  const label = FRUIT_POOL[Math.floor(Math.random() * FRUIT_POOL.length)];
   return {
-    ...base,
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    id: `${now}-${Math.random().toString(36).slice(2)}`,
+    type: isBomb ? 'bomb' : 'fruit',
+    x,
+    y,
+    vx,
+    vy,
+    gravity: 470 + Math.random() * 120,
+    radius,
+    rotation: Math.random() * Math.PI * 2,
+    spin: (Math.random() - 0.5) * 2.8,
+    topColor: isBomb ? '#94a3b8' : style.top,
+    bottomColor: isBomb ? '#334155' : style.bottom,
+    label,
+    sliced: false
   };
 };
 
-const createTray = () => [randomPiece(), randomPiece(), randomPiece()];
-
-const canPlace = (board, piece, row, col) => {
-  if (!piece) return false;
-  return piece.cells.every(([cellRow, cellCol]) => {
-    const nextRow = row + cellRow;
-    const nextCol = col + cellCol;
-    return nextRow >= 0
-      && nextRow < BOARD_SIZE
-      && nextCol >= 0
-      && nextCol < BOARD_SIZE
-      && !board[nextRow][nextCol];
-  });
-};
-
-const findPlacement = (board, piece, row, col) => {
-  if (!piece) return null;
-  const candidates = [
-    [row, col],
-    ...piece.cells.map(([cellRow, cellCol]) => [row - cellRow, col - cellCol])
-  ];
-  const seen = new Set();
-
-  for (const [candidateRow, candidateCol] of candidates) {
-    const key = `${candidateRow}-${candidateCol}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (canPlace(board, piece, candidateRow, candidateCol)) {
-      return { row: candidateRow, col: candidateCol };
-    }
-  }
-
-  return null;
-};
-
-const hasAnyMove = (board, pieces) => pieces.some(piece => {
-  if (!piece) return false;
-  for (let row = 0; row < BOARD_SIZE; row += 1) {
-    for (let col = 0; col < BOARD_SIZE; col += 1) {
-      if (canPlace(board, piece, row, col)) return true;
-    }
-  }
-  return false;
-});
-
-const placePiece = (board, piece, row, col) => {
-  const nextBoard = board.map(line => [...line]);
-  piece.cells.forEach(([cellRow, cellCol]) => {
-    nextBoard[row + cellRow][col + cellCol] = piece.tone;
-  });
-  return nextBoard;
-};
-
-const clearCompletedLanes = (board) => {
-  const rows = [];
-  const cols = [];
-
-  for (let row = 0; row < BOARD_SIZE; row += 1) {
-    if (board[row].every(Boolean)) rows.push(row);
-  }
-
-  for (let col = 0; col < BOARD_SIZE; col += 1) {
-    if (board.every(row => row[col])) cols.push(col);
-  }
-
-  if (!rows.length && !cols.length) return { board, cleared: 0, cells: [] };
-
-  const flashCells = new Set();
-  const nextBoard = board.map(line => [...line]);
-
-  rows.forEach(row => {
-    for (let col = 0; col < BOARD_SIZE; col += 1) {
-      nextBoard[row][col] = null;
-      flashCells.add(`${row}-${col}`);
-    }
-  });
-
-  cols.forEach(col => {
-    for (let row = 0; row < BOARD_SIZE; row += 1) {
-      nextBoard[row][col] = null;
-      flashCells.add(`${row}-${col}`);
-    }
-  });
-
-  return { board: nextBoard, cleared: rows.length + cols.length, cells: Array.from(flashCells) };
-};
-
-const filledPercent = (board) => {
-  const filled = board.flat().filter(Boolean).length;
-  return Math.round((filled / (BOARD_SIZE * BOARD_SIZE)) * 100);
+const distancePointToSegment = (px, py, x1, y1, x2, y2) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (!dx && !dy) return Math.hypot(px - x1, py - y1);
+  const t = clamp(((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy), 0, 1);
+  const nx = x1 + t * dx;
+  const ny = y1 + t * dy;
+  return Math.hypot(px - nx, py - ny);
 };
 
 export function BlockGameLogo({ compact = false }) {
   return (
-    <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-gray-950 text-white shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-300/20`}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(34,211,238,0.5),transparent_34%),radial-gradient(circle_at_80%_70%,rgba(236,72,153,0.45),transparent_35%)]" />
-      <div className="relative grid grid-cols-3 gap-1">
-        {Array.from({ length: 9 }).map((_, index) => (
-          <span
-            key={index}
-            className={`h-2.5 w-2.5 rounded-[4px] ${
-              [0, 1, 3, 4, 5, 8].includes(index)
-                ? 'bg-gradient-to-br from-cyan-300 to-pink-500 shadow-[0_0_12px_rgba(34,211,238,0.6)]'
-                : 'bg-white/15'
-            }`}
-          />
-        ))}
-      </div>
+    <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-slate-950 text-white shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-300/20`}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_15%,rgba(34,211,238,0.45),transparent_35%),radial-gradient(circle_at_82%_80%,rgba(236,72,153,0.4),transparent_38%)]" />
+      <Sword size={compact ? 22 : 28} className="relative text-white drop-shadow-[0_0_12px_rgba(34,211,238,0.6)]" />
     </div>
   );
 }
 
 export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
-  const boardRef = useRef(null);
-  const dragFrameRef = useRef(null);
-  const pendingDragRef = useRef(null);
-  const activeDragRef = useRef(null);
-  const dragPointerIdRef = useRef(null);
-  const [board, setBoard] = useState(() => emptyBoard());
-  const [pieces, setPieces] = useState(() => createTray());
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [dragState, setDragState] = useState(null);
+  const canvasRef = useRef(null);
   const [score, setScore] = useState(0);
-  const [moves, setMoves] = useState(0);
-  const [linesCleared, setLinesCleared] = useState(0);
+  const [hits, setHits] = useState(0);
+  const [strikes, setStrikes] = useState(0);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
-  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [runActive, setRunActive] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedScore, setSavedScore] = useState(null);
-  const [scoreBursts, setScoreBursts] = useState([]);
-  const [flashCells, setFlashCells] = useState(() => new Set());
-  const [comboBanner, setComboBanner] = useState(null);
-  const [shakeKey, setShakeKey] = useState(0);
-  const [clearPulseKey, setClearPulseKey] = useState(0);
 
-  const selectedPiece = pieces[selectedIndex];
-  const fill = useMemo(() => filledPercent(board), [board]);
-  const validPlacementCells = useMemo(() => {
-    const cells = new Set();
-    if (!selectedPiece) return cells;
+  const engineRef = useRef({
+    rafId: 0,
+    running: false,
+    lastTs: 0,
+    startedAt: 0,
+    endedAt: 0,
+    spawnClock: 0,
+    nextSpawnInMs: 520,
+    entities: [],
+    particles: [],
+    swipeTrail: [],
+    score: 0,
+    hits: 0,
+    strikes: 0,
+    combo: 0,
+    maxCombo: 0,
+    lastSliceAt: 0,
+    pointerActive: false,
+    pointerId: null,
+    gameOver: false,
+    overReason: ''
+  });
 
-    for (let row = 0; row < BOARD_SIZE; row += 1) {
-      for (let col = 0; col < BOARD_SIZE; col += 1) {
-        if (findPlacement(board, selectedPiece, row, col)) cells.add(`${row}-${col}`);
-      }
-    }
+  const highScore = stats?.blockStats?.highScore || 0;
 
-    return cells;
-  }, [board, selectedPiece]);
-  const ghostCells = useMemo(() => {
-    const cells = new Set();
-    if (!dragState?.placement || !dragState?.piece) return cells;
-
-    dragState.piece.cells.forEach(([pieceRow, pieceCol]) => {
-      cells.add(`${dragState.placement.row + pieceRow}-${dragState.placement.col + pieceCol}`);
-    });
-
-    return cells;
-  }, [dragState]);
-
-  useEffect(() => () => {
-    if (dragFrameRef.current) cancelAnimationFrame(dragFrameRef.current);
-  }, []);
-
-  const getPointerCell = (clientX, clientY) => {
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect) return null;
-    const cellSize = rect.width / BOARD_SIZE;
-    const col = Math.floor((clientX - rect.left) / cellSize);
-    const row = Math.floor((clientY - rect.top) / cellSize);
-    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return null;
-    return { row, col };
-  };
-
-  const getPieceBounds = (piece) => {
-    const maxRow = Math.max(...piece.cells.map(([row]) => row));
-    const maxCol = Math.max(...piece.cells.map(([, col]) => col));
-    return { rows: maxRow + 1, cols: maxCol + 1 };
-  };
-
-  const renderPiecePreview = (piece, sizeClass = 'h-3 w-3') => (
-    <div className="block-piece-preview grid grid-cols-4 gap-0.5 rounded-xl bg-gray-950/60 p-1.5">
-      {Array.from({ length: 16 }).map((_, cellIndex) => {
-        const row = Math.floor(cellIndex / 4);
-        const col = cellIndex % 4;
-        const active = piece.cells.some(([pieceRow, pieceCol]) => pieceRow === row && pieceCol === col);
-        return <span key={cellIndex} className={`block-piece-cell ${sizeClass} rounded-[3px] ${active ? `bg-gradient-to-br ${piece.tone} shadow-[0_0_10px_rgba(255,255,255,0.16)]` : 'bg-white/10'}`} />;
-      })}
-    </div>
-  );
-
-  const resetGame = () => {
-    setBoard(emptyBoard());
-    setPieces(createTray());
-    setSelectedIndex(0);
+  const resetHud = useCallback(() => {
     setScore(0);
-    setMoves(0);
-    setLinesCleared(0);
+    setHits(0);
+    setStrikes(0);
     setCombo(0);
     setMaxCombo(0);
-    setStartedAt(Date.now());
+    setTimeLeft(Math.ceil(GAME_DURATION_MS / 1000));
+    setRunActive(false);
     setGameOver(false);
     setSaving(false);
     setSavedScore(null);
-    setScoreBursts([]);
-    setFlashCells(new Set());
-    setComboBanner(null);
-    setClearPulseKey(0);
-    setDragState(null);
-    activeDragRef.current = null;
-    dragPointerIdRef.current = null;
-    pendingDragRef.current = null;
-    if (dragFrameRef.current) {
-      cancelAnimationFrame(dragFrameRef.current);
-      dragFrameRef.current = null;
-    }
-  };
+  }, []);
 
-  const saveScore = async (payload) => {
+  const pushParticles = useCallback((x, y, colorA, colorB) => {
+    const engine = engineRef.current;
+    for (let i = 0; i < 14; i += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 130 + Math.random() * 180;
+      engine.particles.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 360 + Math.random() * 220,
+        maxLife: 540,
+        color: Math.random() > 0.5 ? colorA : colorB
+      });
+    }
+  }, []);
+
+  const endGame = useCallback((reason = 'Run complete') => {
+    const engine = engineRef.current;
+    if (engine.gameOver) return;
+    engine.running = false;
+    engine.gameOver = true;
+    engine.overReason = reason;
+    engine.endedAt = Date.now();
+    if (engine.rafId) cancelAnimationFrame(engine.rafId);
+    engine.rafId = 0;
+    setRunActive(false);
+    setGameOver(true);
+  }, []);
+
+  const saveScore = useCallback(async (payload) => {
     if (!payload.score || payload.score <= 0) return;
     setSaving(true);
     try {
       const res = await api.post('/games/block-stack/submit', payload);
       setSavedScore(res.data?.result?.score || payload.score);
-      toast.success('Block Blast score saved');
+      toast.success('Swipe Ninja score saved');
       onScoreSaved?.();
     } catch (err) {
       if (err.response?.status === 404) {
         toast.error('Backend is not updated yet. Redeploy Render backend first.');
       } else {
-        toast.error(err.response?.data?.msg || 'Could not save block score');
+        toast.error(err.response?.data?.msg || 'Could not save swipe score');
       }
     } finally {
       setSaving(false);
     }
-  };
+  }, [onScoreSaved]);
 
-  const finishGame = (finalBoard, finalScore, finalMoves, finalLines, finalMaxCombo) => {
-    setGameOver(true);
+  useEffect(() => {
+    if (!gameOver) return;
+    const engine = engineRef.current;
+    if (engine.score <= 0 || saving || savedScore) return;
+    const totalActions = engine.hits + engine.strikes;
+    const accuracy = totalActions ? Math.round((engine.hits / totalActions) * 100) : 0;
     saveScore({
-      score: finalScore,
-      moves: finalMoves,
-      linesCleared: finalLines,
-      maxCombo: finalMaxCombo,
-      boardFill: filledPercent(finalBoard),
-      durationMs: Date.now() - startedAt
+      score: engine.score,
+      moves: Math.max(1, engine.hits),
+      linesCleared: engine.hits,
+      maxCombo: engine.maxCombo,
+      boardFill: accuracy,
+      durationMs: Math.max(1000, engine.endedAt - engine.startedAt)
     });
-  };
+  }, [gameOver, saveScore, savedScore, saving]);
 
-  const addScoreBurst = (row, col, gained, cleared, nextCombo) => {
-    const burst = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      row,
-      col,
-      text: `+${gained}`,
-      detail: `${cleared} clear${cleared > 1 ? 's' : ''}${nextCombo > 1 ? ` x${nextCombo}` : ''}`
-    };
+  const syncCanvasSize = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const host = canvas.parentElement;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    const width = clamp(rect.width, 290, 640);
+    const height = Math.round(width * 1.32);
+    const dpr = clamp(window.devicePixelRatio || 1, 1, 2.4);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    engineRef.current.bounds = { width, height };
+  }, []);
 
-    setScoreBursts(prev => [burst, ...prev].slice(0, 2));
-    window.setTimeout(() => {
-      setScoreBursts(prev => prev.filter(item => item.id !== burst.id));
-    }, 520);
-  };
+  const drawScene = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const engine = engineRef.current;
+    const bounds = engine.bounds;
+    if (!ctx || !bounds) return;
 
-  const commitPiecePlacement = (pieceIndex, row, col) => {
-    const pieceToPlace = pieces[pieceIndex];
-    if (gameOver || !pieceToPlace) return false;
-    const placement = findPlacement(board, pieceToPlace, row, col);
-    if (!placement) {
-      setShakeKey(value => value + 1);
-      return false;
+    ctx.clearRect(0, 0, bounds.width, bounds.height);
+
+    const bg = ctx.createLinearGradient(0, 0, bounds.width, bounds.height);
+    bg.addColorStop(0, '#020617');
+    bg.addColorStop(0.55, '#0f172a');
+    bg.addColorStop(1, '#111827');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, bounds.width, bounds.height);
+
+    ctx.fillStyle = 'rgba(34,211,238,0.1)';
+    ctx.beginPath();
+    ctx.arc(bounds.width * 0.18, bounds.height * 0.22, bounds.width * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(236,72,153,0.08)';
+    ctx.beginPath();
+    ctx.arc(bounds.width * 0.82, bounds.height * 0.3, bounds.width * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (const item of engine.entities) {
+      if (item.sliced) continue;
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      ctx.rotate(item.rotation);
+
+      const fill = ctx.createLinearGradient(-item.radius, -item.radius, item.radius, item.radius);
+      fill.addColorStop(0, item.topColor);
+      fill.addColorStop(1, item.bottomColor);
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(0, 0, item.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+      ctx.stroke();
+
+      if (item.type === 'bomb') {
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.arc(0, 0, item.radius * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(item.radius * 0.2, -item.radius * 0.7);
+        ctx.lineTo(item.radius * 0.45, -item.radius * 1.04);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.font = `${Math.max(10, Math.round(item.radius * 0.55))}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item.label.slice(0, 1), 0, 1);
+      }
+      ctx.restore();
     }
 
-    const placed = placePiece(board, pieceToPlace, placement.row, placement.col);
-    const clearedResult = clearCompletedLanes(placed);
-    const nextCombo = clearedResult.cleared ? combo + 1 : 0;
-    const nextMaxCombo = Math.max(maxCombo, nextCombo);
-    const gained = clearedResult.cleared
-      ? (clearedResult.cleared * 420)
-        + (clearedResult.cells.length * 18)
-        + (nextCombo * 180)
-        + (clearedResult.cleared > 1 ? 260 : 0)
-      : 0;
-    const nextScore = score + gained;
-    const nextMoves = moves + 1;
-    const nextLines = linesCleared + clearedResult.cleared;
+    for (const particle of engine.particles) {
+      const alpha = clamp(particle.life / particle.maxLife, 0, 1);
+      ctx.fillStyle = `${particle.color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-    let nextPieces = pieces.map((piece, index) => (index === pieceIndex ? null : piece));
-    if (nextPieces.every(piece => !piece)) nextPieces = createTray();
-    const nextSelectedIndex = Math.max(0, nextPieces.findIndex(Boolean));
-    const noMovesLeft = !hasAnyMove(clearedResult.board, nextPieces);
+    if (engine.swipeTrail.length > 1) {
+      ctx.lineCap = 'round';
+      for (let i = 1; i < engine.swipeTrail.length; i += 1) {
+        const prev = engine.swipeTrail[i - 1];
+        const point = engine.swipeTrail[i];
+        const alpha = i / engine.swipeTrail.length;
+        ctx.strokeStyle = `rgba(56,189,248,${(0.2 + alpha * 0.75).toFixed(3)})`;
+        ctx.lineWidth = 2 + alpha * 8;
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(point.x, point.y);
+        ctx.stroke();
+      }
+    }
 
-    if (clearedResult.cleared) {
-      addScoreBurst(row, col, gained, clearedResult.cleared, nextCombo);
-      setClearPulseKey(value => value + 1);
-      setFlashCells(new Set(clearedResult.cells));
-      setComboBanner({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        text: nextCombo > 1 ? `Combo x${nextCombo}` : 'Line clear',
-        detail: `${clearedResult.cleared} sprint lane${clearedResult.cleared > 1 ? 's' : ''} completed`
+    ctx.fillStyle = 'rgba(15,23,42,0.75)';
+    ctx.fillRect(12, 12, 145, 58);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '700 13px Inter, system-ui, sans-serif';
+    ctx.fillText(`Time ${Math.max(0, Math.ceil((GAME_DURATION_MS - (Date.now() - engine.startedAt)) / 1000))}s`, 24, 35);
+    ctx.fillText(`Combo x${engine.combo}`, 24, 54);
+  }, []);
+
+  const startGame = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine.rafId) cancelAnimationFrame(engine.rafId);
+
+    engine.running = true;
+    engine.lastTs = 0;
+    engine.startedAt = Date.now();
+    engine.endedAt = 0;
+    engine.spawnClock = 0;
+    engine.nextSpawnInMs = 520;
+    engine.entities = [];
+    engine.particles = [];
+    engine.swipeTrail = [];
+    engine.score = 0;
+    engine.hits = 0;
+    engine.strikes = 0;
+    engine.combo = 0;
+    engine.maxCombo = 0;
+    engine.lastSliceAt = 0;
+    engine.pointerActive = false;
+    engine.pointerId = null;
+    engine.gameOver = false;
+    engine.overReason = '';
+
+    resetHud();
+    setRunActive(true);
+    drawScene();
+
+    const tick = (ts) => {
+      const game = engineRef.current;
+      if (!game.running) return;
+      if (!game.lastTs) game.lastTs = ts;
+      const delta = Math.min(34, ts - game.lastTs);
+      game.lastTs = ts;
+
+      const elapsed = Date.now() - game.startedAt;
+      const remaining = Math.max(0, GAME_DURATION_MS - elapsed);
+      const sec = Math.ceil(remaining / 1000);
+      setTimeLeft(prev => (prev === sec ? prev : sec));
+
+      if (remaining <= 0) {
+        endGame('Time is up');
+        drawScene();
+        return;
+      }
+
+      const difficulty = Math.min(8, Math.floor(elapsed / 7_500));
+      game.spawnClock += delta;
+      if (game.spawnClock >= game.nextSpawnInMs) {
+        game.entities.push(buildEntity(game.bounds, Date.now(), difficulty));
+        game.spawnClock = 0;
+        const nextMin = Math.max(130, 490 - difficulty * 24 - game.hits * 0.35);
+        const nextMax = Math.max(nextMin + 40, 730 - difficulty * 18);
+        game.nextSpawnInMs = nextMin + Math.random() * (nextMax - nextMin);
+      }
+
+      const dt = delta / 1000;
+      game.entities = game.entities.filter((item) => {
+        if (!item.sliced) {
+          item.vy += item.gravity * dt;
+          item.x += item.vx * dt;
+          item.y += item.vy * dt;
+          item.rotation += item.spin * dt;
+        }
+
+        const goneBottom = item.y - item.radius > game.bounds.height + 20;
+        if (goneBottom && !item.sliced && item.type === 'fruit') {
+          game.strikes += 1;
+          game.combo = 0;
+          setStrikes(game.strikes);
+          setCombo(0);
+          if (game.strikes >= MAX_STRIKES) {
+            endGame('Too many missed targets');
+          }
+        }
+        return !goneBottom;
       });
-      window.setTimeout(() => setFlashCells(new Set()), 280);
-      window.setTimeout(() => setComboBanner(null), 760);
+
+      game.particles = game.particles.filter((particle) => {
+        particle.life -= delta;
+        particle.x += particle.vx * dt;
+        particle.y += particle.vy * dt;
+        particle.vy += 360 * dt;
+        return particle.life > 0;
+      });
+
+      game.swipeTrail = game.swipeTrail.filter(point => Date.now() - point.t <= 150);
+      drawScene();
+
+      if (game.running) {
+        game.rafId = requestAnimationFrame(tick);
+      }
+    };
+
+    engine.rafId = requestAnimationFrame(tick);
+  }, [drawScene, endGame, resetHud]);
+
+  const sliceTargets = useCallback(() => {
+    const game = engineRef.current;
+    if (!game.pointerActive || game.swipeTrail.length < 2 || !game.running) return;
+    const curr = game.swipeTrail[game.swipeTrail.length - 1];
+    const prev = game.swipeTrail[game.swipeTrail.length - 2];
+    const dt = Math.max(1, curr.t - prev.t);
+    const speed = Math.hypot(curr.x - prev.x, curr.y - prev.y) / dt;
+    if (speed < 0.34) return;
+
+    for (const item of game.entities) {
+      if (item.sliced) continue;
+      const distance = distancePointToSegment(item.x, item.y, prev.x, prev.y, curr.x, curr.y);
+      if (distance > item.radius + 9) continue;
+
+      item.sliced = true;
+      if (item.type === 'bomb') {
+        pushParticles(item.x, item.y, '#94a3b8', '#ef4444');
+        endGame('Bomb sliced');
+        break;
+      }
+
+      const now = Date.now();
+      game.combo = now - game.lastSliceAt <= 750 ? game.combo + 1 : 1;
+      game.maxCombo = Math.max(game.maxCombo, game.combo);
+      game.lastSliceAt = now;
+      const gained = 12 + Math.min(110, game.combo * 4);
+      game.score += gained;
+      game.hits += 1;
+      pushParticles(item.x, item.y, item.topColor, item.bottomColor);
+
+      setScore(game.score);
+      setHits(game.hits);
+      setCombo(game.combo);
+      setMaxCombo(game.maxCombo);
     }
+  }, [endGame, pushParticles]);
 
-    setBoard(clearedResult.board);
-    setPieces(nextPieces);
-    setSelectedIndex(nextSelectedIndex);
-    setScore(nextScore);
-    setMoves(nextMoves);
-    setLinesCleared(nextLines);
-    setCombo(nextCombo);
-    setMaxCombo(nextMaxCombo);
-
-    if (noMovesLeft) finishGame(clearedResult.board, nextScore, nextMoves, nextLines, nextMaxCombo);
-    return true;
-  };
-
-  const handleCellClick = (row, col) => {
-    commitPiecePlacement(selectedIndex, row, col);
-  };
-
-  const buildDragState = (clientX, clientY, index, piece) => {
-    const cell = getPointerCell(clientX, clientY);
-    const placement = cell ? findPlacement(board, piece, cell.row, cell.col) : null;
+  const toCanvasPoint = useCallback((event) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
     return {
-      index,
-      piece,
-      x: clientX,
-      y: clientY,
-      cell,
-      placement
+      x: clamp(event.clientX - rect.left, 0, rect.width),
+      y: clamp(event.clientY - rect.top, 0, rect.height),
+      t: Date.now()
     };
-  };
+  }, []);
 
-  const updateDragState = (event, index, piece) => {
-    setDragState(buildDragState(event.clientX, event.clientY, index, piece));
-  };
-
-  const scheduleDragState = (event, index, piece) => {
-    pendingDragRef.current = { clientX: event.clientX, clientY: event.clientY, index, piece };
-    if (dragFrameRef.current) return;
-
-    dragFrameRef.current = requestAnimationFrame(() => {
-      dragFrameRef.current = null;
-      const pending = pendingDragRef.current;
-      pendingDragRef.current = null;
-      if (!pending) return;
-      setDragState(buildDragState(pending.clientX, pending.clientY, pending.index, pending.piece));
-    });
-  };
-
-  const handlePiecePointerDown = (event, index, piece) => {
-    if (!piece || gameOver) return;
-    event.preventDefault();
+  const handlePointerDown = useCallback((event) => {
+    if (!runActive) return;
+    const game = engineRef.current;
+    game.pointerActive = true;
+    game.pointerId = event.pointerId;
+    const point = toCanvasPoint(event);
+    if (!point) return;
+    game.swipeTrail = [point];
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    activeDragRef.current = {
-      index,
-      piece,
-      startX: event.clientX,
-      startY: event.clientY,
-      hasMoved: false
+    event.preventDefault();
+  }, [runActive, toCanvasPoint]);
+
+  const handlePointerMove = useCallback((event) => {
+    const game = engineRef.current;
+    if (!game.pointerActive) return;
+    if (game.pointerId !== null && event.pointerId !== game.pointerId) return;
+    const point = toCanvasPoint(event);
+    if (!point) return;
+    game.swipeTrail.push(point);
+    if (game.swipeTrail.length > 14) game.swipeTrail.splice(0, game.swipeTrail.length - 14);
+    sliceTargets();
+    event.preventDefault();
+  }, [sliceTargets, toCanvasPoint]);
+
+  const handlePointerUp = useCallback((event) => {
+    const game = engineRef.current;
+    if (game.pointerId !== null && event.pointerId !== undefined && event.pointerId !== game.pointerId) return;
+    game.pointerActive = false;
+    game.pointerId = null;
+    game.swipeTrail = [];
+    event.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    syncCanvasSize();
+    drawScene();
+    const onResize = () => {
+      syncCanvasSize();
+      drawScene();
     };
-    dragPointerIdRef.current = event.pointerId;
-    setSelectedIndex(index);
-    updateDragState(event, index, piece);
-  };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+    };
+  }, [drawScene, syncCanvasSize]);
 
-  const handlePiecePointerMove = (event) => {
-    const activeDrag = activeDragRef.current;
-    if (!activeDrag) return;
-    if (dragPointerIdRef.current !== null && event.pointerId !== undefined && event.pointerId !== dragPointerIdRef.current) return;
-    event.preventDefault();
-    if (Math.hypot(event.clientX - activeDrag.startX, event.clientY - activeDrag.startY) > 8) {
-      activeDrag.hasMoved = true;
-    }
-    scheduleDragState(event, activeDrag.index, activeDrag.piece);
-  };
+  useEffect(() => {
+    startGame();
+    return () => {
+      const engine = engineRef.current;
+      engine.running = false;
+      if (engine.rafId) cancelAnimationFrame(engine.rafId);
+    };
+  }, [startGame]);
 
-  const handlePiecePointerEnd = (event) => {
-    const activeDrag = activeDragRef.current;
-    if (!activeDrag) return;
-    if (dragPointerIdRef.current !== null && event.pointerId !== undefined && event.pointerId !== dragPointerIdRef.current) return;
-    event.preventDefault();
-    if (dragFrameRef.current) {
-      cancelAnimationFrame(dragFrameRef.current);
-      dragFrameRef.current = null;
-      pendingDragRef.current = null;
-    }
-    const endedOverBoard = Boolean(getPointerCell(event.clientX, event.clientY));
-    if (!activeDrag.hasMoved && !endedOverBoard) {
-      activeDragRef.current = null;
-      dragPointerIdRef.current = null;
-      setDragState(null);
-      return;
-    }
-    const liveDragState = buildDragState(event.clientX, event.clientY, activeDrag.index, activeDrag.piece);
-    const placement = liveDragState.placement;
-    const placed = placement ? commitPiecePlacement(activeDrag.index, placement.row, placement.col) : false;
-    if (!placed && activeDrag.hasMoved) setShakeKey(value => value + 1);
-    activeDragRef.current = null;
-    dragPointerIdRef.current = null;
-    setDragState(null);
-  };
+  const safeRatio = useMemo(() => {
+    const total = hits + strikes;
+    return total ? Math.round((hits / total) * 100) : 100;
+  }, [hits, strikes]);
+
+  const retry = useCallback(() => {
+    startGame();
+  }, [startGame]);
+
+  const manualSave = useCallback(() => {
+    const engine = engineRef.current;
+    if (saving || savedScore || engine.score <= 0) return;
+    saveScore({
+      score: engine.score,
+      moves: Math.max(1, engine.hits),
+      linesCleared: engine.hits,
+      maxCombo: engine.maxCombo,
+      boardFill: safeRatio,
+      durationMs: Math.max(1000, (engine.endedAt || Date.now()) - engine.startedAt)
+    });
+  }, [safeRatio, saveScore, savedScore, saving]);
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-gray-800 bg-gray-950 text-white shadow-2xl shadow-cyan-500/10">
-      <div className="relative overflow-hidden border-b border-white/10 p-5">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_90%_10%,rgba(236,72,153,0.22),transparent_32%)]" />
+    <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="relative overflow-hidden border-b border-gray-200 px-5 py-5 dark:border-gray-800">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_15%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_90%_20%,rgba(236,72,153,0.14),transparent_35%)]" />
         <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <BlockGameLogo />
             <div>
-              <p className="text-xs font-black uppercase text-cyan-200">Puzzle Game</p>
-              <h2 className="text-2xl font-black tracking-normal">Block Blast</h2>
-              <p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Drag blocks onto the board, clear full rows or columns, and keep space open for bigger pieces.</p>
+              <p className="text-xs font-black uppercase text-cyan-600 dark:text-cyan-200">Arcade Swipe Game</p>
+              <h2 className="text-2xl font-black text-gray-950 dark:text-white">Swipe Ninja</h2>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-gray-600 dark:text-gray-300">
+                Slice flying targets, avoid bombs, and chain combos for higher score.
+              </p>
             </div>
           </div>
-          <button type="button" onClick={resetGame} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/15">
-            <RotateCcw size={16} />
-            New Round
-          </button>
+          <div className="flex items-center gap-2">
+            {onExit && (
+              <button type="button" onClick={onExit} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-700 transition hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">
+                Back
+              </button>
+            )}
+            <button type="button" onClick={retry} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100">
+              <RotateCcw size={16} />
+              New Run
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_270px]">
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-4">
-            {[
-              ['Score', score],
-              ['Moves', moves],
-              ['Clears', linesCleared],
-              ['Best Combo', `x${maxCombo}`]
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-center shadow-lg shadow-black/10">
-                <p className="text-[11px] font-black uppercase text-white/45">{label}</p>
-                <motion.p key={value} initial={{ scale: 0.82, opacity: 0.4 }} animate={{ scale: 1, opacity: 1 }} className="mt-1 text-xl font-black text-white">
-                  {value}
-                </motion.p>
-              </div>
-            ))}
+          <div className="grid gap-3 sm:grid-cols-5">
+            <StatCard label="Score" value={score} icon={Trophy} />
+            <StatCard label="Sliced" value={hits} icon={Sword} />
+            <StatCard label="Combo" value={`x${combo}`} icon={Zap} />
+            <StatCard label="Misses" value={`${strikes}/${MAX_STRIKES}`} icon={XCircle} />
+            <StatCard label="Time" value={`${timeLeft}s`} icon={Timer} />
           </div>
 
-          <motion.div
-            key={`${shakeKey}-${clearPulseKey}`}
-            animate={{ x: shakeKey ? [0, -6, 6, -3, 3, 0] : 0 }}
-            transition={{ duration: 0.22 }}
-            className={`block-stack-board relative mx-auto aspect-square w-full max-w-[450px] rounded-[1.65rem] bg-gray-900 p-2.5 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10 ${clearPulseKey ? 'block-board-cleared' : ''}`}
-          >
-            <div className="absolute inset-3 rounded-[1.45rem] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:12.5%_12.5%]" />
-
-            <div ref={boardRef} className="block-stack-grid relative grid h-full w-full grid-cols-8 gap-1">
-              {board.map((row, rowIndex) => row.map((cell, colIndex) => {
-                const valid = validPlacementCells.has(`${rowIndex}-${colIndex}`);
-                const flash = flashCells.has(`${rowIndex}-${colIndex}`);
-                const ghost = ghostCells.has(`${rowIndex}-${colIndex}`);
-                return (
-                  <button
-                    key={`${rowIndex}-${colIndex}`}
-                    type="button"
-                    onClick={() => handleCellClick(rowIndex, colIndex)}
-                    className={`block-cell relative aspect-square overflow-hidden rounded-lg border transition-colors duration-150 ${
-                      flash
-                        ? 'block-cell-flash border-white bg-white shadow-[0_0_22px_rgba(255,255,255,0.6)]'
-                        : cell
-                          ? `border-white/25 bg-gradient-to-br ${cell} shadow-lg shadow-black/30`
-                          : ghost
-                            ? `border-white/35 bg-gradient-to-br ${dragState.piece.tone} opacity-80 shadow-lg shadow-cyan-500/20`
-                          : valid
-                            ? 'border-cyan-300/35 bg-cyan-300/10 hover:bg-cyan-300/25'
-                            : 'border-white/5 bg-white/[0.04] hover:bg-white/[0.07]'
-                    }`}
-                    aria-label={`Board cell ${rowIndex + 1}, ${colIndex + 1}`}
-                  >
-                    {cell && <span className="absolute inset-1 rounded-lg border border-white/20 bg-white/10" />}
-                    {ghost && !cell && <span className="absolute inset-1 rounded-lg border border-white/30 bg-white/15" />}
-                  </button>
-                );
-              }))}
+          <div className="rounded-[1.8rem] border border-white/10 bg-gray-950 p-3 shadow-2xl shadow-cyan-500/15">
+            <div className="mx-auto w-full max-w-[640px]">
+              <canvas
+                ref={canvasRef}
+                className="touch-none select-none rounded-[1.3rem] ring-1 ring-white/10"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                aria-label="Swipe Ninja game canvas"
+              />
             </div>
-
-            <AnimatePresence>
-              {comboBanner && (
-                <motion.div
-                  key={comboBanner.id}
-                  initial={{ opacity: 0, scale: 0.7, y: 18 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.88, y: -12 }}
-                  className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(78%,340px)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-yellow-200/40 bg-gray-950/95 p-5 text-center shadow-2xl shadow-yellow-400/20"
-                >
-                  <p className="text-3xl font-black text-yellow-200">{comboBanner.text}</p>
-                  <p className="mt-1 text-sm font-bold text-white/70">{comboBanner.detail}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {scoreBursts.map(burst => (
-                <motion.div
-                  key={burst.id}
-                  initial={{ opacity: 0, y: 18, scale: 0.75 }}
-                  animate={{ opacity: 1, y: -28, scale: 1 }}
-                  exit={{ opacity: 0, y: -60, scale: 0.9 }}
-                  transition={{ duration: 0.46 }}
-                  className="pointer-events-none absolute z-30 rounded-2xl border border-white/20 bg-white px-3 py-2 text-center text-gray-950 shadow-2xl"
-                  style={{
-                    left: `${Math.min(82, Math.max(8, ((burst.col + 0.5) / BOARD_SIZE) * 100))}%`,
-                    top: `${Math.min(82, Math.max(8, ((burst.row + 0.5) / BOARD_SIZE) * 100))}%`
-                  }}
-                >
-                  <p className="text-lg font-black">{burst.text}</p>
-                  <p className="text-[10px] font-black uppercase text-gray-500">{burst.detail}</p>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
+          </div>
 
           {gameOver && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm font-bold text-amber-100">
-              Board locked. Final score {score}. {score <= 0 ? 'Clear at least one lane to save a ranked score.' : savedScore ? 'Saved to rankings.' : saving ? 'Saving score...' : 'Score save pending.'}
-            </motion.div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 dark:border-amber-400/30 dark:bg-amber-900/20 dark:text-amber-100">
+              Run ended. Score {score}. {score <= 0 ? 'Slice at least one target to save score.' : savedScore ? 'Saved to rankings.' : saving ? 'Saving score...' : 'Save pending.'}
+            </div>
           )}
         </div>
 
-        <aside className="block-stack-sidebar space-y-4">
-          <div className="block-tray-panel rounded-3xl border border-white/10 bg-white/[0.06] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-black text-white">Block Tray</p>
-              <MousePointerClick size={17} className="text-cyan-300" />
-            </div>
-            <div className="block-tray-list space-y-3">
-              {pieces.map((piece, index) => (
-                <motion.button
-                  key={piece?.id || index}
-                  type="button"
-                  disabled={!piece || gameOver}
-                  onClick={() => piece && setSelectedIndex(index)}
-                  onPointerDown={event => piece && handlePiecePointerDown(event, index, piece)}
-                  onPointerMove={handlePiecePointerMove}
-                  onPointerUp={handlePiecePointerEnd}
-                  onPointerCancel={handlePiecePointerEnd}
-                  onLostPointerCapture={handlePiecePointerEnd}
-                  whileTap={piece && !gameOver ? { scale: 0.99 } : undefined}
-                  className={`block-tray-piece touch-none w-full rounded-2xl border p-3 text-left transition ${
-                    selectedIndex === index && piece
-                      ? 'border-pink-300/60 bg-pink-400/15 shadow-lg shadow-pink-500/10'
-                      : 'border-white/10 bg-white/[0.05] hover:border-cyan-300/45 hover:bg-cyan-300/10'
-                  } disabled:opacity-40`}
-                >
-                  {piece ? (
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black text-white">{piece.name}</p>
-                        <p className="text-xs font-semibold text-white/45">{piece.cells.length} workload cells</p>
-                      </div>
-                      {renderPiecePreview(piece, 'h-2.5 w-2.5')}
-                    </div>
-                  ) : (
-                    <p className="text-sm font-bold text-white/35">Placed</p>
-                  )}
-                </motion.button>
-              ))}
+        <aside className="space-y-4">
+          <div className="rounded-3xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/60">
+            <p className="text-sm font-black text-gray-800 dark:text-gray-100">Run status</p>
+            <div className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <p className="flex items-center justify-between"><span>Active run</span><span className="font-black">{runActive ? 'Live' : 'Stopped'}</span></p>
+              <p className="flex items-center justify-between"><span>Highest combo</span><span className="font-black">x{maxCombo}</span></p>
+              <p className="flex items-center justify-between"><span>Precision</span><span className="font-black">{safeRatio}%</span></p>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
-            <p className="flex items-center gap-2 text-sm font-black text-white">
-              <Grid3X3 size={17} className="text-cyan-300" />
-              Board Pressure
+          <div className="rounded-3xl border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/25">
+            <p className="flex items-center gap-2 text-xs font-black uppercase text-cyan-700 dark:text-cyan-200">
+              <Trophy size={15} />
+              Swipe Ninja Best
             </p>
-            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
-              <motion.div animate={{ width: `${fill}%` }} className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-pink-400 to-yellow-300" />
-            </div>
-            <p className="mt-2 text-xs font-semibold text-white/45">{fill}% occupied. Keep space open for larger blocks.</p>
+            <p className="mt-1 text-3xl font-black text-gray-950 dark:text-white">{highScore}</p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-4">
-              <p className="flex items-center gap-2 text-xs font-black uppercase text-cyan-100">
-                <Trophy size={15} />
-                Block Best
-              </p>
-              <p className="mt-1 text-3xl font-black text-white">{stats?.blockStats?.highScore || 0}</p>
-            </div>
-            <div className="rounded-3xl border border-pink-300/20 bg-pink-300/10 p-4">
-              <p className="flex items-center gap-2 text-xs font-black uppercase text-pink-100">
-                <Sparkles size={15} />
-                Saved Run
-              </p>
-              <p className="mt-1 text-3xl font-black text-white">{savedScore || '-'}</p>
-            </div>
+          <div className="rounded-3xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/60 dark:bg-violet-950/25">
+            <p className="flex items-center gap-2 text-xs font-black uppercase text-violet-700 dark:text-violet-200">
+              <Bomb size={15} />
+              Saved run
+            </p>
+            <p className="mt-1 text-3xl font-black text-gray-950 dark:text-white">{savedScore || '-'}</p>
           </div>
 
           <button
             type="button"
-            disabled={!gameOver || saving || savedScore || score <= 0}
-            onClick={() => saveScore({ score, moves, linesCleared, maxCombo, boardFill: fill, durationMs: Date.now() - startedAt })}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-gray-950 transition hover:-translate-y-0.5 hover:bg-cyan-100 disabled:opacity-50"
+            disabled={saving || savedScore || score <= 0}
+            onClick={manualSave}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-3 text-sm font-black text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
           >
             {saving ? <Zap size={17} className="animate-pulse" /> : <Save size={17} />}
-            {saving ? 'Saving...' : savedScore ? 'Saved' : score <= 0 ? 'No Clear Score' : 'Save Score'}
+            {saving ? 'Saving...' : savedScore ? 'Saved' : score <= 0 ? 'No score yet' : 'Save score'}
           </button>
         </aside>
       </div>
 
-      <AnimatePresence>
-        {dragState?.piece && (
-          <motion.div
-            key="drag-piece-preview"
-            initial={{ opacity: 0, scale: 0.86, x: '-50%', y: '-70%' }}
-            animate={{ opacity: 1, scale: 1, x: '-50%', y: '-70%' }}
-            exit={{ opacity: 0, scale: 0.86, x: '-50%', y: '-70%' }}
-            transition={{ duration: 0.12 }}
-            className="block-drag-ghost pointer-events-none fixed z-[100] rounded-2xl border border-white/25 bg-gray-950/95 p-2 shadow-2xl shadow-cyan-500/25"
-            style={{
-              left: dragState.x,
-              top: dragState.y
-            }}
-          >
-            {renderPiecePreview(dragState.piece, 'h-3 w-3')}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <GameOverModal
         open={gameOver}
-        title="Board locked"
+        title="Swipe Ninja run ended"
         score={score}
-        detail={score <= 0 ? 'Clear at least one lane to save a ranked score.' : 'Your Block Blast run is complete.'}
+        detail={score <= 0 ? 'Slice targets to record a ranked score.' : 'Great run. You can restart instantly for a better combo.'}
         saving={saving}
         saved={Boolean(savedScore)}
-        onRetry={resetGame}
+        onRetry={retry}
         onExit={() => setGameOver(false)}
       />
     </section>
+  );
+}
+
+function StatCard({ label, value, icon: Icon }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800/60">
+      <p className="inline-flex items-center gap-1 text-[11px] font-black uppercase text-gray-500 dark:text-gray-400">
+        {Icon ? <Icon size={13} /> : null}
+        {label}
+      </p>
+      <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{value}</p>
+    </div>
   );
 }

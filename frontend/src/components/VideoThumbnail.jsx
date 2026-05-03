@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
 import { PlayCircle } from 'lucide-react';
 
 const withPreviewTime = (src) => {
@@ -7,7 +7,7 @@ const withPreviewTime = (src) => {
   return `${src}#t=0.1`;
 };
 
-export default function VideoThumbnail({
+function VideoThumbnail({
   src,
   className = '',
   videoClassName = '',
@@ -15,19 +15,29 @@ export default function VideoThumbnail({
   showOverlay = true,
   rounded = 'rounded-2xl',
   label = 'Video preview',
-  preload = 'metadata'
+  preload = 'metadata',
+  onReady
 }) {
   const videoRef = useRef(null);
+  const revealedRef = useRef(false);
   const previewSrc = useMemo(() => withPreviewTime(src), [src]);
 
-  const revealFirstFrame = () => {
+  useEffect(() => {
+    revealedRef.current = false;
+  }, [previewSrc]);
+
+  const revealFirstFrame = (event) => {
+    if (revealedRef.current) return;
+    revealedRef.current = true;
     const video = videoRef.current;
-    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
-    try {
-      video.currentTime = Math.min(0.12, Math.max(0, video.duration - 0.05));
-    } catch {
-      // Some mobile browsers block seeking before enough metadata is ready.
+    if (video && Number.isFinite(video.duration) && video.duration > 0) {
+      try {
+        video.currentTime = Math.min(0.12, Math.max(0, video.duration - 0.05));
+      } catch {
+        // Some mobile browsers block seeking before enough metadata is ready.
+      }
     }
+    onReady?.(event);
   };
 
   return (
@@ -56,3 +66,5 @@ export default function VideoThumbnail({
     </span>
   );
 }
+
+export default memo(VideoThumbnail);

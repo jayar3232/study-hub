@@ -35,12 +35,12 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 9),
-    versionName: process.env.APP_VERSION_NAME || '1.0.8',
+    versionCode: Number(process.env.APP_VERSION_CODE || 12),
+    versionName: process.env.APP_VERSION_NAME || '2.0.1',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Disables app-wide motion/effects outside ranks and removes render tricks that can cause missing pixels.'
+    notes: process.env.APP_UPDATE_NOTES || 'Major performance update: smoother scrolling, faster chat/feed loading, lighter rendering, and improved mobile FPS.'
   });
 });
 

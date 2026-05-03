@@ -177,7 +177,7 @@
 
   .mobile-bottom-nav {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.25rem;
     padding: 0.45rem 0.55rem calc(0.45rem + env(safe-area-inset-bottom));
   }
@@ -185,9 +185,13 @@
   .mobile-nav-item {
     min-width: 0;
     border-radius: 1rem;
-    padding: 0.45rem 0.25rem;
+    padding: 0.42rem 0.16rem;
     color: rgb(100 116 139);
     transition: transform 180ms ease, background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .mobile-nav-item span {
+    font-size: 0.58rem;
   }
 
   .mobile-nav-item.is-active {
@@ -216,6 +220,38 @@
 
   .mobile-page-titlebar {
     transform: translateZ(0);
+  }
+
+  .app-stable-render,
+  .mobile-message-thread,
+  .messages-conversation-column,
+  .messages-details-panel,
+  .home-feed {
+    contain: layout paint style;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  .feed-card,
+  .message-row {
+    content-visibility: auto;
+    contain-intrinsic-size: 280px;
+  }
+
+  .app-grid-overlay,
+  .app-ambient-overlay {
+    will-change: opacity, transform;
+  }
+
+  @media (pointer: coarse), (max-width: 1024px) {
+    .app-grid-overlay {
+      opacity: 0.28;
+    }
+
+    .app-ambient-overlay {
+      opacity: 0.5;
+      filter: blur(20px);
+    }
   }
 
   .messenger-loader {
@@ -609,12 +645,13 @@
     }
 
     .mobile-bottom-nav {
-      padding: 0.34rem 0.44rem calc(0.34rem + env(safe-area-inset-bottom));
+      gap: 0.18rem;
+      padding: 0.32rem 0.34rem calc(0.32rem + env(safe-area-inset-bottom));
     }
 
     .mobile-nav-item {
       border-radius: 0.82rem;
-      padding: 0.34rem 0.18rem;
+      padding: 0.3rem 0.04rem;
     }
 
     .mobile-page,
@@ -1663,6 +1700,178 @@
   }
 }
 
+/* ---------- Reels ---------- */
+.reels-page {
+  height: calc(100svh - 1.5rem);
+  min-height: 36rem;
+}
+
+.reels-stage {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.reels-feed-shell {
+  min-height: 0;
+}
+
+.reels-feed {
+  height: 100%;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.reels-feed::-webkit-scrollbar {
+  display: none;
+}
+
+.reel-card {
+  height: 100%;
+  min-height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  border-radius: 1rem;
+}
+
+.reel-player-shell {
+  aspect-ratio: 9 / 16;
+  height: min(100%, 48rem);
+  max-height: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #030712;
+}
+
+.reel-player {
+  border-radius: inherit;
+}
+
+.reel-gesture-zone {
+  position: absolute;
+  bottom: 0;
+  top: 0;
+  z-index: 15;
+  width: 22%;
+  touch-action: pan-y;
+}
+
+.reel-gesture-zone--left {
+  left: 0;
+}
+
+.reel-gesture-zone--right {
+  right: 0;
+}
+
+.reel-caption-panel {
+  max-width: min(78%, 23rem);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
+  padding-top: 3rem;
+}
+
+.reel-action-button,
+.reel-step-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.74);
+  color: white;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
+.reel-action-button {
+  min-height: 3.25rem;
+  width: 3.25rem;
+  flex-direction: column;
+  gap: 0.1rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.reel-action-button.is-active {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(24, 119, 242, 0.88);
+}
+
+.reel-step-button {
+  height: 3rem;
+  width: 3rem;
+  border-radius: 9999px;
+}
+
+.reel-step-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.reels-queue {
+  max-height: calc(100% - 2.5rem);
+}
+
+@media (max-width: 767px) {
+  .reels-page {
+    height: calc(100svh - 9.35rem);
+    min-height: 31rem;
+  }
+
+  .reels-stage {
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  .reels-feed-shell,
+  .reels-feed {
+    border-radius: 1.25rem;
+  }
+
+  .reel-card {
+    border-radius: 1.25rem;
+  }
+
+  .reel-player-shell {
+    height: 100%;
+    width: min(100%, 28rem);
+    border-radius: 1.25rem;
+  }
+
+  .reel-gesture-zone {
+    width: 28%;
+  }
+
+  .reel-caption-panel {
+    max-width: calc(100% - 4.75rem);
+  }
+
+  .reel-action-button {
+    min-height: 3rem;
+    width: 3rem;
+  }
+
+  .reel-step-button {
+    height: 2.75rem;
+    width: 2.75rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .reels-page {
+    height: calc(100svh - 7.25rem);
+    min-height: 34rem;
+  }
+
+  .reels-stage {
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+}
+
 /* ---------- Animations ---------- */
 @keyframes shine {
   to { background-position: 200% center; }
@@ -1811,7 +2020,9 @@
   .fix-arena-hero,
   .fix-arena-action-card,
   .fix-arena-stat-card,
-  .feed-card
+  .feed-card,
+  .reels-feed,
+  .reel-card
 ) {
   contain: none !important;
   content-visibility: visible !important;

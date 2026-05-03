@@ -212,6 +212,33 @@ const rankPower = {
   'sovereign-origin': 24
 };
 
+const gameRankShapes = {
+  recruit: 'polygon(50% 6%, 86% 26%, 86% 74%, 50% 94%, 14% 74%, 14% 26%)',
+  iron: 'polygon(50% 0%, 90% 24%, 90% 76%, 50% 100%, 10% 76%, 10% 24%)',
+  bronze: 'polygon(50% 0%, 88% 18%, 94% 52%, 76% 88%, 50% 100%, 24% 88%, 6% 52%, 12% 18%)',
+  silver: 'polygon(50% 0%, 80% 12%, 100% 42%, 88% 78%, 50% 100%, 12% 78%, 0% 42%, 20% 12%)',
+  gold: 'polygon(50% 0%, 62% 28%, 94% 18%, 76% 48%, 100% 70%, 66% 72%, 50% 100%, 34% 72%, 0% 70%, 24% 48%, 6% 18%, 38% 28%)',
+  platinum: 'polygon(50% 0%, 88% 28%, 72% 100%, 28% 100%, 12% 28%)',
+  diamond: 'polygon(50% 0%, 92% 42%, 50% 100%, 8% 42%)',
+  epic: 'polygon(50% 0%, 70% 14%, 94% 10%, 88% 38%, 100% 60%, 72% 70%, 50% 100%, 28% 70%, 0% 60%, 12% 38%, 6% 10%, 30% 14%)',
+  legend: 'polygon(50% 0%, 60% 18%, 84% 8%, 92% 30%, 100% 50%, 88% 70%, 72% 92%, 50% 100%, 28% 92%, 12% 70%, 0% 50%, 8% 30%, 16% 8%, 40% 18%)',
+  mythic: 'polygon(50% 0%, 64% 17%, 88% 6%, 86% 34%, 100% 56%, 76% 74%, 66% 100%, 50% 88%, 34% 100%, 24% 74%, 0% 56%, 14% 34%, 12% 6%, 36% 17%)',
+  dragon: 'polygon(50% 0%, 63% 14%, 88% 5%, 82% 31%, 100% 45%, 86% 62%, 94% 88%, 68% 82%, 50% 100%, 32% 82%, 6% 88%, 14% 62%, 0% 45%, 18% 31%, 12% 5%, 37% 14%)',
+  inferno: 'polygon(50% 0%, 58% 18%, 78% 8%, 74% 32%, 98% 42%, 82% 58%, 92% 82%, 66% 78%, 50% 100%, 34% 78%, 8% 82%, 18% 58%, 2% 42%, 26% 32%, 22% 8%, 42% 18%)',
+  celestial: 'polygon(50% 0%, 60% 16%, 82% 8%, 92% 28%, 100% 50%, 92% 72%, 82% 92%, 60% 84%, 50% 100%, 40% 84%, 18% 92%, 8% 72%, 0% 50%, 8% 28%, 18% 8%, 40% 16%)',
+  apex: 'polygon(50% 0%, 61% 22%, 88% 8%, 78% 38%, 100% 58%, 70% 66%, 58% 100%, 50% 76%, 42% 100%, 30% 66%, 0% 58%, 22% 38%, 12% 8%, 39% 22%)',
+  'mythical-vanguard': 'polygon(50% 0%, 62% 15%, 86% 4%, 84% 28%, 100% 44%, 86% 64%, 92% 90%, 66% 82%, 50% 100%, 34% 82%, 8% 90%, 14% 64%, 0% 44%, 16% 28%, 14% 4%, 38% 15%)',
+  'mythical-legend': 'polygon(50% 0%, 60% 14%, 82% 5%, 92% 24%, 100% 45%, 92% 66%, 82% 94%, 58% 84%, 50% 100%, 42% 84%, 18% 94%, 8% 66%, 0% 45%, 8% 24%, 18% 5%, 40% 14%)',
+  'mythic-warden': 'polygon(50% 0%, 66% 15%, 92% 8%, 84% 36%, 100% 54%, 78% 72%, 72% 100%, 50% 86%, 28% 100%, 22% 72%, 0% 54%, 16% 36%, 8% 8%, 34% 15%)',
+  'mythic-guardian': 'polygon(50% 0%, 70% 12%, 98% 18%, 84% 42%, 96% 70%, 66% 74%, 50% 100%, 34% 74%, 4% 70%, 16% 42%, 2% 18%, 30% 12%)',
+  'mythic-ascendant': 'polygon(50% 0%, 58% 16%, 76% 6%, 82% 26%, 100% 38%, 88% 60%, 96% 84%, 70% 82%, 50% 100%, 30% 82%, 4% 84%, 12% 60%, 0% 38%, 18% 26%, 24% 6%, 42% 16%)',
+  'mythic-immortal': 'polygon(50% 0%, 61% 13%, 84% 2%, 82% 27%, 100% 40%, 86% 58%, 96% 86%, 68% 80%, 50% 100%, 32% 80%, 4% 86%, 14% 58%, 0% 40%, 18% 27%, 16% 2%, 39% 13%)',
+  'eternal-legend': 'polygon(50% 0%, 59% 12%, 80% 4%, 94% 24%, 100% 50%, 94% 76%, 80% 96%, 59% 88%, 50% 100%, 41% 88%, 20% 96%, 6% 76%, 0% 50%, 6% 24%, 20% 4%, 41% 12%)',
+  'radiant-overlord': 'polygon(50% 0%, 62% 20%, 92% 4%, 78% 36%, 100% 52%, 78% 68%, 92% 96%, 62% 82%, 50% 100%, 38% 82%, 8% 96%, 22% 68%, 0% 52%, 22% 36%, 8% 4%, 38% 20%)',
+  'celestial-monarch': 'polygon(50% 0%, 58% 12%, 78% 4%, 92% 20%, 100% 50%, 92% 80%, 78% 96%, 58% 88%, 50% 100%, 42% 88%, 22% 96%, 8% 80%, 0% 50%, 8% 20%, 22% 4%, 42% 12%)',
+  'sovereign-origin': 'polygon(50% 0%, 60% 18%, 86% 0%, 82% 30%, 100% 50%, 82% 70%, 86% 100%, 60% 82%, 50% 100%, 40% 82%, 14% 100%, 18% 70%, 0% 50%, 18% 30%, 14% 0%, 40% 18%)'
+};
+
 const MAX_APEX_STARS = 1000;
 const starDivisionKeys = new Set(['mythic-warden', 'mythic-guardian', 'mythic-ascendant', 'mythic-immortal', 'eternal-legend', 'radiant-overlord', 'celestial-monarch', 'sovereign-origin']);
 const starRankKeys = new Set(['apex', 'mythical-vanguard', 'mythical-legend', ...starDivisionKeys]);
@@ -263,7 +290,8 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
   const glowOpacity = !hasGlow ? 0 : isCycloneRank ? Math.min(0.95, 0.42 + ((power - 10) * 0.07)) : Math.min(0.28, 0.08 + (power * 0.018));
   const sparkCount = isLegendStar ? Math.min(14, 8 + Math.floor(apexStars / 50)) : isCycloneRank ? 6 : 0;
   const visibleStars = Math.min(5, apexStars);
-  const emblemShape = 'rounded-[1.35rem]';
+  const emblemShape = power <= 2 ? 'rounded-2xl' : power <= 8 ? 'rounded-[1.35rem]' : 'rounded-[1rem]';
+  const shapeClipPath = gameRankShapes[rank?.key] || gameRankShapes.recruit;
   const shouldAnimate = animated && hasGlow;
 
   const icon = (
@@ -350,10 +378,13 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
 
       <div
         className={`relative z-20 flex h-full w-full items-center justify-center ${emblemShape} bg-gradient-to-br ${palette.gradient} text-white ${hasGlow ? 'shadow-2xl' : 'shadow-md shadow-black/10 dark:shadow-black/40'} ring-2 ${palette.ring}`}
-        style={hasGlow ? { boxShadow: isCycloneRank ? `0 0 ${18 + (power * 2)}px ${palette.glow}` : `0 0 12px ${palette.glow}` } : undefined}
+        style={{
+          clipPath: shapeClipPath,
+          ...(hasGlow ? { boxShadow: isCycloneRank ? `0 0 ${18 + (power * 2)}px ${palette.glow}` : `0 0 12px ${palette.glow}` } : {})
+        }}
       >
-        <div className="absolute inset-1 rounded-[inherit] border border-white/25" />
-        <div className="absolute inset-[17%] rounded-[inherit] border border-white/20" />
+        <div className="absolute inset-1 rounded-[inherit] border border-white/25" style={{ clipPath: shapeClipPath }} />
+        <div className="absolute inset-[17%] rounded-[inherit] border border-white/20" style={{ clipPath: shapeClipPath }} />
         <div className="absolute left-[18%] top-[13%] h-[18%] w-[64%] rounded-full bg-white/35" />
         <div className="absolute top-[11%] z-20 flex items-center justify-center gap-0.5">
           {(power >= 5 ? [0, 1, 2] : [0]).map(item => (
@@ -447,7 +478,12 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
   }
 
   return (
-    <div className="rank-motion-zone relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+    <div
+      className={`rank-motion-zone relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ring-1 ring-black/5 dark:border-gray-800 dark:bg-gray-950 dark:ring-white/10 ${
+        showCardAura ? 'shadow-xl shadow-black/10 dark:shadow-black/40' : ''
+      }`}
+      style={showCardAura ? { boxShadow: `0 24px 80px -44px ${palette.glow}` } : undefined}
+    >
       {rankUpMilestone && (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-[2rem] border border-white/15 bg-gray-950 p-6 text-center text-white shadow-2xl shadow-pink-500/25">
@@ -467,10 +503,17 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
           </div>
         </div>
       )}
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${palette.gradient}`} />
       {showCardAura && (
         <div
-          className="pointer-events-none absolute -left-12 -top-14 h-36 w-36 rounded-full"
-          style={{ background: `radial-gradient(circle, ${palette.glow}, transparent 72%)`, opacity: 0.42 }}
+          className="pointer-events-none absolute -left-14 -top-16 h-40 w-40 rounded-full"
+          style={{ background: `radial-gradient(circle, ${palette.glow}, transparent 72%)`, opacity: 0.34 }}
+        />
+      )}
+      {cardPower >= 12 && (
+        <div
+          className="pointer-events-none absolute -bottom-20 right-0 h-44 w-44 rounded-full"
+          style={{ background: `radial-gradient(circle, ${palette.glow}, transparent 72%)`, opacity: 0.2 }}
         />
       )}
       <div className="relative z-10 flex items-center gap-4">
@@ -492,17 +535,17 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
       </div>
 
       <div className={`relative z-10 mt-4 grid gap-2 ${isApex ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/50">
+        <div className="rounded-xl border border-gray-200 bg-gray-50/85 p-3 dark:border-gray-800 dark:bg-gray-900/70">
           <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Highest Rank</p>
           <p className="mt-1 truncate text-sm font-black text-gray-950 dark:text-white">{highestRank?.name || rank.name}</p>
         </div>
         {isApex && (
-          <div className="rounded-xl bg-yellow-50 p-3 ring-1 ring-yellow-100 dark:bg-yellow-950/20 dark:ring-yellow-900/50">
+          <div className="rounded-xl border border-yellow-200 bg-gradient-to-br from-yellow-50 to-white p-3 ring-1 ring-yellow-100 dark:border-yellow-900/50 dark:from-yellow-950/30 dark:to-gray-950 dark:ring-yellow-900/50">
             <p className="text-xs font-black uppercase text-yellow-700 dark:text-yellow-200">Apex Stars</p>
             <p className="mt-1 truncate text-sm font-black text-gray-950 dark:text-white">{apexStars || 1} glowing star{(apexStars || 1) > 1 ? 's' : ''}</p>
           </div>
         )}
-        <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/50">
+        <div className="rounded-xl border border-gray-200 bg-gray-50/85 p-3 dark:border-gray-800 dark:bg-gray-900/70">
           <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Season Reward</p>
           <p className="mt-1 truncate text-sm font-black text-gray-950 dark:text-white">{stats?.rewards?.current?.title || 'Starter Badge'}</p>
         </div>
@@ -514,7 +557,7 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
             <span>{progressLabel}</span>
             <span>{progressValue}%</span>
           </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+          <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200/70 dark:bg-gray-800 dark:ring-gray-700/70">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${progressValue}%` }}

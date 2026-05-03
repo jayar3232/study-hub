@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Message = require('../models/Message');
 const User = require('../models/User');
@@ -66,7 +67,8 @@ const populateMessage = (messageId) => Message.findById(messageId)
   .populate({
     path: 'replyTo',
     populate: { path: 'from', select: 'name email avatar lastSeen' }
-  });
+  })
+  .lean();
 
 const isParticipant = (message, userId) => (
   normalizeId(message?.from) === userId || normalizeId(message?.to) === userId
@@ -123,38 +125,79 @@ router.post('/upload', auth, uploadSingleFile, async (req, res) => {
 
 router.get('/conversations', auth, async (req, res) => {
   try {
-    const currentUserId = req.user.toString();
-    const messages = await Message.find({
-      $or: [{ from: req.user }, { to: req.user }],
-      deletedFor: { $ne: req.user }
-    }).sort('-createdAt').populate('from', 'name email avatar lastSeen').populate('to', 'name email avatar lastSeen');
+    const currentUserId = new mongoose.Types.ObjectId(req.user);
+    const rows = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ from: currentUserId }, { to: currentUserId }],
+          deletedFor: { $ne: currentUserId }
+        }
+      },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [{ $eq: ['$from', currentUserId] }, '$to', '$from']
+          },
+          lastMessageDoc: {
+            $first: {
+              text: '$text',
+              fileType: '$fileType',
+              fileUrl: '$fileUrl',
+              unsent: '$unsent',
+              createdAt: '$createdAt'
+            }
+          },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$to', currentUserId] },
+                    { $eq: ['$read', false] },
+                    { $eq: ['$unsent', false] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: 0,
+          user: {
+            _id: '$user._id',
+            name: '$user.name',
+            email: '$user.email',
+            avatar: '$user.avatar',
+            lastSeen: '$user.lastSeen'
+          },
+          lastMessageDoc: 1,
+          lastTime: '$lastMessageDoc.createdAt',
+          unreadCount: 1
+        }
+      },
+      { $sort: { lastTime: -1 } }
+    ]);
 
-    const usersMap = new Map();
-
-    messages.forEach(msg => {
-      if (!msg.from || !msg.to) return;
-
-      const fromId = msg.from._id.toString();
-      const toId = msg.to._id.toString();
-      const other = fromId === currentUserId ? msg.to : msg.from;
-      const otherId = other._id.toString();
-
-      if (!usersMap.has(otherId)) {
-        usersMap.set(otherId, {
-          user: other,
-          lastMessage: describeMessage(msg),
-          lastTime: msg.createdAt,
-          unreadCount: 0
-        });
-      }
-
-      if (toId === currentUserId && !msg.read && !msg.unsent) {
-        const conversation = usersMap.get(otherId);
-        conversation.unreadCount += 1;
-      }
-    });
-
-    const conversations = Array.from(usersMap.values()).sort((a, b) => b.lastTime - a.lastTime);
+    const conversations = rows.map((item) => ({
+      user: item.user,
+      lastMessage: describeMessage(item.lastMessageDoc || {}),
+      lastTime: item.lastTime,
+      unreadCount: item.unreadCount || 0
+    }));
     res.json(conversations);
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -203,7 +246,8 @@ router.get('/:userId', auth, async (req, res) => {
         path: 'replyTo',
         populate: { path: 'from', select: 'name email avatar lastSeen' }
       })
-      .sort('createdAt');
+      .sort('createdAt')
+      .lean();
     res.json(messages);
   } catch (err) {
     res.status(500).json({ msg: err.message });

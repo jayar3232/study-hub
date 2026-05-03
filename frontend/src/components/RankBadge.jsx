@@ -56,29 +56,29 @@ const rankPalettes = {
     ring: 'ring-orange-300/80 dark:ring-orange-500/50',
     text: 'text-orange-800 dark:text-orange-100',
     soft: 'bg-orange-50 dark:bg-orange-950/30',
-    gradient: 'from-orange-200 via-red-500 to-fuchsia-950',
+    gradient: 'from-amber-200 via-orange-500 to-rose-950',
     glow: 'shadow-orange-500/40'
   },
   dragon: {
     ring: 'ring-orange-300/80 dark:ring-orange-500/60',
     text: 'text-orange-800 dark:text-orange-100',
     soft: 'bg-orange-50 dark:bg-orange-950/30',
-    gradient: 'from-orange-200 via-red-500 to-zinc-950',
+    gradient: 'from-orange-200 via-red-600 to-black',
     glow: 'shadow-orange-500/55'
   },
   inferno: {
     ring: 'ring-red-300/90 dark:ring-red-500/70',
     text: 'text-red-800 dark:text-red-100',
     soft: 'bg-red-50 dark:bg-red-950/30',
-    gradient: 'from-yellow-200 via-orange-500 to-red-950',
+    gradient: 'from-yellow-100 via-orange-500 to-red-950',
     glow: 'shadow-orange-500/60'
   },
   celestial: {
-    ring: 'ring-amber-200/90 dark:ring-amber-400/70',
-    text: 'text-amber-800 dark:text-amber-100',
-    soft: 'bg-amber-50 dark:bg-amber-950/30',
-    gradient: 'from-amber-100 via-fuchsia-500 to-cyan-950',
-    glow: 'shadow-amber-500/60'
+    ring: 'ring-cyan-200/90 dark:ring-cyan-400/70',
+    text: 'text-cyan-800 dark:text-cyan-100',
+    soft: 'bg-cyan-50 dark:bg-cyan-950/30',
+    gradient: 'from-cyan-100 via-fuchsia-500 to-indigo-950',
+    glow: 'shadow-cyan-500/60'
   }
 };
 
@@ -109,21 +109,53 @@ const fallbackRank = {
   shortName: 'Rookie'
 };
 
+const rankPower = {
+  rookie: 0,
+  bronze: 1,
+  silver: 2,
+  gold: 3,
+  platinum: 4,
+  epic: 5,
+  mythic: 6,
+  legend: 7,
+  dragon: 8,
+  inferno: 9,
+  celestial: 10
+};
+
+const rankShapes = {
+  rookie: 'polygon(50% 5%, 86% 25%, 86% 75%, 50% 95%, 14% 75%, 14% 25%)',
+  bronze: 'polygon(50% 0%, 88% 18%, 94% 52%, 76% 88%, 50% 100%, 24% 88%, 6% 52%, 12% 18%)',
+  silver: 'polygon(50% 0%, 80% 12%, 100% 42%, 88% 78%, 50% 100%, 12% 78%, 0% 42%, 20% 12%)',
+  gold: 'polygon(50% 0%, 62% 28%, 94% 18%, 76% 48%, 100% 70%, 66% 72%, 50% 100%, 34% 72%, 0% 70%, 24% 48%, 6% 18%, 38% 28%)',
+  platinum: 'polygon(50% 0%, 88% 28%, 72% 100%, 28% 100%, 12% 28%)',
+  epic: 'polygon(50% 0%, 70% 14%, 94% 10%, 88% 38%, 100% 60%, 72% 70%, 50% 100%, 28% 70%, 0% 60%, 12% 38%, 6% 10%, 30% 14%)',
+  mythic: 'polygon(50% 0%, 64% 17%, 88% 6%, 86% 34%, 100% 56%, 76% 74%, 66% 100%, 50% 88%, 34% 100%, 24% 74%, 0% 56%, 14% 34%, 12% 6%, 36% 17%)',
+  legend: 'polygon(50% 0%, 60% 18%, 84% 8%, 92% 30%, 100% 50%, 88% 70%, 72% 92%, 50% 100%, 28% 92%, 12% 70%, 0% 50%, 8% 30%, 16% 8%, 40% 18%)',
+  dragon: 'polygon(50% 0%, 63% 14%, 88% 5%, 82% 31%, 100% 45%, 86% 62%, 94% 88%, 68% 82%, 50% 100%, 32% 82%, 6% 88%, 14% 62%, 0% 45%, 18% 31%, 12% 5%, 37% 14%)',
+  inferno: 'polygon(50% 0%, 58% 18%, 78% 8%, 74% 32%, 98% 42%, 82% 58%, 92% 82%, 66% 78%, 50% 100%, 34% 78%, 8% 82%, 18% 58%, 2% 42%, 26% 32%, 22% 8%, 42% 18%)',
+  celestial: 'polygon(50% 0%, 60% 16%, 82% 8%, 92% 28%, 100% 50%, 92% 72%, 82% 92%, 60% 84%, 50% 100%, 40% 84%, 18% 92%, 8% 72%, 0% 50%, 8% 28%, 18% 8%, 40% 16%)'
+};
+
 export const getRankPalette = (rank) => rankPalettes[rank?.key] || rankPalettes.rookie;
+const getRankPower = (rank) => rankPower[rank?.key] ?? 0;
 
 export function RankEmblem({ rank = fallbackRank, size = 'md', animated = false }) {
   const palette = getRankPalette(rank);
   const classes = sizeClasses[size] || sizeClasses.md;
   const rankInitial = (rank?.shortName || rank?.name || 'R').charAt(0).toUpperCase();
   const MotionTag = animated ? motion.div : 'div';
-  const isEliteRank = ['dragon', 'inferno', 'celestial'].includes(rank?.key);
-  const isCycloneRank = ['inferno', 'celestial'].includes(rank?.key);
-  const isLowestRank = rank?.key === 'rookie';
+  const power = getRankPower(rank);
+  const isEliteRank = power >= 7;
+  const isCycloneRank = power >= 9;
+  const isLowestRank = power <= 0;
+  const shouldAnimate = animated && power >= 3;
+  const shapeClipPath = rankShapes[rank?.key] || rankShapes.rookie;
 
   return (
     <MotionConfig reducedMotion="never">
       <MotionTag
-        {...(animated ? {
+        {...(shouldAnimate ? {
           animate: { y: [0, -4, 0], rotate: [0, -1, 1, 0] },
           transition: { duration: 3.4, repeat: Infinity, ease: 'easeInOut' }
         } : {})}
@@ -133,25 +165,30 @@ export function RankEmblem({ rank = fallbackRank, size = 'md', animated = false 
         {!isLowestRank && <div className={`absolute inset-0 rounded-[1.35rem] bg-gradient-to-br ${palette.gradient} ${isCycloneRank ? 'opacity-40 blur-xl' : 'opacity-16 blur-md'}`} />}
         {isCycloneRank && (
           <motion.div
-            animate={animated ? { rotate: 360 } : undefined}
-            transition={animated ? { duration: 9, repeat: Infinity, ease: 'linear' } : undefined}
+            animate={shouldAnimate ? { rotate: 360 } : undefined}
+            transition={shouldAnimate ? { duration: 9, repeat: Infinity, ease: 'linear' } : undefined}
             className="absolute inset-[-22%] rounded-full bg-[conic-gradient(from_90deg,transparent,rgba(250,204,21,0.8),transparent,rgba(249,115,22,0.72),transparent)] opacity-80"
           />
         )}
+        {power >= 5 && !isCycloneRank && (
+          <div className={`absolute inset-[-14%] rounded-full bg-gradient-to-br ${palette.gradient} opacity-20 blur-lg`} />
+        )}
         <div
           className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br ${palette.gradient} text-white ${isLowestRank ? 'shadow-md shadow-black/10 dark:shadow-black/40' : isCycloneRank ? `shadow-xl ${palette.glow}` : 'shadow-lg shadow-black/10 dark:shadow-black/40'} ring-2 ${palette.ring}`}
-          style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }}
+          style={{ clipPath: shapeClipPath }}
         >
-          <div className="absolute inset-[6px] border border-white/25" style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }} />
+          <div className="absolute inset-[6px] border border-white/25" style={{ clipPath: shapeClipPath }} />
           <div className="absolute -left-5 top-1/2 h-16 w-28 -translate-y-1/2 rotate-[-25deg] bg-white/18 blur-sm" />
           {isEliteRank
             ? <Flame size={classes.icon + 3} className="relative z-10 drop-shadow" strokeWidth={2.4} fill="currentColor" />
             : <Award size={classes.icon} className="relative z-10 drop-shadow" strokeWidth={2.4} />}
           <span className={`absolute bottom-[18%] z-10 font-black ${classes.letter}`}>{rankInitial}</span>
         </div>
-        <span className={`absolute -right-1 top-1 flex ${classes.star} items-center justify-center rounded-full bg-white text-yellow-500 shadow-md ring-1 ring-yellow-100 dark:bg-gray-950 dark:ring-yellow-700/40`}>
-          <Star size={size === 'lg' ? 12 : 9} fill="currentColor" />
-        </span>
+        {!isLowestRank && (
+          <span className={`absolute -right-1 top-1 flex ${classes.star} items-center justify-center rounded-full bg-white text-yellow-500 shadow-md ring-1 ring-yellow-100 dark:bg-gray-950 dark:ring-yellow-700/40`}>
+            <Star size={size === 'lg' ? 12 : 9} fill="currentColor" />
+          </span>
+        )}
       </MotionTag>
     </MotionConfig>
   );
@@ -161,6 +198,9 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
   const rank = stats?.rank || fallbackRank;
   const nextRank = stats?.nextRank;
   const palette = getRankPalette(rank);
+  const power = getRankPower(rank);
+  const showAura = power >= 4;
+  const showEliteFrame = power >= 7;
 
   if (compact) {
     return (
@@ -174,18 +214,19 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
   return (
     <MotionConfig reducedMotion="never">
       <motion.div
-        whileHover={{ y: -5, scale: 1.01 }}
-        className="rank-motion-zone group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+        whileHover={power >= 3 ? { y: -3, scale: 1.005 } : undefined}
+        className={`rank-motion-zone group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm ring-1 ring-black/5 dark:border-gray-800 dark:bg-gray-950 dark:ring-white/10 ${
+          showEliteFrame ? 'shadow-xl shadow-black/10 dark:shadow-black/40' : ''
+        }`}
       >
       <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${palette.gradient} opacity-80`} />
-      <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
-      <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
-      <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/45 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
+      {showAura && <div className={`pointer-events-none absolute -right-14 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${palette.gradient} opacity-10 blur-2xl dark:opacity-20`} />}
+      {showEliteFrame && <div className={`pointer-events-none absolute inset-0 rounded-2xl ring-1 ${palette.ring}`} />}
       <div className="relative flex items-center gap-4">
         <RankEmblem rank={rank} size="md" animated />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-xs font-black uppercase tracking-normal text-gray-500 dark:text-gray-400">
-            <Sparkles size={14} className="text-pink-500" />
+            <Sparkles size={14} className={power >= 5 ? 'text-yellow-500' : 'text-[#1877f2]'} />
             Work Rank
           </p>
           <h3 className="mt-1 truncate text-xl font-black text-gray-950 dark:text-white">{rank.name}</h3>
@@ -201,7 +242,7 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
             <span>{nextRank ? `${stats?.xpToNext || 0} XP to ${nextRank.shortName}` : 'Max rank reached'}</span>
             <span>{stats?.progress ?? 0}%</span>
           </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+          <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200/70 dark:bg-gray-800 dark:ring-gray-700/70">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${stats?.progress ?? 0}%` }}

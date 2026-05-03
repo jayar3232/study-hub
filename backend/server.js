@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const compression = require('compression');
 const dotenv = require('dotenv');
 const path = require('path');
 const http = require('http');
@@ -78,9 +79,16 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Middleware
-app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/releases', express.static(path.join(__dirname, 'public', 'releases')));
+app.use(compression({ threshold: 1024 }));
+app.use(express.json({ limit: '1mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  etag: true,
+  maxAge: '7d'
+}));
+app.use('/releases', express.static(path.join(__dirname, 'public', 'releases'), {
+  etag: true,
+  maxAge: '7d'
+}));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -98,6 +106,7 @@ app.use('/api/activity', require('./routes/activity'));
 app.use('/api/games', require('./routes/games'));
 app.use('/api/friends', require('./routes/friends'));
 app.use('/api/stories', require('./routes/stories'));
+app.use('/api/reels', require('./routes/reels'));
 app.use('/api/app', require('./routes/appUpdate'));
 
 const notifications = require('./routes/notifications');
@@ -105,8 +114,17 @@ app.use('/api/notifications', notifications.router);
 
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/syncrova';
+const mongoMaxPoolSize = Number(process.env.MONGO_MAX_POOL_SIZE || 20);
+const mongoMinPoolSize = Number(process.env.MONGO_MIN_POOL_SIZE || 2);
+const mongoAutoIndex = process.env.NODE_ENV !== 'production';
 
-mongoose.connect(MONGODB_URI)
+mongoose.connect(MONGODB_URI, {
+  maxPoolSize: Number.isFinite(mongoMaxPoolSize) ? mongoMaxPoolSize : 20,
+  minPoolSize: Number.isFinite(mongoMinPoolSize) ? mongoMinPoolSize : 2,
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  autoIndex: mongoAutoIndex
+})
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.log('MongoDB connection error:', err));
 
@@ -115,8 +133,13 @@ const server = http.createServer(app);
 
 // Socket.io
 const io = socketIo(server, {
-  cors: corsOptions
+  cors: corsOptions,
+  transports: ['websocket', 'polling'],
+  perMessageDeflate: false
 });
+
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
 
 app.set('io', io);
 

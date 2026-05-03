@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Group = require('../models/Group');
 const Task = require('../models/Task');
@@ -19,39 +20,86 @@ const describeMessage = (message) => {
   return 'Open chat';
 };
 
-const buildConversations = (messages, userId) => {
-  const currentUserId = getId(userId);
-  const usersMap = new Map();
+const fetchConversationSummaries = async (userId) => {
+  const currentUserId = new mongoose.Types.ObjectId(userId);
+  const rows = await Message.aggregate([
+    {
+      $match: {
+        $or: [{ from: currentUserId }, { to: currentUserId }],
+        deletedFor: { $ne: currentUserId }
+      }
+    },
+    { $sort: { createdAt: -1 } },
+    {
+      $group: {
+        _id: {
+          $cond: [{ $eq: ['$from', currentUserId] }, '$to', '$from']
+        },
+        lastMessageDoc: {
+          $first: {
+            text: '$text',
+            fileType: '$fileType',
+            fileUrl: '$fileUrl',
+            unsent: '$unsent',
+            createdAt: '$createdAt'
+          }
+        },
+        unreadCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$to', currentUserId] },
+                  { $eq: ['$read', false] },
+                  { $eq: ['$unsent', false] }
+                ]
+              },
+              1,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'user'
+      }
+    },
+    { $unwind: '$user' },
+    {
+      $project: {
+        _id: 0,
+        user: {
+          _id: '$user._id',
+          name: '$user.name',
+          email: '$user.email',
+          avatar: '$user.avatar',
+          lastSeen: '$user.lastSeen'
+        },
+        lastMessageDoc: 1,
+        lastTime: '$lastMessageDoc.createdAt',
+        unreadCount: 1
+      }
+    },
+    { $sort: { lastTime: -1 } }
+  ]);
 
-  messages.forEach(message => {
-    if (!message.from || !message.to) return;
-
-    const fromId = getId(message.from);
-    const toId = getId(message.to);
-    const other = fromId === currentUserId ? message.to : message.from;
-    const otherId = getId(other);
-    if (!otherId) return;
-
-    if (!usersMap.has(otherId)) {
-      usersMap.set(otherId, {
-        user: other,
-        lastMessage: describeMessage(message),
-        lastTime: message.createdAt,
-        unreadCount: 0
-      });
-    }
-
-    if (toId === currentUserId && !message.read && !message.unsent) {
-      usersMap.get(otherId).unreadCount += 1;
-    }
-  });
-
-  return Array.from(usersMap.values())
-    .sort((a, b) => new Date(b.lastTime || 0) - new Date(a.lastTime || 0));
+  return rows.map(item => ({
+    user: item.user,
+    lastMessage: describeMessage(item.lastMessageDoc),
+    lastTime: item.lastTime,
+    unreadCount: item.unreadCount || 0
+  }));
 };
 
 router.get('/summary', auth, async (req, res) => {
   try {
+    const requestedTaskLimit = Number(req.query.taskLimit || 220);
+    const taskLimit = Number.isFinite(requestedTaskLimit) ? Math.max(60, Math.min(500, Math.floor(requestedTaskLimit))) : 220;
     const groups = await Group.find({ members: req.user })
       .populate('creator', 'name email avatar')
       .populate('members', 'name email avatar')
@@ -59,27 +107,18 @@ router.get('/summary', auth, async (req, res) => {
       .lean();
 
     const groupIds = groups.map(group => group._id);
-    const [tasks, messages] = await Promise.all([
+    const [tasks, conversations] = await Promise.all([
       groupIds.length
         ? Task.find({ groupId: { $in: groupIds } })
             .populate('assignedTo', 'name avatar')
             .populate('createdBy', 'name avatar')
             .populate('completedBy', 'name avatar')
             .sort({ createdAt: -1 })
+            .limit(taskLimit)
             .lean()
         : [],
-      Message.find({
-        $or: [{ from: req.user }, { to: req.user }],
-        deletedFor: { $ne: req.user }
-      })
-        .sort('-createdAt')
-        .limit(400)
-        .populate('from', 'name email avatar lastSeen')
-        .populate('to', 'name email avatar lastSeen')
-        .lean()
+      fetchConversationSummaries(req.user)
     ]);
-
-    const conversations = buildConversations(messages, req.user);
     const openTasks = tasks.filter(task => task.status !== 'done');
     const assignedOpenTasks = openTasks.filter(task => getId(task.assignedTo) === getId(req.user));
     const unreadMessages = conversations.reduce((sum, conversation) => sum + (conversation.unreadCount || 0), 0);

@@ -18,6 +18,7 @@ const Profile = lazy(() => import('./components/Profile'));
 const Messages = lazy(() => import('./components/Messages'));
 const OpsArena = lazy(() => import('./components/OpsArena'));
 const Friends = lazy(() => import('./components/Friends'));
+const Reels = lazy(() => import('./components/Reels'));
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
@@ -36,6 +37,7 @@ function AppRoutes() {
           <Route path="/group/:id/:section" element={<GroupPage />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/messages" element={<Messages />} />
+          <Route path="/reels" element={<Reels />} />
           <Route path="/friends" element={<Friends />} />
           <Route path="/arena" element={<OpsArena />} />
         </Route>
@@ -55,8 +57,8 @@ function App() {
             <AppUpdatePrompt />
             <BrowserRouter>
               <div className="app-no-motion app-stable-render relative min-h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
-                <div className="app-decorative-effect pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
-                <div className="app-decorative-effect pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
+                <div className="app-decorative-effect app-grid-overlay pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
+                <div className="app-decorative-effect app-ambient-overlay pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
                 <div className="relative z-10">
                   <AppRoutes />
                 </div>

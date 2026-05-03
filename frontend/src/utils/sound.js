@@ -3,8 +3,10 @@ import messageSendUrl from './message send.mp3';
 import clickSoundUrl from './clicksounds.mp3';
 
 const soundCache = new Map();
+const soundLastPlayedAt = new Map();
 let pendingPlayback = null;
 let removePlaybackUnlock = null;
+const MIN_SOUND_GAP_MS = 70;
 
 const soundSources = {
   click: clickSoundUrl,
@@ -53,6 +55,12 @@ export const playUiSound = (name, volume = 0.35) => {
   if (typeof window === 'undefined' || !name) return;
 
   try {
+    const normalizedName = String(name).trim().toLowerCase();
+    const now = Date.now();
+    const lastPlayedAt = soundLastPlayedAt.get(normalizedName) || 0;
+    if (now - lastPlayedAt < MIN_SOUND_GAP_MS) return;
+    soundLastPlayedAt.set(normalizedName, now);
+
     const url = getSoundUrl(name);
     if (!url) return;
 

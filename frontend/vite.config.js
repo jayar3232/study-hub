@@ -72,5 +72,26 @@ export default defineConfig({
   preview: {
     host: '0.0.0.0',
     proxy: localBackendProxy
+  },
+  build: {
+    target: 'es2019',
+    cssMinify: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) return 'vendor-react';
+            if (id.includes('framer-motion')) return 'vendor-motion';
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            if (id.includes('date-fns')) return 'vendor-utils';
+            return 'vendor';
+          }
+          if (id.includes('/src/components/Messages')) return 'page-messages';
+          if (id.includes('/src/components/GroupPage')) return 'page-group';
+          if (id.includes('/src/components/OpsArena')) return 'page-arena';
+          return undefined;
+        }
+      }
+    }
   }
 })

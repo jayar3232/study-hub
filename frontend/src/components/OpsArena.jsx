@@ -617,9 +617,9 @@ export default function OpsArena() {
   const gameCards = [
     {
       key: 'blocks',
-      title: 'Block Blast',
-      label: 'Puzzle Game',
-      description: 'Drag blocks, clear rows and columns, and keep the board alive.',
+      title: 'Swipe Ninja',
+      label: 'Arcade Swipe',
+      description: 'Slice flying targets, avoid bombs, and build fast combo chains.',
       status: 'Live',
       best: summary?.blockStats?.highScore || 0,
       Logo: BlockGameLogo,
@@ -713,7 +713,7 @@ export default function OpsArena() {
     {
       key: 'games',
       title: 'Enter Games',
-      description: 'Block Blast, Jet Fighter, Bug Hunt, Focus Flow, and Code Quiz.',
+      description: 'Swipe Ninja, Jet Fighter, Bug Hunt, Focus Flow, and Code Quiz.',
       icon: Gamepad2,
       tone: 'from-cyan-400 to-pink-500',
       meta: `${summary?.stats?.highScore || 0} best score`
