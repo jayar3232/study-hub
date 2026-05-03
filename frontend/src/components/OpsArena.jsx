@@ -17,10 +17,12 @@ import {
   MessageCircle,
   Plane,
   Play,
+  Search,
   Send,
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   Trophy,
   Wrench,
   Zap
@@ -65,8 +67,6 @@ const categories = [
   ['messages', 'Messages'],
   ['other', 'Other']
 ];
-
-const statuses = ['new', 'reviewing', 'approved', 'rejected', 'resolved', 'closed'];
 
 const initialReportForm = {
   type: 'problem',
@@ -186,12 +186,15 @@ export default function OpsArena() {
   const [developerPassword, setDeveloperPassword] = useState('');
   const [issues, setIssues] = useState([]);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
+  const [issueStatusFilter, setIssueStatusFilter] = useState('all');
+  const [issueSearch, setIssueSearch] = useState('');
   const [reportForm, setReportForm] = useState(initialReportForm);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
   const [submittingReport, setSubmittingReport] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [unlockingDeveloper, setUnlockingDeveloper] = useState(false);
+  const [deletingIssueId, setDeletingIssueId] = useState('');
   const [typingSession, setTypingSession] = useState(null);
   const [typingText, setTypingText] = useState('');
   const [typingEntries, setTypingEntries] = useState([]);
@@ -303,6 +306,28 @@ export default function OpsArena() {
       toast.success('Status updated');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Status update failed');
+    }
+  };
+
+  const deleteIssue = async (issueId) => {
+    const targetIssue = issues.find(issue => getEntityId(issue) === getEntityId(issueId));
+    if (!targetIssue) return;
+
+    const confirmed = window.confirm(`Delete "${targetIssue.title}" permanently? This will remove the request and its thread.`);
+    if (!confirmed) return;
+
+    setDeletingIssueId(issueId);
+    try {
+      await api.delete(`/games/fix-arena/issues/${issueId}`);
+      const nextIssues = issues.filter(issue => getEntityId(issue) !== getEntityId(issueId));
+      setIssues(nextIssues);
+      setSelectedIssueId(prev => getEntityId(prev) === getEntityId(issueId) ? nextIssues[0]?._id || null : prev);
+      toast.success('Report deleted');
+      loadArena({ silent: true });
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Delete failed');
+    } finally {
+      setDeletingIssueId('');
     }
   };
 
@@ -549,6 +574,38 @@ export default function OpsArena() {
     const resolved = issues.filter(issue => ['approved', 'resolved'].includes(issue.status)).length;
     return { open, critical, resolved };
   }, [issues]);
+  const filteredIssues = useMemo(() => {
+    const term = issueSearch.trim().toLowerCase();
+    return issues.filter(issue => {
+      const isOpen = !['approved', 'rejected', 'resolved', 'closed'].includes(issue.status);
+      const statusMatch = issueStatusFilter === 'all'
+        || (issueStatusFilter === 'open' ? isOpen : issue.status === issueStatusFilter);
+      const searchable = [
+        issue.title,
+        issue.details,
+        issue.expected,
+        issue.type,
+        issue.category,
+        issue.severity,
+        issue.status,
+        issue.workspaceName,
+        issue.userId?.name,
+        issue.userId?.email
+      ].filter(Boolean).join(' ').toLowerCase();
+      return statusMatch && (!term || searchable.includes(term));
+    });
+  }, [issueSearch, issueStatusFilter, issues]);
+  const issueStatusFilters = [
+    ['all', 'All'],
+    ['open', 'Open'],
+    ['new', 'New'],
+    ['reviewing', 'Reviewing'],
+    ['approved', 'Approved'],
+    ['resolved', 'Resolved'],
+    ['rejected', 'Rejected'],
+    ['closed', 'Closed']
+  ];
+  const developerQuickStatuses = ['reviewing', 'approved', 'resolved', 'rejected', 'closed'];
 
   const statCards = [
     { icon: AlertTriangle, label: 'Pending Reports', value: issueStats.open, helper: isDeveloper ? 'Developer-only queue' : 'Visible to developers only', tone: 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-200' },
@@ -1037,246 +1094,403 @@ export default function OpsArena() {
       )}
 
       {(arenaView === 'report' || arenaView === 'developer') && (
-      <section className={`grid gap-5 ${arenaView === 'report' ? 'lg:grid-cols-[minmax(0,1fr)_380px]' : '2xl:grid-cols-[minmax(0,1fr)_360px]'}`}>
-        <div className={`space-y-5 ${arenaView === 'developer' ? '2xl:order-2 2xl:sticky 2xl:top-4 2xl:self-start' : 'lg:order-2 lg:sticky lg:top-4 lg:self-start'}`}>
-          {arenaView === 'report' && (
-          <section className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <div className="mb-3 flex items-center gap-3">
-              <div className="rounded-2xl bg-gradient-to-br from-pink-500 to-cyan-500 p-2.5 text-white">
-                <Bug size={20} />
-              </div>
-              <div>
-                <h2 className="text-base font-black text-gray-950 dark:text-white">Submit a Report</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Send clear details so developers know what to improve.</p>
-              </div>
-            </div>
-
-            {isDeveloper ? (
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm font-bold text-cyan-800 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200">
-                Developer accounts review reports only. Suggestions and bug reports can be submitted by regular members.
-              </div>
-            ) : (
-              <form onSubmit={submitReport} className="space-y-2.5">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <select value={reportForm.type} onChange={event => setReportForm(prev => ({ ...prev, type: event.target.value }))} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
-                    <option value="problem">Problem</option>
-                    <option value="suggestion">Suggestion</option>
-                  </select>
-                  <select value={reportForm.category} onChange={event => setReportForm(prev => ({ ...prev, category: event.target.value }))} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
-                    {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+        <section className="space-y-5">
+          {arenaView === 'developer' && !isDeveloper && (
+            <section className="mx-auto max-w-3xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className="border-b border-gray-100 p-5 dark:border-gray-800 sm:p-6">
+                <div className="flex items-center gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gray-950 text-white dark:bg-white dark:text-gray-950">
+                    <ShieldCheck size={25} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-black text-gray-950 dark:text-white">Developer Access</h2>
+                    <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">This console is restricted to developer accounts.</p>
+                  </div>
                 </div>
-                <select value={reportForm.severity} onChange={event => setReportForm(prev => ({ ...prev, severity: event.target.value }))} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
-                  <option value="low">Low severity</option>
-                  <option value="medium">Medium severity</option>
-                  <option value="high">High severity</option>
-                  <option value="critical">Critical severity</option>
-                </select>
-                <input value={reportForm.workspaceName} onChange={event => setReportForm(prev => ({ ...prev, workspaceName: event.target.value }))} placeholder="Related workspace or page (optional)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
-                <input value={reportForm.title} onChange={event => setReportForm(prev => ({ ...prev, title: event.target.value }))} placeholder="Short title" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
-                <textarea value={reportForm.details} onChange={event => setReportForm(prev => ({ ...prev, details: event.target.value }))} rows="3" placeholder="What happened? Include steps, screen, or exact behavior." className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
-                <textarea value={reportForm.expected} onChange={event => setReportForm(prev => ({ ...prev, expected: event.target.value }))} rows="2" placeholder="What should happen instead? (optional)" className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
-                <button disabled={submittingReport} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-black text-white transition hover:bg-pink-700 disabled:opacity-60">
-                  <Send size={17} />
-                  {submittingReport ? 'Submitting...' : 'Submit Privately'}
-                </button>
-              </form>
-            )}
-          </section>
-          )}
-
-          {arenaView === 'developer' && (
-          <section className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <div className="mb-3 flex items-center gap-3">
-              <div className="rounded-2xl bg-gray-950 p-3 text-white dark:bg-white dark:text-gray-950">
-                <ShieldCheck size={22} />
               </div>
-              <div>
-                <h2 className="text-lg font-black text-gray-950 dark:text-white">Developer Access</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{isDeveloper ? 'You can review all member reports.' : 'Unlock developer console access.'}</p>
-              </div>
-            </div>
-
-            {isDeveloper ? (
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-                Developer mode active for {developerInfo?.user?.name || 'this account'}.
-              </div>
-            ) : (
-              <form onSubmit={unlockDeveloper} className="flex gap-2">
-                <label className="relative flex-1">
-                  <Lock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="password" value={developerPassword} onChange={event => setDeveloperPassword(event.target.value)} placeholder="Developer password" className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
+              <form onSubmit={unlockDeveloper} className="grid gap-3 p-5 dark:bg-gray-950/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-6">
+                <label className="relative">
+                  <Lock size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="password"
+                    value={developerPassword}
+                    onChange={event => setDeveloperPassword(event.target.value)}
+                    placeholder="Developer password"
+                    className="h-12 w-full rounded-2xl border border-gray-200 bg-white pl-11 pr-4 text-sm font-semibold text-gray-900 outline-none transition focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  />
                 </label>
-                <button disabled={unlockingDeveloper} className="rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
-                  Unlock
+                <button disabled={unlockingDeveloper} className="h-12 rounded-2xl bg-[#1877f2] px-6 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-60">
+                  {unlockingDeveloper ? 'Checking...' : 'Unlock Console'}
                 </button>
               </form>
-            )}
-          </section>
+            </section>
           )}
-        </div>
 
-        <section className="grid min-w-0 gap-5 2xl:order-1 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-          <div className="min-w-0 rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <div className="border-b border-gray-100 p-5 dark:border-gray-800">
-              <h2 className="text-lg font-black text-gray-950 dark:text-white">{isDeveloper ? 'Developer Inbox' : 'My Submitted Reports'}</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{isDeveloper ? `${issues.length} submitted items` : 'Track developer status, approval, and replies'}</p>
-            </div>
-            <div className="max-h-[680px] overflow-y-auto p-3">
-              {issues.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400">
-                  {isDeveloper ? 'No reports yet.' : 'No submitted reports yet. Send a problem or suggestion to start a private developer thread.'}
+          {arenaView === 'developer' && isDeveloper && (
+            <section className="overflow-hidden rounded-3xl border border-gray-800 bg-gray-950 text-white shadow-sm">
+              <div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/10 text-cyan-200 ring-1 ring-white/10">
+                    <ShieldCheck size={26} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-wide text-cyan-200">Developer workspace</p>
+                    <h2 className="mt-1 text-2xl font-black">Report Console</h2>
+                    <p className="mt-1 max-w-2xl text-sm font-semibold text-white/65">Review member reports, update status, reply privately, and remove requests that are already handled.</p>
+                  </div>
                 </div>
-              ) : issues.map(issue => {
-                const isActive = getEntityId(issue) === getEntityId(selectedIssue);
-                return (
-                  <button
-                    key={issue._id}
-                    type="button"
-                    onClick={() => setSelectedIssueId(issue._id)}
-                    className={`mb-2 w-full rounded-2xl border p-4 text-left transition hover:border-pink-200 hover:bg-pink-50 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20 ${isActive ? 'border-pink-200 bg-pink-50 dark:border-pink-900/60 dark:bg-pink-950/20' : 'border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50'}`}
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black uppercase ring-1 ${severityStyles[issue.severity] || severityStyles.medium}`}>
-                        {issue.severity}
-                      </span>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black uppercase ring-1 ${statusStyles[issue.status] || statusStyles.new}`}>
-                        {issue.status}
-                      </span>
-                    </div>
-                    <p className="line-clamp-2 text-sm font-black text-gray-950 dark:text-white">{issue.title}</p>
-                    <p className="mt-1 line-clamp-1 text-xs text-gray-500 dark:text-gray-400">
-                      {issue.type} - {issue.category} - {isDeveloper ? issue.userId?.name || 'Member' : `${(issue.messages || []).length} thread updates`}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+                  <p className="text-xs font-black uppercase text-white/55">Signed in as developer</p>
+                  <p className="mt-1 truncate text-base font-black">{developerInfo?.user?.name || 'Developer'}</p>
+                  <p className="mt-1 text-xs font-semibold text-emerald-200">Console access active</p>
+                </div>
+              </div>
+              <div className="grid border-t border-white/10 sm:grid-cols-3">
+                <div className="p-4 sm:p-5">
+                  <p className="text-3xl font-black">{issues.length}</p>
+                  <p className="text-xs font-bold uppercase text-white/55">Total reports</p>
+                </div>
+                <div className="border-t border-white/10 p-4 sm:border-l sm:border-t-0 sm:p-5">
+                  <p className="text-3xl font-black">{issueStats.open}</p>
+                  <p className="text-xs font-bold uppercase text-white/55">Open queue</p>
+                </div>
+                <div className="border-t border-white/10 p-4 sm:border-l sm:border-t-0 sm:p-5">
+                  <p className="text-3xl font-black">{issueStats.critical}</p>
+                  <p className="text-xs font-bold uppercase text-white/55">High priority</p>
+                </div>
+              </div>
+            </section>
+          )}
 
-          <div className="min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            {selectedIssue ? (
-              <>
+          {arenaView === 'report' && (
+            <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                <div className="border-b border-gray-100 p-5 dark:border-gray-800 sm:p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-pink-500 to-cyan-500 text-white shadow-lg shadow-pink-500/20">
+                      <Bug size={25} />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-xl font-black text-gray-950 dark:text-white">Submit a Problem</h2>
+                      <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">Create a private report thread for the developer team.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {isDeveloper ? (
+                  <div className="m-5 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm font-bold text-cyan-800 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200 sm:m-6">
+                    Developer accounts review reports only. Regular members can submit problems and suggestions.
+                  </div>
+                ) : (
+                  <form onSubmit={submitReport} className="grid gap-4 p-5 sm:p-6">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Type</span>
+                        <select value={reportForm.type} onChange={event => setReportForm(prev => ({ ...prev, type: event.target.value }))} className="h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
+                          <option value="problem">Problem</option>
+                          <option value="suggestion">Suggestion</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Area</span>
+                        <select value={reportForm.category} onChange={event => setReportForm(prev => ({ ...prev, category: event.target.value }))} className="h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
+                          {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Priority</span>
+                        <select value={reportForm.severity} onChange={event => setReportForm(prev => ({ ...prev, severity: event.target.value }))} className="h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="critical">Critical</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Related page or workspace</span>
+                      <input value={reportForm.workspaceName} onChange={event => setReportForm(prev => ({ ...prev, workspaceName: event.target.value }))} placeholder="Messages, Dashboard, Fix Arena, group name..." className="h-11 rounded-2xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Summary</span>
+                      <input value={reportForm.title} onChange={event => setReportForm(prev => ({ ...prev, title: event.target.value }))} placeholder="Short title" className="h-11 rounded-2xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Details</span>
+                      <textarea value={reportForm.details} onChange={event => setReportForm(prev => ({ ...prev, details: event.target.value }))} rows="5" placeholder="What happened? Include the page, action, and exact behavior." className="resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Expected result</span>
+                      <textarea value={reportForm.expected} onChange={event => setReportForm(prev => ({ ...prev, expected: event.target.value }))} rows="3" placeholder="What should happen instead?" className="resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
+                    </label>
+                    <button disabled={submittingReport} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#1877f2] px-5 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-60">
+                      <Send size={17} />
+                      {submittingReport ? 'Submitting...' : 'Submit Report'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              <aside className="space-y-4">
+                <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                  <p className="text-sm font-black text-gray-950 dark:text-white">Report status</p>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl bg-gray-50 p-3 text-center dark:bg-gray-950/50">
+                      <p className="text-xl font-black text-gray-950 dark:text-white">{issues.length}</p>
+                      <p className="text-[11px] font-bold uppercase text-gray-500 dark:text-gray-400">Sent</p>
+                    </div>
+                    <div className="rounded-2xl bg-amber-50 p-3 text-center dark:bg-amber-950/20">
+                      <p className="text-xl font-black text-amber-700 dark:text-amber-200">{issueStats.open}</p>
+                      <p className="text-[11px] font-bold uppercase text-amber-700/70 dark:text-amber-200/70">Open</p>
+                    </div>
+                    <div className="rounded-2xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/20">
+                      <p className="text-xl font-black text-emerald-700 dark:text-emerald-200">{issueStats.resolved}</p>
+                      <p className="text-[11px] font-bold uppercase text-emerald-700/70 dark:text-emerald-200/70">Done</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                  <p className="text-sm font-black text-gray-950 dark:text-white">Quality checklist</p>
+                  <div className="mt-4 space-y-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    {['Clear title', 'Exact page or workspace', 'What happened', 'Expected result'].map(item => (
+                      <div key={item} className="flex items-center gap-3">
+                        <CheckCircle2 size={17} className="text-emerald-500" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            </section>
+          )}
+
+          {(arenaView === 'report' || (arenaView === 'developer' && isDeveloper)) && (
+            <section className="grid min-w-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+              <aside className="min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <div className="border-b border-gray-100 p-5 dark:border-gray-800">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ring-1 ${severityStyles[selectedIssue.severity] || severityStyles.medium}`}>{selectedIssue.severity}</span>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ring-1 ${statusStyles[selectedIssue.status] || statusStyles.new}`}>{selectedIssue.status}</span>
-                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-black uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-300">{selectedIssue.category}</span>
-                      </div>
-                      <h2 className="text-xl font-black text-gray-950 dark:text-white">{selectedIssue.title}</h2>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Submitted by {selectedIssue.userId?.name || 'Member'} - {formatDateTime(selectedIssue.createdAt)}</p>
+                      <h2 className="text-lg font-black text-gray-950 dark:text-white">{isDeveloper ? 'Developer Inbox' : 'My Reports'}</h2>
+                      <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">{filteredIssues.length} of {issues.length} shown</p>
                     </div>
-                    {isDeveloper && (
-                      <select value={selectedIssue.status} onChange={event => updateStatus(selectedIssue._id, event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white">
-                        {statuses.map(status => <option key={status} value={status}>{status}</option>)}
-                      </select>
-                    )}
+                    <span className="grid h-10 w-10 place-items-center rounded-2xl bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-blue-200">
+                      <MessageCircle size={18} />
+                    </span>
+                  </div>
+                  <label className="relative mt-4 block">
+                    <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={issueSearch}
+                      onChange={event => setIssueSearch(event.target.value)}
+                      placeholder="Search reports"
+                      className="h-11 w-full rounded-2xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm font-semibold text-gray-900 outline-none transition focus:border-[#1877f2] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                    />
+                  </label>
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                    {issueStatusFilters.map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setIssueStatusFilter(value)}
+                        className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${
+                          issueStatusFilter === value
+                            ? 'bg-[#1877f2] text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-[#1877f2] dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-blue-950/30'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-
-                <div className="grid min-w-0 gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-                  <div className="space-y-4">
-                    <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-950/50">
-                      <p className="text-sm font-black text-gray-950 dark:text-white">Problem details</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{selectedIssue.details}</p>
+                <div className="max-h-[72svh] overflow-y-auto p-3">
+                  {filteredIssues.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400">
+                      {issues.length ? 'No reports match this view.' : isDeveloper ? 'No member reports yet.' : 'No submitted reports yet.'}
                     </div>
-                    {selectedIssue.expected && (
-                      <div className="rounded-2xl bg-cyan-50 p-4 dark:bg-cyan-950/20">
-                        <p className="text-sm font-black text-cyan-900 dark:text-cyan-100">Expected result</p>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-cyan-800 dark:text-cyan-200">{selectedIssue.expected}</p>
-                      </div>
-                    )}
+                  ) : filteredIssues.map(issue => {
+                    const isActive = getEntityId(issue) === getEntityId(selectedIssue);
+                    return (
+                      <button
+                        key={issue._id}
+                        type="button"
+                        onClick={() => setSelectedIssueId(issue._id)}
+                        className={`mb-2 w-full rounded-2xl border p-4 text-left transition ${
+                          isActive
+                            ? 'border-[#1877f2] bg-blue-50 shadow-sm dark:border-blue-800 dark:bg-blue-950/30'
+                            : 'border-gray-100 bg-gray-50 hover:border-blue-200 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20'
+                        }`}
+                      >
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-black uppercase ring-1 ${severityStyles[issue.severity] || severityStyles.medium}`}>
+                            {issue.severity}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-black uppercase ring-1 ${statusStyles[issue.status] || statusStyles.new}`}>
+                            {issue.status}
+                          </span>
+                        </div>
+                        <p className="line-clamp-2 text-sm font-black text-gray-950 dark:text-white">{issue.title}</p>
+                        <p className="mt-2 line-clamp-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                          {issue.type} - {issue.category} - {isDeveloper ? issue.userId?.name || 'Member' : `${(issue.messages || []).length} thread updates`}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
 
-                    <div className="rounded-2xl border border-gray-100 dark:border-gray-800">
-                      <div className="border-b border-gray-100 p-4 dark:border-gray-800">
-                        <h3 className="flex items-center gap-2 font-black text-gray-950 dark:text-white">
-                          <MessageCircle size={18} />
-                          Communication Thread
-                        </h3>
+              <div className="min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                {selectedIssue ? (
+                  <>
+                    <div className="border-b border-gray-100 p-5 dark:border-gray-800 sm:p-6">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ring-1 ${severityStyles[selectedIssue.severity] || severityStyles.medium}`}>{selectedIssue.severity}</span>
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ring-1 ${statusStyles[selectedIssue.status] || statusStyles.new}`}>{selectedIssue.status}</span>
+                            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-black uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-300">{selectedIssue.category}</span>
+                          </div>
+                          <h2 className="text-xl font-black text-gray-950 dark:text-white">{selectedIssue.title}</h2>
+                          <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                            Submitted by {selectedIssue.userId?.name || 'Member'} - {formatDateTime(selectedIssue.createdAt)}
+                          </p>
+                        </div>
+                        {isDeveloper && (
+                          <div className="flex flex-wrap gap-2 xl:justify-end">
+                            {developerQuickStatuses.map(status => (
+                              <button
+                                key={status}
+                                type="button"
+                                onClick={() => updateStatus(selectedIssue._id, status)}
+                                disabled={selectedIssue.status === status}
+                                className={`rounded-full px-3 py-2 text-xs font-black capitalize transition ${
+                                  selectedIssue.status === status
+                                    ? 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                    : 'bg-gray-950 text-white hover:bg-[#1877f2] dark:bg-white dark:text-gray-950 dark:hover:bg-blue-100'
+                                }`}
+                              >
+                                {status}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => deleteIssue(selectedIssue._id)}
+                              disabled={deletingIssueId === selectedIssue._id}
+                              className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-3 py-2 text-xs font-black text-white transition hover:bg-rose-700 disabled:opacity-60"
+                            >
+                              <Trash2 size={14} />
+                              {deletingIssueId === selectedIssue._id ? 'Deleting' : 'Delete'}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="max-h-80 space-y-3 overflow-y-auto p-4">
-                        {(selectedIssue.messages || []).map(message => {
-                          const avatar = resolveMediaUrl(message.senderId?.avatar);
-                          const isDevMessage = message.role === 'developer';
-                          return (
-                            <div key={message._id || message.createdAt} className={`flex gap-3 ${isDevMessage ? 'justify-end' : ''}`}>
-                              {!isDevMessage && (
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
-                                  {avatar ? <img src={avatar} alt={message.senderId?.name || 'User'} className="h-full w-full object-cover" /> : message.senderId?.name?.charAt(0)?.toUpperCase()}
+                    </div>
+
+                    <div className="grid min-w-0 gap-4 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+                      <div className="space-y-4">
+                        <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-950/50">
+                          <p className="text-sm font-black text-gray-950 dark:text-white">Report details</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{selectedIssue.details}</p>
+                        </div>
+                        {selectedIssue.expected && (
+                          <div className="rounded-2xl bg-blue-50 p-4 dark:bg-blue-950/20">
+                            <p className="text-sm font-black text-blue-900 dark:text-blue-100">Expected result</p>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-blue-800 dark:text-blue-200">{selectedIssue.expected}</p>
+                          </div>
+                        )}
+
+                        <div className="overflow-hidden rounded-2xl border border-gray-100 dark:border-gray-800">
+                          <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4 dark:border-gray-800">
+                            <h3 className="flex items-center gap-2 font-black text-gray-950 dark:text-white">
+                              <MessageCircle size={18} />
+                              Thread
+                            </h3>
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                              {(selectedIssue.messages || []).length} updates
+                            </span>
+                          </div>
+                          <div className="max-h-96 space-y-3 overflow-y-auto bg-gray-50/60 p-4 dark:bg-gray-950/30">
+                            {(selectedIssue.messages || []).map(message => {
+                              const avatar = resolveMediaUrl(message.senderId?.avatar);
+                              const isDevMessage = message.role === 'developer';
+                              return (
+                                <div key={message._id || message.createdAt} className={`flex gap-3 ${isDevMessage ? 'justify-end' : ''}`}>
+                                  {!isDevMessage && (
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                                      {avatar ? <img src={avatar} alt={message.senderId?.name || 'User'} className="h-full w-full object-cover" /> : message.senderId?.name?.charAt(0)?.toUpperCase()}
+                                    </div>
+                                  )}
+                                  <div className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-sm ${isDevMessage ? 'bg-[#1877f2] text-white' : 'bg-white text-gray-800 dark:bg-gray-800 dark:text-gray-100'}`}>
+                                    <p className="text-xs font-black uppercase opacity-70">{isDevMessage ? 'Developer' : message.senderId?.name || 'Member'}</p>
+                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{message.text}</p>
+                                    <p className="mt-2 text-[11px] opacity-60">{formatDateTime(message.createdAt)}</p>
+                                  </div>
                                 </div>
-                              )}
-                              <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${isDevMessage ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'}`}>
-                                <p className="text-xs font-black uppercase opacity-70">{isDevMessage ? 'Developer' : message.senderId?.name || 'Member'}</p>
-                                <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{message.text}</p>
-                                <p className="mt-2 text-[11px] opacity-60">{formatDateTime(message.createdAt)}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                          <form onSubmit={sendIssueMessage} className="flex gap-2 border-t border-gray-100 p-3 dark:border-gray-800">
+                            <input value={messageText} onChange={event => setMessageText(event.target.value)} placeholder={isDeveloper ? 'Reply as developer...' : 'Message the developers...'} className="h-11 min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
+                            <button disabled={sendingMessage || !messageText.trim()} className="grid h-11 w-11 place-items-center rounded-2xl bg-[#1877f2] text-white transition hover:bg-[#0f63d5] disabled:opacity-50" aria-label="Send message">
+                              <Send size={18} />
+                            </button>
+                          </form>
+                        </div>
                       </div>
-                      <form onSubmit={sendIssueMessage} className="flex gap-2 border-t border-gray-100 p-3 dark:border-gray-800">
-                        <input value={messageText} onChange={event => setMessageText(event.target.value)} placeholder={isDeveloper ? 'Reply as developer...' : 'Message the developers...'} className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white" />
-                        <button disabled={sendingMessage || !messageText.trim()} className="rounded-xl bg-pink-600 px-4 text-white transition hover:bg-pink-700 disabled:opacity-50" aria-label="Send message">
-                          <Send size={18} />
-                        </button>
-                      </form>
-                    </div>
-                  </div>
 
-                  <aside className="space-y-4">
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
-                      <p className="text-sm font-black text-gray-950 dark:text-white">Developer decision</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ring-1 ${statusStyles[selectedIssue.status] || statusStyles.new}`}>
-                          {selectedIssue.status}
-                        </span>
-                        <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ring-1 ${severityStyles[selectedIssue.severity] || severityStyles.medium}`}>
-                          {selectedIssue.severity}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                        Status changes and developer replies appear in the communication thread automatically.
+                      <aside className="space-y-4">
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
+                          <p className="text-sm font-black text-gray-950 dark:text-white">Decision</p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ring-1 ${statusStyles[selectedIssue.status] || statusStyles.new}`}>
+                              {selectedIssue.status}
+                            </span>
+                            <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ring-1 ${severityStyles[selectedIssue.severity] || severityStyles.medium}`}>
+                              {selectedIssue.severity}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-xs font-semibold leading-5 text-gray-500 dark:text-gray-400">
+                            Replies and status updates stay in this private thread.
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
+                          <p className="text-sm font-black text-gray-950 dark:text-white">Reporter</p>
+                          <button type="button" onClick={() => setProfileUser(selectedIssue.userId)} className="mt-3 flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left transition hover:bg-blue-50 dark:bg-gray-900 dark:hover:bg-blue-950/20">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
+                              {resolveMediaUrl(selectedIssue.userId?.avatar) ? <img src={resolveMediaUrl(selectedIssue.userId?.avatar)} alt={selectedIssue.userId?.name || 'User'} className="h-full w-full object-cover" /> : selectedIssue.userId?.name?.charAt(0)?.toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-black text-gray-950 dark:text-white">{selectedIssue.userId?.name || 'Member'}</p>
+                              <p className="truncate text-xs text-gray-500 dark:text-gray-400">{selectedIssue.userId?.email || 'No email'}</p>
+                            </div>
+                          </button>
+                        </div>
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm dark:border-gray-800 dark:bg-gray-950/50">
+                          <p className="font-black text-gray-950 dark:text-white">Metadata</p>
+                          <div className="mt-3 space-y-2 text-gray-600 dark:text-gray-300">
+                            <p>Type: <span className="font-bold capitalize">{selectedIssue.type}</span></p>
+                            <p>Workspace: <span className="font-bold">{selectedIssue.workspaceName || 'Not specified'}</span></p>
+                            <p>Updated: <span className="font-bold">{formatDateTime(selectedIssue.updatedAt)}</span></p>
+                          </div>
+                        </div>
+                      </aside>
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid min-h-[460px] place-items-center p-8 text-center">
+                    <div>
+                      <Lightbulb className="mx-auto text-[#1877f2]" size={38} />
+                      <h2 className="mt-3 text-xl font-black text-gray-950 dark:text-white">{isDeveloper ? 'No selected report' : 'No report selected'}</h2>
+                      <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        {isDeveloper ? 'Select a report to review the details and take action.' : 'Submit a problem or open an existing report to view its thread.'}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
-                      <p className="text-sm font-black text-gray-950 dark:text-white">Reporter</p>
-                      <button type="button" onClick={() => setProfileUser(selectedIssue.userId)} className="mt-3 flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left transition hover:bg-pink-50 dark:bg-gray-900 dark:hover:bg-pink-950/20">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
-                          {resolveMediaUrl(selectedIssue.userId?.avatar) ? <img src={resolveMediaUrl(selectedIssue.userId?.avatar)} alt={selectedIssue.userId?.name || 'User'} className="h-full w-full object-cover" /> : selectedIssue.userId?.name?.charAt(0)?.toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-gray-950 dark:text-white">{selectedIssue.userId?.name || 'Member'}</p>
-                          <p className="truncate text-xs text-gray-500 dark:text-gray-400">{selectedIssue.userId?.email || 'No email'}</p>
-                        </div>
-                      </button>
-                    </div>
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm dark:border-gray-800 dark:bg-gray-950/50">
-                      <p className="font-black text-gray-950 dark:text-white">Report metadata</p>
-                      <div className="mt-3 space-y-2 text-gray-600 dark:text-gray-300">
-                        <p>Type: <span className="font-bold capitalize">{selectedIssue.type}</span></p>
-                        <p>Workspace: <span className="font-bold">{selectedIssue.workspaceName || 'Not specified'}</span></p>
-                        <p>Updated: <span className="font-bold">{formatDateTime(selectedIssue.updatedAt)}</span></p>
-                      </div>
-                    </div>
-                  </aside>
-                </div>
-              </>
-            ) : (
-              <div className="grid min-h-[480px] place-items-center p-8 text-center">
-                <div>
-                  <Lightbulb className="mx-auto text-pink-500" size={38} />
-                  <h2 className="mt-3 text-xl font-black text-gray-950 dark:text-white">{isDeveloper ? 'No selected report' : 'No submitted report selected'}</h2>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {isDeveloper ? 'Select a report to review the details and decide approve or reject.' : 'Submit a suggestion or bug, then you can view its status and conversation with developers here.'}
-                  </p>
-                </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </section>
+          )}
         </section>
-      </section>
       )}
 
       <UserProfileModal isOpen={Boolean(profileUser)} user={profileUser} onClose={() => setProfileUser(null)} />

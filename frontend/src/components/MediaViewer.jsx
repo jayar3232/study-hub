@@ -8,19 +8,35 @@ const CLOSE_THRESHOLD = 130;
 
 const isInteractiveTarget = (target) => Boolean(target?.closest?.('button,a,input,textarea,select,video'));
 
+const useRafState = (initialValue) => {
+  const [state, setState] = useState(initialValue);
+  const latestRef = useRef(initialValue);
+  const frameRef = useRef(0);
+
+  const setRafState = (value) => {
+    latestRef.current = typeof value === 'function' ? value(latestRef.current) : value;
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      setState(latestRef.current);
+    });
+  };
+
+  useEffect(() => () => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+  }, []);
+
+  return [state, setRafState, latestRef];
+};
+
 export default function MediaViewer({ media, onClose, onPrevious, onNext, positionLabel, details }) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [viewerDrag, setViewerDrag] = useState({ x: 0, y: 0 });
+  const [scale, setScale, scaleRef] = useRafState(1);
+  const [offset, setOffset] = useRafState({ x: 0, y: 0 });
+  const [viewerDrag, setViewerDrag] = useRafState({ x: 0, y: 0 });
   const [isMediaLoading, setIsMediaLoading] = useState(false);
   const pointersRef = useRef(new Map());
   const gestureRef = useRef(null);
   const pinchRef = useRef(null);
-  const scaleRef = useRef(scale);
-
-  useEffect(() => {
-    scaleRef.current = scale;
-  }, [scale]);
 
   useEffect(() => {
     if (!media) return;
@@ -210,24 +226,26 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
     <AnimatePresence>
       {media && (
         <motion.div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 p-3 backdrop-blur"
+          className="media-viewer-overlay fixed inset-0 z-[90] flex items-center justify-center bg-black p-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.12 }}
           onClick={onClose}
         >
           <motion.div
             className="media-viewer-frame relative flex h-full w-full max-w-[min(96vw,92rem)] flex-col"
-            initial={{ scale: 0.98, y: 10 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.98, y: 10 }}
+            initial={{ opacity: 0.98 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0.98 }}
+            transition={{ duration: 0.12 }}
             onClick={event => event.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3 pb-3 pt-[env(safe-area-inset-top)] text-white">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+                className="media-viewer-control flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white transition hover:bg-white/20"
                 aria-label="Back"
               >
                 <ArrowLeft size={25} strokeWidth={2.8} />
@@ -242,7 +260,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
                 download
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+                className="media-viewer-control flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white transition hover:bg-white/20"
                 aria-label="Download media"
               >
                 <Download size={20} />
@@ -290,6 +308,8 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
                     src={media.url}
                     alt={media.name || 'Media'}
                     draggable={false}
+                    decoding="async"
+                    fetchPriority="high"
                     onLoad={() => setIsMediaLoading(false)}
                     onError={() => setIsMediaLoading(false)}
                     className="media-viewer-image max-h-full max-w-full rounded-2xl object-contain transition-transform duration-75"
@@ -307,7 +327,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
                   event.stopPropagation();
                   moveMedia(-1);
                 }}
-                className="absolute left-2 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white shadow-2xl backdrop-blur transition hover:bg-white/20 active:scale-95 md:left-4"
+                className="media-viewer-control absolute left-2 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white shadow-2xl transition hover:bg-white/20 active:scale-95 md:left-4"
                 aria-label="Previous media"
               >
                 <ChevronLeft size={28} />
@@ -321,7 +341,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
                   event.stopPropagation();
                   moveMedia(1);
                 }}
-                className="absolute right-2 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white shadow-2xl backdrop-blur transition hover:bg-white/20 active:scale-95 md:right-4"
+                className="media-viewer-control absolute right-2 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white shadow-2xl transition hover:bg-white/20 active:scale-95 md:right-4"
                 aria-label="Next media"
               >
                 <ChevronRight size={28} />
@@ -329,7 +349,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
             )}
 
             {media.type !== 'video' && (
-              <div className="mx-auto mt-3 flex items-center gap-2 rounded-2xl bg-white/10 p-2 text-white backdrop-blur">
+              <div className="media-viewer-control mx-auto mt-3 flex items-center gap-2 rounded-2xl bg-white/10 p-2 text-white">
                 <button type="button" onClick={() => zoomBy(-0.4)} className="grid h-10 w-10 place-items-center rounded-xl transition hover:bg-white/20" aria-label="Zoom out">
                   <Minus size={18} />
                 </button>

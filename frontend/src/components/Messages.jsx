@@ -53,9 +53,21 @@ let socket;
 
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
 const MESSAGE_RENDER_BATCH = 120;
+const MOBILE_MESSAGE_RENDER_BATCH = 70;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
 const shouldAutoFocusComposer = () => (
+  typeof window !== 'undefined'
+  && window.matchMedia?.('(pointer: fine) and (min-width: 768px)').matches
+);
+
+const getMessageRenderBatch = () => (
+  typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+    ? MOBILE_MESSAGE_RENDER_BATCH
+    : MESSAGE_RENDER_BATCH
+);
+
+const shouldPreloadAdjacentMedia = () => (
   typeof window !== 'undefined'
   && window.matchMedia?.('(pointer: fine) and (min-width: 768px)').matches
 );
@@ -177,7 +189,7 @@ export default function Messages() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_RENDER_BATCH);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(() => getMessageRenderBatch());
   const [newMessage, setNewMessage] = useState('');
   const [editingMessage, setEditingMessage] = useState(null);
   const [messageSearch, setMessageSearch] = useState('');
@@ -208,6 +220,7 @@ export default function Messages() {
   const [lastSeenByUser, setLastSeenByUser] = useState({});
   const [myNote, setMyNote] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [showNoteComposer, setShowNoteComposer] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [userNotes, setUserNotes] = useState({});
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -1165,6 +1178,33 @@ export default function Messages() {
     { id: 'favorites', label: 'Favorites', count: favoriteConversationIds.size },
     { id: 'muted', label: 'Muted', count: mutedConversationIds.size }
   ]), [conversations.length, favoriteConversationIds.size, mutedConversationIds.size, pinnedConversationIds.size, unreadTotal]);
+  const noteTrayItems = useMemo(() => {
+    const items = [];
+    if (user) {
+      items.push({
+        id: 'me',
+        person: user,
+        text: myNote?.text || 'Create note',
+        isMe: true,
+        hasNote: Boolean(myNote?.text)
+      });
+    }
+
+    Object.values(userNotes)
+      .filter(note => getEntityId(note.userId) && getEntityId(note.userId) !== currentUserId)
+      .slice(0, 12)
+      .forEach(note => {
+        items.push({
+          id: getEntityId(note.userId),
+          person: note.userId,
+          text: note.text,
+          isMe: false,
+          hasNote: true
+        });
+      });
+
+    return items;
+  }, [currentUserId, myNote, user, userNotes]);
 
   const messageSearchMatches = useMemo(() => {
     const query = messageSearch.trim().toLowerCase();
@@ -1181,7 +1221,7 @@ export default function Messages() {
 
   useEffect(() => {
     setShowChatDetails(false);
-    setVisibleMessageCount(MESSAGE_RENDER_BATCH);
+    setVisibleMessageCount(getMessageRenderBatch());
   }, [selectedUserId]);
 
   const goToSearchMatch = (direction = 0) => {
@@ -1253,12 +1293,12 @@ export default function Messages() {
 
   const sharedMediaItems = useMemo(() => (
     messages
-      .filter(message => message.fileUrl && ['image', 'video'].includes(message.fileType))
+      .filter(message => !message.unsent && message.fileUrl && ['image', 'video'].includes(message.fileType))
       .reverse()
   ), [messages]);
 
   useEffect(() => {
-    if (!hasMediaNavigation || typeof window === 'undefined') return;
+    if (!hasMediaNavigation || !shouldPreloadAdjacentMedia()) return;
 
     [-1, 1].forEach(direction => {
       const item = mediaGalleryItems[(mediaPreviewIndex + direction + mediaGalleryItems.length) % mediaGalleryItems.length];
@@ -1271,7 +1311,7 @@ export default function Messages() {
 
   const sharedFileItems = useMemo(() => (
     messages
-      .filter(message => message.fileUrl && !['image', 'video'].includes(message.fileType))
+      .filter(message => !message.unsent && message.fileUrl && !['image', 'video'].includes(message.fileType))
       .slice(-5)
       .reverse()
   ), [messages]);
@@ -1378,10 +1418,10 @@ export default function Messages() {
         <button
           type="button"
           onClick={() => openMediaPreview(message)}
-          className="block overflow-hidden rounded-2xl"
+          className="message-media-attachment block overflow-hidden rounded-2xl bg-black/5 dark:bg-white/5"
           aria-label="View photo"
         >
-          <img src={mediaUrl} alt={message.fileName || 'Attachment'} loading="lazy" decoding="async" className="max-h-80 w-full object-contain" />
+          <img src={mediaUrl} alt={message.fileName || 'Attachment'} loading="lazy" decoding="async" draggable={false} className="max-h-80 w-full object-contain" />
         </button>
       );
     }
@@ -1391,7 +1431,7 @@ export default function Messages() {
         <button
           type="button"
           onClick={() => openMediaPreview(message)}
-          className="block w-full overflow-hidden rounded-2xl"
+          className="message-media-attachment block w-full overflow-hidden rounded-2xl"
           aria-label="View video"
         >
           <span className="relative block overflow-hidden rounded-2xl bg-black">
@@ -1545,9 +1585,9 @@ export default function Messages() {
                     aria-label="Open shared media"
                   >
                     {message.fileType === 'image' ? (
-              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
+              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
             ) : (
-              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} />
+              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} preload="none" />
             )}
                   </button>
                 );
@@ -1643,35 +1683,9 @@ export default function Messages() {
             })}
           </nav>
 
-          <form onSubmit={handleSaveNote} className="mt-auto rounded-3xl border border-slate-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-2 text-sm font-black text-slate-950 dark:text-white">
-                <StickyNote size={16} className="text-[#1877f2] dark:text-sky-300" />
-                Your note
-              </span>
-              <span className="text-[11px] font-bold text-slate-400">1 day</span>
-            </div>
-            <input
-              value={noteText}
-              onChange={event => setNoteText(event.target.value.slice(0, 140))}
-              placeholder="Share a quick note..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-            />
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <button
-                type="submit"
-                disabled={savingNote || !noteText.trim()}
-                className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white disabled:opacity-45 dark:bg-white dark:text-gray-950"
-              >
-                Post
-              </button>
-              {myNote && (
-                <button type="button" onClick={handleClearNote} disabled={savingNote} className="text-xs font-black text-rose-500">
-                  Clear
-                </button>
-              )}
-            </div>
-          </form>
+          <div className="mt-auto rounded-3xl border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+            Notes now live above your chat list, just like Messenger.
+          </div>
         </aside>
 
         <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[23rem] md:max-w-none md:flex xl:w-[24rem]`}>
@@ -1713,6 +1727,81 @@ export default function Messages() {
               />
             </div>
 
+            <div className="messenger-notes-tray mt-3 -mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+              {noteTrayItems.map(item => {
+                const personId = getEntityId(item.person);
+                const noteAvatar = renderAvatar(item.person, 'h-12 w-12', 20);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (item.isMe) {
+                        setShowNoteComposer(value => !value);
+                        return;
+                      }
+                      const conversation = conversations.find(entry => getEntityId(entry.user) === personId);
+                      if (conversation?.user) setSelectedUser(conversation.user);
+                    }}
+                    className="messenger-note-head group w-[4.75rem] shrink-0 text-center"
+                  >
+                    <span className="relative mx-auto block h-[4.75rem] w-[4.75rem]">
+                      <span className={`absolute inset-x-0 top-0 z-10 mx-auto line-clamp-2 min-h-7 max-w-[4.45rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
+                        item.hasNote
+                          ? 'bg-white text-slate-800 ring-slate-200 dark:bg-gray-900 dark:text-white dark:ring-gray-700'
+                          : 'bg-[#1877f2] text-white ring-blue-300'
+                      }`}>
+                        {item.text}
+                      </span>
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950">
+                        {noteAvatar}
+                      </span>
+                      {item.isMe && (
+                        <span className="absolute bottom-0 right-2 z-20 grid h-5 w-5 place-items-center rounded-full bg-[#1877f2] text-white ring-2 ring-white dark:ring-gray-950">
+                          <Plus size={12} strokeWidth={3} />
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-1 block truncate text-[11px] font-bold text-slate-600 dark:text-gray-300">
+                      {item.isMe ? 'Your note' : item.person?.name || 'Friend'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {showNoteComposer && (
+              <form onSubmit={handleSaveNote} className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/50 dark:bg-blue-950/20">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2 text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">
+                    <StickyNote size={14} />
+                    Your note
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-400">1 day</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={noteText}
+                    onChange={event => setNoteText(event.target.value.slice(0, 140))}
+                    placeholder="Share a quick note..."
+                    className="min-w-0 flex-1 rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#1877f2] dark:border-blue-900/50 dark:bg-gray-950 dark:text-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingNote || !noteText.trim()}
+                    className="rounded-xl bg-[#1877f2] px-3 py-2 text-xs font-black text-white disabled:opacity-45"
+                  >
+                    Post
+                  </button>
+                  {myNote && (
+                    <button type="button" onClick={handleClearNote} disabled={savingNote} className="rounded-xl px-2 text-xs font-black text-rose-500">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
+
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {conversationFilters.map(filter => (
                 <button
@@ -1726,40 +1815,11 @@ export default function Messages() {
                   }`}
                 >
                   {filter.label}
-                  {filter.count > 0 && <span className="rounded-full bg-white/18 px-1.5">{filter.count > 99 ? '99+' : filter.count}</span>}
+                  {filter.count > 0 && <span className="rounded-full bg-white/20 px-1.5">{filter.count > 99 ? '99+' : filter.count}</span>}
                 </button>
               ))}
             </div>
 
-            <form onSubmit={handleSaveNote} className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900 2xl:hidden">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-2 text-xs font-black uppercase text-slate-500 dark:text-gray-400">
-                  <StickyNote size={14} className="text-[#1877f2] dark:text-sky-300" />
-                  My note
-                </span>
-                <span className="text-[11px] font-bold text-slate-400">1 day</span>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  value={noteText}
-                  onChange={event => setNoteText(event.target.value.slice(0, 140))}
-                  placeholder="Share a quick note..."
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                />
-                <button
-                  type="submit"
-                  disabled={savingNote || !noteText.trim()}
-                  className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white disabled:opacity-45 dark:bg-white dark:text-gray-950"
-                >
-                  Post
-                </button>
-                {myNote && (
-                  <button type="button" onClick={handleClearNote} disabled={savingNote} className="rounded-xl px-2 text-xs font-black text-rose-500">
-                    Clear
-                  </button>
-                )}
-              </div>
-            </form>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -1778,7 +1838,6 @@ export default function Messages() {
                 const isOnline = onlineUsers.has(otherUserId);
                 const isTyping = typingUsers.has(otherUserId);
                 const isActive = selectedUserId === otherUserId;
-                const activeNote = userNotes[otherUserId];
                 const isFavorite = favoriteConversationIds.has(otherUserId);
                 const isMuted = mutedConversationIds.has(otherUserId);
                 const isPinned = pinnedConversationIds.has(otherUserId);
@@ -1821,11 +1880,6 @@ export default function Messages() {
                           </span>
                         )}
                       </div>
-                      {activeNote && (
-                        <p className="mt-1 line-clamp-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950/30 dark:text-sky-300">
-                          Note: {activeNote.text}
-                        </p>
-                      )}
                     </div>
                   </button>
                 );
@@ -1836,7 +1890,7 @@ export default function Messages() {
 
           {selectedUser ? (
             <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
-              <header className="mobile-chat-header flex items-center gap-3 border-b border-gray-200/80 bg-white/94 px-4 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-950/92">
+              <header className="mobile-chat-header flex items-center gap-3 border-b border-gray-200/80 bg-white/95 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/95">
                 <button
                   onClick={() => setSelectedUser(null)}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
@@ -1855,11 +1909,6 @@ export default function Messages() {
                   <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-[#1877f2] dark:text-sky-300' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
-                  {userNotes[selectedUserId] && (
-                    <div className="mt-1 line-clamp-1 text-xs font-medium text-[#1877f2] dark:text-sky-300">
-                      Note: {userNotes[selectedUserId].text}
-                    </div>
-                  )}
                 </button>
                 <button
                   type="button"
@@ -1907,7 +1956,7 @@ export default function Messages() {
                 </button>
               </header>
 
-              <div className="border-b border-gray-200/80 bg-white/94 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/92">
+              <div className="border-b border-gray-200/80 bg-white/95 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/95">
                 <div className="flex items-center gap-2">
                   <div className="relative min-w-0 flex-1">
                     <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1997,7 +2046,7 @@ export default function Messages() {
                         <div className="mb-4 flex justify-center">
                           <button
                             type="button"
-                            onClick={() => setVisibleMessageCount(count => Math.min(messages.length, count + MESSAGE_RENDER_BATCH))}
+                            onClick={() => setVisibleMessageCount(count => Math.min(messages.length, count + getMessageRenderBatch()))}
                             className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-[#1877f2] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:text-sky-200"
                           >
                             Show earlier messages ({hiddenMessageCount})
@@ -2028,7 +2077,7 @@ export default function Messages() {
                                 if (node) messageRefs.current[messageId] = node;
                                 else delete messageRefs.current[messageId];
                               }}
-                              className={`mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId || isSearchMatch ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
+                              className={`message-row mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId || isSearchMatch ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
                             >
                             {!isMe && (
                               <div className="mr-2 mt-5 shrink-0">
@@ -2219,7 +2268,7 @@ export default function Messages() {
                 )}
               </div>
 
-              <footer className="message-composer-footer border-t border-gray-200/80 bg-white/95 p-2 backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 sm:p-3">
+              <footer className="message-composer-footer border-t border-gray-200/80 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-950/95 sm:p-3">
                 {editingMessage && (
                     <div className="mb-2 flex items-center justify-between rounded-2xl border border-cyan-100 bg-cyan-50 px-3 py-2 dark:border-cyan-900/60 dark:bg-cyan-950/20">
                       <div className="min-w-0 text-sm">
@@ -2495,9 +2544,9 @@ export default function Messages() {
                             aria-label="Open shared media"
                           >
                             {message.fileType === 'image' ? (
-                              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
+                              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
                             ) : (
-                              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} />
+                              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} preload="none" />
                             )}
                           </button>
                         );
@@ -2553,7 +2602,7 @@ export default function Messages() {
       />
 
       {selectedUser && showChatDetails && (
-        <div className="fixed inset-0 z-[88] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm xl:hidden">
+        <div className="fixed inset-0 z-[88] flex items-end justify-center bg-black/50 p-0 xl:hidden">
           <div className="mobile-bottom-sheet w-full max-w-lg overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-gray-800">
               <div className="min-w-0">
@@ -2575,7 +2624,7 @@ export default function Messages() {
       )}
 
       {selectedMessageInfo && (
-        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
           <div className="mobile-bottom-sheet w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-gray-800 dark:bg-gray-950 sm:rounded-3xl">
             <div className="flex items-center justify-between gap-3">
               <div>

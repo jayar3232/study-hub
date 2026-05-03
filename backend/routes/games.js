@@ -901,6 +901,25 @@ router.put('/fix-arena/issues/:issueId/status', auth, async (req, res) => {
   }
 });
 
+router.delete('/fix-arena/issues/:issueId', auth, async (req, res) => {
+  try {
+    const { user, isDeveloper } = await getDeveloperStatus(req.user);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.issueId)) return res.status(404).json({ msg: 'Report not found' });
+
+    const issue = await IssueReport.findById(req.params.issueId);
+    if (!issue) return res.status(404).json({ msg: 'Report not found' });
+    if (!canAccessIssue(issue, req.user, isDeveloper)) {
+      return res.status(403).json({ msg: 'Not authorized to delete this report' });
+    }
+
+    await IssueReport.deleteOne({ _id: issue._id });
+    res.json({ msg: 'Report deleted', issueId: issue._id });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.post('/fix-arena/issues/:issueId/messages', auth, async (req, res) => {
   try {
     const { user, isDeveloper } = await getDeveloperStatus(req.user);

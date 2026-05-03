@@ -14,7 +14,8 @@ export default function VideoThumbnail({
   iconSize = 28,
   showOverlay = true,
   rounded = 'rounded-2xl',
-  label = 'Video preview'
+  label = 'Video preview',
+  preload = 'metadata'
 }) {
   const videoRef = useRef(null);
   const previewSrc = useMemo(() => withPreviewTime(src), [src]);
@@ -36,7 +37,7 @@ export default function VideoThumbnail({
         src={previewSrc}
         muted
         playsInline
-        preload="metadata"
+        preload={preload}
         controls={false}
         disablePictureInPicture
         tabIndex={-1}
