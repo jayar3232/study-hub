@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "cap:sync": "npm run build && npx cap sync android",
     "android:open": "npm run cap:sync && npx cap open android",
-    "android:apk": "npm run cap:sync && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=C:\\Program Files\\Android\\Android Studio\\jbr\\bin;%PATH%\" && gradlew.bat assembleDebug"
+    "android:apk": "npm run cap:sync && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=C:\\Program Files\\Android\\Android Studio\\jbr\\bin;%PATH%\" && gradlew.bat assembleDebug",
+    "android:apk:release": "npm run cap:sync && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=C:\\Program Files\\Android\\Android Studio\\jbr\\bin;%PATH%\" && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@capacitor/cli": "^8.3.1",

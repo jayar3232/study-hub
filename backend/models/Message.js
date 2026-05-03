@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
 
+const MessageAttachmentSchema = new mongoose.Schema({
+  fileUrl: { type: String, default: '' },
+  fileType: { type: String, enum: ['', 'image', 'video', 'audio', 'file'], default: '' },
+  fileName: { type: String, default: '' },
+  mimeType: { type: String, default: '' },
+  fileSize: { type: Number, default: 0 },
+  storagePath: { type: String, default: '' },
+  storageProvider: { type: String, enum: ['', 'local', 'supabase'], default: '' }
+}, { _id: false });
+
 const MessageSchema = new mongoose.Schema({
   from: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   to: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -12,6 +22,7 @@ const MessageSchema = new mongoose.Schema({
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
   storageProvider: { type: String, enum: ['', 'local', 'supabase'], default: '' },
+  attachments: { type: [MessageAttachmentSchema], default: [] },
   read: { type: Boolean, default: false },
   readAt: { type: Date, default: null },
   replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },

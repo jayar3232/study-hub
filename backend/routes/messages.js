@@ -15,6 +15,8 @@ fs.mkdirSync(messageUploadDir, { recursive: true });
 
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
 const BLOCKED_EXTENSIONS = new Set(['.bat', '.cmd', '.com', '.exe', '.msi', '.ps1', '.scr', '.sh']);
+const DEFAULT_MESSAGE_PAGE_LIMIT = 80;
+const MAX_MESSAGE_PAGE_LIMIT = 200;
 
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 
@@ -74,14 +76,66 @@ const isParticipant = (message, userId) => (
   normalizeId(message?.from) === userId || normalizeId(message?.to) === userId
 );
 
+const getMessageAttachments = (message = {}) => {
+  const attachments = Array.isArray(message.attachments) ? message.attachments.filter(item => item?.fileUrl) : [];
+  if (attachments.length) return attachments;
+  if (!message.fileUrl) return [];
+  return [{
+    fileUrl: message.fileUrl,
+    fileType: message.fileType,
+    fileName: message.fileName,
+    mimeType: message.mimeType,
+    fileSize: message.fileSize,
+    storagePath: message.storagePath,
+    storageProvider: message.storageProvider
+  }];
+};
+
+const sanitizeAttachment = (attachment = {}, userId = '') => {
+  const fileUrl = String(attachment.fileUrl || '').trim();
+  if (!fileUrl) return null;
+
+  const fileType = ['image', 'video', 'audio', 'file'].includes(attachment.fileType) ? attachment.fileType : 'file';
+  const storageProvider = attachment.storageProvider === 'supabase' ? 'supabase' : '';
+  const userMessageFolder = `messages/${userId}/`;
+  const storagePath = storageProvider === 'supabase'
+    && typeof attachment.storagePath === 'string'
+    && attachment.storagePath.startsWith(userMessageFolder)
+    ? attachment.storagePath
+    : '';
+
+  return {
+    fileUrl,
+    fileType,
+    fileName: String(attachment.fileName || '').slice(0, 240),
+    mimeType: String(attachment.mimeType || '').slice(0, 120),
+    fileSize: Math.max(0, Number(attachment.fileSize) || 0),
+    storagePath,
+    storageProvider: storagePath ? 'supabase' : (fileUrl.startsWith('/uploads/messages/') ? 'local' : '')
+  };
+};
+
 const describeMessage = (message) => {
+  const attachments = getMessageAttachments(message);
   if (message.unsent) return 'Message unsent';
   if (message.text?.trim()) return message.text;
+  if (attachments.length > 1) {
+    const mediaCount = attachments.filter(item => ['image', 'video'].includes(item.fileType)).length;
+    return mediaCount === attachments.length
+      ? `Sent ${attachments.length} photos/videos`
+      : `Sent ${attachments.length} attachments`;
+  }
   if (message.fileType === 'image') return 'Sent a photo';
   if (message.fileType === 'video') return 'Sent a video';
   if (message.fileType === 'audio') return 'Sent a voice message';
   if (message.fileUrl) return 'Sent a file';
   return 'Message';
+};
+
+const parseMessageLimit = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_MESSAGE_PAGE_LIMIT;
+  return Math.max(20, Math.min(MAX_MESSAGE_PAGE_LIMIT, Math.floor(parsed)));
 };
 
 const emitMessageUpdated = (req, message) => {
@@ -144,6 +198,7 @@ router.get('/conversations', auth, async (req, res) => {
               text: '$text',
               fileType: '$fileType',
               fileUrl: '$fileUrl',
+              attachments: '$attachments',
               unsent: '$unsent',
               createdAt: '$createdAt'
             }
@@ -231,24 +286,134 @@ router.delete('/conversation/:userId', auth, async (req, res) => {
   }
 });
 
-router.get('/:userId', auth, async (req, res) => {
+const getDayKey = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
+
+const shiftDayKey = (dayKey, amount) => {
+  const date = new Date(`${dayKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return getDayKey(date);
+};
+
+const computeLongestStreak = (dayKeys = []) => {
+  let longest = 0;
+  let current = 0;
+  let previous = '';
+
+  [...dayKeys].sort().forEach(dayKey => {
+    current = previous && shiftDayKey(previous, 1) === dayKey ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    previous = dayKey;
+  });
+
+  return longest;
+};
+
+router.get('/streak/:userId', auth, async (req, res) => {
   try {
+    const otherUser = await User.findById(req.params.userId).select('_id');
+    if (!otherUser) return res.status(404).json({ msg: 'User not found' });
+
     const messages = await Message.find({
       $or: [
         { from: req.user, to: req.params.userId },
         { from: req.params.userId, to: req.user }
       ],
+      unsent: false,
       deletedFor: { $ne: req.user }
-    }).populate('from', 'name email avatar lastSeen')
+    }).select('from createdAt').sort({ createdAt: 1 }).lean();
+
+    const currentUserId = normalizeId(req.user);
+    const otherUserId = normalizeId(req.params.userId);
+    const dayMap = new Map();
+
+    messages.forEach(message => {
+      const dayKey = getDayKey(message.createdAt);
+      if (!dayKey) return;
+      if (!dayMap.has(dayKey)) dayMap.set(dayKey, new Set());
+      dayMap.get(dayKey).add(normalizeId(message.from));
+    });
+
+    const mutualDays = [...dayMap.entries()]
+      .filter(([, senders]) => senders.has(currentUserId) && senders.has(otherUserId))
+      .map(([dayKey]) => dayKey);
+    const mutualDaySet = new Set(mutualDays);
+    const todayKey = getDayKey(new Date());
+    const yesterdayKey = shiftDayKey(todayKey, -1);
+    let anchorDay = mutualDaySet.has(todayKey) ? todayKey : (mutualDaySet.has(yesterdayKey) ? yesterdayKey : '');
+    let currentStreak = 0;
+
+    while (anchorDay && mutualDaySet.has(anchorDay)) {
+      currentStreak += 1;
+      anchorDay = shiftDayKey(anchorDay, -1);
+    }
+
+    res.json({
+      currentStreak,
+      longestStreak: computeLongestStreak(mutualDays),
+      mutualDays: mutualDays.length,
+      todayActive: mutualDaySet.has(todayKey),
+      lastMutualDay: mutualDays[mutualDays.length - 1] || null
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/:userId', auth, async (req, res) => {
+  try {
+    const query = {
+      $or: [
+        { from: req.user, to: req.params.userId },
+        { from: req.params.userId, to: req.user }
+      ],
+      deletedFor: { $ne: req.user }
+    };
+
+    const beforeDate = req.query.before ? new Date(req.query.before) : null;
+    if (beforeDate && !Number.isNaN(beforeDate.getTime())) {
+      query.createdAt = { $lt: beforeDate };
+    }
+
+    const usePagination = req.query.paginated === '1' || Boolean(req.query.before) || Boolean(req.query.limit);
+    if (!usePagination) {
+      const messages = await Message.find(query).populate('from', 'name email avatar lastSeen')
+        .populate('to', 'name email avatar lastSeen')
+        .populate('reactions.userId', 'name avatar')
+        .populate({
+          path: 'replyTo',
+          populate: { path: 'from', select: 'name email avatar lastSeen' }
+        })
+        .sort('createdAt')
+        .lean();
+      return res.json(messages);
+    }
+
+    const limit = parseMessageLimit(req.query.limit);
+    const page = await Message.find(query).populate('from', 'name email avatar lastSeen')
       .populate('to', 'name email avatar lastSeen')
       .populate('reactions.userId', 'name avatar')
       .populate({
         path: 'replyTo',
         populate: { path: 'from', select: 'name email avatar lastSeen' }
       })
-      .sort('createdAt')
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
       .lean();
-    res.json(messages);
+
+    const hasMore = page.length > limit;
+    const currentPage = hasMore ? page.slice(0, limit) : page;
+    const items = currentPage.reverse();
+    const oldestInPage = items[0];
+
+    return res.json({
+      items,
+      hasMore,
+      nextCursor: hasMore ? oldestInPage?.createdAt || null : null
+    });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -266,35 +431,47 @@ router.post('/', auth, async (req, res) => {
       mimeType = '',
       fileSize = 0,
       storagePath = '',
-      storageProvider = ''
+      storageProvider = '',
+      attachments = []
     } = req.body;
     const recipient = await User.findById(to);
     if (!recipient) return res.status(404).json({ msg: 'Recipient not found' });
 
     const trimmedText = text.trim();
-    if (!trimmedText && !fileUrl) {
+    const postedAttachments = Array.isArray(attachments)
+      ? attachments.map(item => sanitizeAttachment(item, req.user)).filter(Boolean)
+      : [];
+    const legacyAttachment = sanitizeAttachment({
+      fileUrl,
+      fileType,
+      fileName,
+      mimeType,
+      fileSize,
+      storagePath,
+      storageProvider
+    }, req.user);
+    const normalizedAttachments = postedAttachments.length
+      ? postedAttachments
+      : (legacyAttachment ? [legacyAttachment] : []);
+    const primaryAttachment = normalizedAttachments[0] || null;
+
+    if (!trimmedText && normalizedAttachments.length === 0) {
       return res.status(400).json({ msg: 'Message cannot be empty' });
     }
-
-    const userMessageFolder = `messages/${req.user}/`;
-    const safeStoragePath = storageProvider === 'supabase'
-      && typeof storagePath === 'string'
-      && storagePath.startsWith(userMessageFolder)
-      ? storagePath
-      : '';
 
     const message = new Message({
       from: req.user,
       to,
       text: trimmedText,
       replyTo: replyTo || null,
-      fileUrl,
-      fileType,
-      fileName,
-      mimeType,
-      fileSize,
-      storagePath: safeStoragePath,
-      storageProvider: safeStoragePath ? 'supabase' : (fileUrl.startsWith('/uploads/messages/') ? 'local' : '')
+      fileUrl: primaryAttachment?.fileUrl || '',
+      fileType: primaryAttachment?.fileType || '',
+      fileName: primaryAttachment?.fileName || '',
+      mimeType: primaryAttachment?.mimeType || '',
+      fileSize: primaryAttachment?.fileSize || 0,
+      storagePath: primaryAttachment?.storagePath || '',
+      storageProvider: primaryAttachment?.storageProvider || '',
+      attachments: normalizedAttachments
     });
     await message.save();
 
@@ -377,7 +554,9 @@ router.put('/:messageId', auth, async (req, res) => {
     if (!message) return res.status(404).json({ msg: 'Message not found' });
     if (normalizeId(message.from) !== req.user) return res.status(403).json({ msg: 'Only the sender can edit this message' });
     if (message.unsent) return res.status(400).json({ msg: 'Cannot edit an unsent message' });
-    if (message.fileUrl && !message.text?.trim()) return res.status(400).json({ msg: 'Only text messages can be edited' });
+    if ((message.fileUrl || message.attachments?.length) && !message.text?.trim()) {
+      return res.status(400).json({ msg: 'Only text messages can be edited' });
+    }
 
     const text = String(req.body.text || '').trim();
     if (!text) return res.status(400).json({ msg: 'Message cannot be empty' });
@@ -450,9 +629,14 @@ router.delete('/:messageId/everyone', auth, async (req, res) => {
     if (!message) return res.status(404).json({ msg: 'Message not found' });
     if (normalizeId(message.from) !== req.user) return res.status(403).json({ msg: 'Only the sender can unsend this message' });
 
-    if (message.storageProvider === 'supabase' && message.storagePath) {
-      await deleteObject(message.storagePath).catch(err => console.error('Message attachment delete failed:', err.message));
-    }
+    const storagePaths = new Set();
+    if (message.storageProvider === 'supabase' && message.storagePath) storagePaths.add(message.storagePath);
+    getMessageAttachments(message).forEach(attachment => {
+      if (attachment.storageProvider === 'supabase' && attachment.storagePath) storagePaths.add(attachment.storagePath);
+    });
+    await Promise.all([...storagePaths].map(storagePath => (
+      deleteObject(storagePath).catch(err => console.error('Message attachment delete failed:', err.message))
+    )));
 
     message.unsent = true;
     message.unsentAt = new Date();
@@ -464,6 +648,7 @@ router.delete('/:messageId/everyone', auth, async (req, res) => {
     message.fileSize = 0;
     message.storagePath = '';
     message.storageProvider = '';
+    message.attachments = [];
     message.reactions = [];
     await message.save();
 

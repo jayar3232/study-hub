@@ -66,6 +66,66 @@ const StatCard = ({ icon: Icon, label, value, helper }) => (
   </Panel>
 );
 
+const formatProfileTime = (value) => {
+  if (!value) return 'Recently';
+  try {
+    return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return 'Recently';
+  }
+};
+
+const buildAchievementBadges = ({ completion, groups, createdGroups, rankStats, gameStats, storyItems, myStoryCount }) => ([
+  {
+    id: 'profile-pro',
+    title: 'Profile Pro',
+    helper: 'Complete profile identity',
+    icon: User,
+    unlocked: completion >= 90,
+    progress: completion
+  },
+  {
+    id: 'workspace-builder',
+    title: 'Workspace Builder',
+    helper: 'Create or join team spaces',
+    icon: Users,
+    unlocked: groups.length >= 3 || createdGroups.length >= 1,
+    progress: Math.min(100, Math.max(groups.length, createdGroups.length * 3) * 34)
+  },
+  {
+    id: 'task-finisher',
+    title: 'Task Finisher',
+    helper: 'Complete ranked workspace tasks',
+    icon: CheckCircle,
+    unlocked: (rankStats?.completedTasks || 0) >= 3,
+    progress: Math.min(100, ((rankStats?.completedTasks || 0) / 3) * 100)
+  },
+  {
+    id: 'arena-player',
+    title: 'Arena Player',
+    helper: 'Save game runs in Fix Arena',
+    icon: Trophy,
+    unlocked: (gameStats?.totalPlays || 0) >= 5,
+    progress: Math.min(100, ((gameStats?.totalPlays || 0) / 5) * 100)
+  },
+  {
+    id: 'story-pulse',
+    title: 'Story Pulse',
+    helper: 'Keep My Day active',
+    icon: PlayCircle,
+    unlocked: myStoryCount > 0,
+    progress: myStoryCount > 0 ? 100 : Math.min(100, storyItems.length * 20)
+  },
+  {
+    id: 'network-ranked',
+    title: 'Network Ranked',
+    helper: 'Earn collaboration XP',
+    icon: Award,
+    unlocked: (rankStats?.xp || 0) >= 250,
+    progress: Math.min(100, ((rankStats?.xp || 0) / 250) * 100)
+  }
+]);
+
 export default function Profile() {
   const { user, login, logout } = useAuth();
   const { currentTheme, toggleTheme } = useTheme();
@@ -413,11 +473,57 @@ export default function Profile() {
   const storyItems = storyGroups.flatMap(group => group.stories);
   const activeStoryList = getStoryListForActiveStory(storyGroups, activeStory);
   const myStoryCount = storyItems.filter(story => getEntityId(story.userId) === getEntityId(user)).length;
+  const achievementBadges = buildAchievementBadges({
+    completion,
+    groups,
+    createdGroups,
+    rankStats,
+    gameStats,
+    storyItems,
+    myStoryCount
+  });
+  const unlockedAchievements = achievementBadges.filter(item => item.unlocked).length;
+  const profileTimeline = [
+    ...storyItems.slice(0, 5).map(story => ({
+      id: `story-${getEntityId(story)}`,
+      icon: PlayCircle,
+      title: `${story.userId?.name || user.name} posted a My Day`,
+      detail: story.caption || (story.fileType === 'video' ? 'Video story' : 'Photo story'),
+      time: story.createdAt,
+      action: () => openStory(story)
+    })),
+    ...groups.slice(0, 4).map(group => ({
+      id: `group-${getEntityId(group)}`,
+      icon: Users,
+      title: `Joined ${group.name || 'a workspace'}`,
+      detail: group.description || `${group.members?.length || 0} members`,
+      time: group.createdAt,
+      href: `/group/${getEntityId(group)}`
+    })),
+    {
+      id: 'rank-progress',
+      icon: Award,
+      title: rankStats?.rank?.name || 'Network rank ready',
+      detail: `${rankStats?.xp || 0} XP from ${rankStats?.completedTasks || 0} completed tasks`,
+      time: user.updatedAt || user.createdAt
+    },
+    {
+      id: 'arena-progress',
+      icon: Trophy,
+      title: gameStats?.rank?.name || 'Arena season ready',
+      detail: `${gameStats?.highScore || 0} high score across ${gameStats?.totalPlays || 0} runs`,
+      time: user.updatedAt || user.createdAt,
+      href: '/arena'
+    }
+  ]
+    .filter(item => item.title)
+    .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
+    .slice(0, 8);
   const profileTabs = [
-    { id: 'posts', label: 'Posts', icon: Activity, count: storyItems.length },
+    { id: 'posts', label: 'Timeline', icon: Activity, count: profileTimeline.length },
     { id: 'about', label: 'About', icon: User, count: completion },
     { id: 'groups', label: 'Workspaces', icon: Users, count: groups.length },
-    { id: 'ranks', label: 'Ranks', icon: Trophy, count: rankStats?.completedTasks || 0 },
+    { id: 'ranks', label: 'Achievements', icon: Trophy, count: unlockedAchievements },
     { id: 'myday', label: 'My Day', icon: PlayCircle, count: myStoryCount },
     { id: 'settings', label: 'Settings', icon: Settings, count: null }
   ];
@@ -633,23 +739,60 @@ export default function Profile() {
 
       {activeProfileTab === 'posts' && (
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
-            <div className="flex items-start gap-3">
-              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-black text-white">
-                {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+              <div className="flex items-start gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-black text-white">
+                  {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => storyInputRef.current?.click()}
+                  className="min-h-12 flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-gray-500 transition hover:bg-blue-50 hover:text-blue-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-blue-950/25 dark:hover:text-blue-200"
+                >
+                  Share a professional update...
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => storyInputRef.current?.click()}
-                className="min-h-12 flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-gray-500 transition hover:bg-blue-50 hover:text-blue-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-blue-950/25 dark:hover:text-blue-200"
-              >
-                Share a professional update...
-              </button>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => storyInputRef.current?.click()} className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-black text-[#1877f2] transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-sky-200">My Day</button>
+                <Link to="/groups" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Workspaces</Link>
+                <Link to="/messages" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Messages</Link>
+              </div>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <button type="button" onClick={() => storyInputRef.current?.click()} className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-black text-[#1877f2] transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-sky-200">My Day</button>
-              <Link to="/groups" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Workspaces</Link>
-              <Link to="/messages" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Messages</Link>
+
+            <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-gray-950 dark:text-white">Profile Timeline</h2>
+                  <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">My Day, workspace, rank, and arena milestones in one clean feed.</p>
+                </div>
+                <Activity className="text-[#1877f2]" size={22} />
+              </div>
+              <div className="space-y-3">
+                {profileTimeline.map(item => {
+                  const Icon = item.icon || Activity;
+                  const content = (
+                    <div className="flex gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-[#1877f2] shadow-sm dark:bg-gray-900 dark:text-sky-200">
+                        <Icon size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-black text-gray-950 dark:text-white">{item.title}</span>
+                        <span className="mt-1 block line-clamp-2 text-xs font-semibold leading-5 text-gray-500 dark:text-gray-400">{item.detail}</span>
+                        <span className="mt-2 block text-[11px] font-black uppercase text-gray-400">{formatProfileTime(item.time)}</span>
+                      </span>
+                    </div>
+                  );
+
+                  if (item.action) {
+                    return <button key={item.id} type="button" onClick={item.action} className="block w-full">{content}</button>;
+                  }
+                  if (item.href) {
+                    return <Link key={item.id} to={item.href} className="block">{content}</Link>;
+                  }
+                  return <div key={item.id}>{content}</div>;
+                })}
+              </div>
             </div>
           </div>
 
@@ -682,6 +825,42 @@ export default function Profile() {
         <StatCard icon={Trophy} label="Completed Tasks" value={rankStats?.completedTasks || 0} helper={`${rankStats?.xp || 0} career XP`} />
         <StatCard icon={Trophy} label="Arena High Score" value={gameStats?.highScore || 0} helper={`${gameStats?.totalPlays || 0} ranked runs`} />
       </div>
+
+      {activeProfileTab === 'ranks' && (
+        <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-gray-950 dark:text-white">Achievement Badges</h2>
+              <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{unlockedAchievements} of {achievementBadges.length} unlocked from profile, workspace, My Day, tasks, and arena progress.</p>
+            </div>
+            <Award className="text-[#1877f2]" size={24} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {achievementBadges.map(badge => {
+              const Icon = badge.icon;
+              return (
+                <div key={badge.id} className={`rounded-2xl border p-4 ${badge.unlocked ? 'border-blue-100 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/25' : 'border-gray-100 bg-gray-50 opacity-75 dark:border-gray-800 dark:bg-gray-950'}`}>
+                  <div className="flex items-start gap-3">
+                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${badge.unlocked ? 'bg-[#0b57d0] text-white' : 'bg-white text-gray-400 dark:bg-gray-900'}`}>
+                      <Icon size={20} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-black text-gray-950 dark:text-white">{badge.title}</span>
+                      <span className="mt-1 block text-xs font-semibold leading-5 text-gray-500 dark:text-gray-400">{badge.helper}</span>
+                    </span>
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-black uppercase ${badge.unlocked ? 'bg-white text-[#0b57d0] dark:bg-gray-950 dark:text-sky-200' : 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                      {badge.unlocked ? 'Unlocked' : 'Locked'}
+                    </span>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white dark:bg-gray-950">
+                    <div className={`h-full rounded-full ${badge.unlocked ? 'bg-[#0b57d0]' : 'bg-gray-300 dark:bg-gray-700'}`} style={{ width: `${Math.max(4, Math.min(100, badge.progress || 0))}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="mobile-content-stack grid gap-4 lg:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
         <RankBadge stats={rankStats} />

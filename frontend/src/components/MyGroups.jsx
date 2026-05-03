@@ -34,7 +34,7 @@ const getEntityId = (entity) => String(entity?._id || entity?.id || entity || ''
 const getInitial = (value) => String(value || '?').charAt(0).toUpperCase();
 
 const getGroupAccent = (value = '') => {
-  const colors = ['#1877f2', '#0f766e', '#16a34a', '#f59e0b', '#475569', '#7c3aed'];
+  const colors = ['#0b57d0', '#0f766e', '#16a34a', '#f59e0b', '#475569', '#7c3aed'];
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
     hash = ((hash << 5) - hash) + value.charCodeAt(index);
@@ -63,7 +63,7 @@ const MemberStack = ({ members = [] }) => (
       return (
         <div
           key={getEntityId(member)}
-          className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 border-white bg-slate-900 text-xs font-black text-white dark:border-gray-900 dark:bg-gray-700"
+          className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 border-white bg-slate-900 text-xs font-black text-white dark:border-slate-900 dark:bg-slate-700"
           title={name}
         >
           {avatar ? <img src={avatar} alt={name} className="h-full w-full object-cover" /> : getInitial(name)}
@@ -71,7 +71,7 @@ const MemberStack = ({ members = [] }) => (
       );
     })}
     {members.length > 4 && (
-      <div className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-gray-100 text-xs font-black text-gray-600 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-300">
+      <div className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-slate-100 text-xs font-black text-slate-600 dark:border-slate-900 dark:bg-slate-800 dark:text-slate-300">
         +{members.length - 4}
       </div>
     )}
@@ -79,20 +79,20 @@ const MemberStack = ({ members = [] }) => (
 );
 
 const toneClasses = {
-  blue: 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-blue-200',
+  blue: 'bg-blue-50 text-[#0b57d0] ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50',
   emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200',
   amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
 };
 
 const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => (
-  <div className="workspace-stat-card rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+  <div className="workspace-stat-card rounded-[1.1rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</p>
-        <p className="mt-2 text-2xl font-black text-gray-950 dark:text-white">{value}</p>
-        <p className="mt-1 truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{helper}</p>
+        <p className="text-sm font-black text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{value}</p>
+        <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{helper}</p>
       </div>
-      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${toneClasses[tone] || toneClasses.blue}`}>
+      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ring-1 ${toneClasses[tone] || toneClasses.blue}`}>
         <Icon size={21} />
       </div>
     </div>
@@ -100,18 +100,18 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => (
 );
 
 const EmptyWorkspacePanel = ({ onCreate }) => (
-  <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
-    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-blue-200">
+  <div className="rounded-[1.1rem] border border-dashed border-slate-300 bg-white/90 p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-blue-50 text-[#0b57d0] dark:bg-blue-950/30 dark:text-sky-200">
       <FolderKanban size={26} />
     </div>
-    <h3 className="mt-4 text-lg font-black text-gray-950 dark:text-white">No workspaces found</h3>
-    <p className="mx-auto mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
+    <h3 className="mt-4 text-lg font-black text-slate-950 dark:text-white">No workspaces found</h3>
+    <p className="mx-auto mt-1 max-w-md text-sm text-slate-500 dark:text-slate-400">
       Create a workspace or join one with an access code to start collaborating.
     </p>
     <button
       type="button"
       onClick={onCreate}
-      className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+      className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[#07036f] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#05004f]"
     >
       <PlusCircle size={17} />
       Create workspace
@@ -273,13 +273,13 @@ export default function MyGroups() {
   }
 
   return (
-    <div className="mobile-page mobile-workspaces-page mx-auto max-w-7xl space-y-5 px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="mobile-page mobile-workspaces-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
+      <section className="rounded-[1.35rem] border border-slate-200 bg-white/90 p-5 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-black uppercase text-[#1877f2] dark:text-blue-300">Workspaces</p>
-            <h1 className="mt-1 text-3xl font-black tracking-normal text-gray-950 dark:text-white">Team spaces</h1>
-            <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500 dark:text-gray-400">
+            <p className="text-sm font-black uppercase text-[#0b57d0] dark:text-sky-300">Workspaces</p>
+            <h1 className="mt-1 text-3xl font-black tracking-normal text-slate-950 dark:text-white">Team spaces</h1>
+            <p className="mt-1 max-w-2xl text-sm font-semibold text-slate-500 dark:text-slate-400">
               Manage project rooms, members, invitations, files, chat, and shared work.
             </p>
           </div>
@@ -287,7 +287,7 @@ export default function MyGroups() {
             <button
               type="button"
               onClick={fetchGroups}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <RefreshCw size={17} />
               Refresh
@@ -295,7 +295,7 @@ export default function MyGroups() {
             <button
               type="button"
               onClick={() => setShowCreate(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#07036f] px-4 py-2.5 text-sm font-black text-white shadow-sm shadow-[#07036f]/15 transition hover:bg-[#05004f]"
             >
               <PlusCircle size={17} />
               Create
@@ -311,23 +311,23 @@ export default function MyGroups() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)]">
-        <div className="workspace-toolbar rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="workspace-toolbar rounded-[1.1rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_160px]">
             <label className="relative">
-              <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={event => setSearch(event.target.value)}
                 placeholder="Search by name, code, or description"
-                className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-semibold text-gray-900 outline-none transition placeholder:font-medium placeholder:text-gray-400 focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-[#0b57d0] focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/50"
               />
             </label>
             <label className="relative">
-              <ListFilter size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <ListFilter size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <select
                 value={filter}
                 onChange={event => setFilter(event.target.value)}
-                className="h-11 w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/50"
               >
                 <option value="all">All workspaces</option>
                 <option value="owned">Owned by me</option>
@@ -335,11 +335,11 @@ export default function MyGroups() {
               </select>
             </label>
             <label className="relative">
-              <SortAsc size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <SortAsc size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <select
                 value={sort}
                 onChange={event => setSort(event.target.value)}
-                className="h-11 w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/50"
               >
                 <option value="recent">Newest</option>
                 <option value="name">Name</option>
@@ -349,9 +349,9 @@ export default function MyGroups() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <label className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-gray-500 dark:text-gray-400">
-            <KeyRound size={14} className="text-[#1877f2]" />
+        <div className="rounded-[1.1rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+          <label className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-slate-500 dark:text-slate-400">
+            <KeyRound size={14} className="text-[#0b57d0] dark:text-sky-300" />
             Join with access code
           </label>
           <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
@@ -362,13 +362,13 @@ export default function MyGroups() {
                 if (event.key === 'Enter') joinGroup();
               }}
               placeholder="Example: A1B2C3"
-              className="h-11 min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 text-sm font-black uppercase tracking-wide text-gray-900 outline-none transition placeholder:normal-case placeholder:font-medium placeholder:tracking-normal placeholder:text-gray-400 focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black uppercase tracking-wide text-slate-900 outline-none transition placeholder:normal-case placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-400 focus:border-[#0b57d0] focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/50"
             />
             <button
               type="button"
               onClick={joinGroup}
               disabled={joining}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 text-sm font-black text-white transition hover:bg-[#1877f2] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-950"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-[#07036f] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
               {joining ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
               Join
@@ -383,22 +383,22 @@ export default function MyGroups() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/20"
+            className="rounded-[1.1rem] border border-blue-100 bg-blue-50/70 p-4 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/20"
           >
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Bell size={18} className="text-[#1877f2]" />
-              <h2 className="font-black text-gray-950 dark:text-white">Workspace invitations</h2>
-              <span className="rounded-full bg-[#1877f2] px-2 py-0.5 text-xs font-black text-white">{invites.length}</span>
+              <Bell size={18} className="text-[#0b57d0] dark:text-sky-300" />
+              <h2 className="font-black text-slate-950 dark:text-white">Workspace invitations</h2>
+              <span className="rounded-full bg-[#0b57d0] px-2 py-0.5 text-xs font-black text-white">{invites.length}</span>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
               {invites.map(invite => {
                 const inviteId = getEntityId(invite);
                 return (
-                  <div key={inviteId} className="rounded-2xl border border-blue-100 bg-white p-3 dark:border-blue-900/40 dark:bg-gray-900">
+                  <div key={inviteId} className="rounded-2xl border border-blue-100 bg-white p-3 dark:border-blue-900/40 dark:bg-slate-900">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="truncate font-black text-gray-950 dark:text-white">{invite.groupId?.name || 'Workspace invitation'}</p>
-                        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        <p className="truncate font-black text-slate-950 dark:text-white">{invite.groupId?.name || 'Workspace invitation'}</p>
+                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
                           Invited by {invite.invitedBy?.name || 'a workspace admin'}
                         </p>
                       </div>
@@ -407,7 +407,7 @@ export default function MyGroups() {
                           type="button"
                           onClick={() => respondToInvite(inviteId, 'decline')}
                           disabled={respondingInviteIds[inviteId]}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-gray-200 px-3 py-2 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                           <X size={15} />
                           Decline
@@ -416,7 +416,7 @@ export default function MyGroups() {
                           type="button"
                           onClick={() => respondToInvite(inviteId, 'accept')}
                           disabled={respondingInviteIds[inviteId]}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#1877f2] px-3 py-2 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-50"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#0b57d0] px-3 py-2 text-sm font-black text-white transition hover:bg-[#07036f] disabled:opacity-50"
                         >
                           <MailCheck size={15} />
                           Accept
@@ -434,8 +434,8 @@ export default function MyGroups() {
       <section>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="text-xl font-black text-gray-950 dark:text-white">Workspace directory</h2>
-            <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+            <h2 className="text-xl font-black text-slate-950 dark:text-white">Workspace directory</h2>
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
               {filteredGroups.length} visible of {groups.length}
             </p>
           </div>
@@ -463,10 +463,10 @@ export default function MyGroups() {
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ delay: index * 0.02 }}
                     onClick={() => navigate(`/group/${groupId}`)}
-                    className="workspace-card cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-blue-900/60"
+                    className="workspace-card cursor-pointer overflow-hidden rounded-[1.1rem] border border-slate-200 bg-white/92 shadow-sm shadow-slate-200/45 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 dark:hover:border-blue-900/60"
                   >
-                    <div className="grid h-full sm:grid-cols-[9.5rem_minmax(0,1fr)]">
-                      <div className="workspace-card-media relative h-36 overflow-hidden bg-gray-950 sm:h-full sm:min-h-[13rem]">
+                    <div className="grid h-full sm:grid-cols-[10rem_minmax(0,1fr)]">
+                      <div className="workspace-card-media relative h-36 overflow-hidden bg-slate-950 sm:h-full sm:min-h-[12.5rem]">
                         {groupPhoto ? (
                           <img src={groupPhoto} alt={group.name} className="h-full w-full object-cover" loading="lazy" />
                         ) : (
@@ -483,7 +483,7 @@ export default function MyGroups() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="workspace-title truncate text-lg font-black text-gray-950 dark:text-white">{group.name}</h3>
+                              <h3 className="workspace-title truncate text-lg font-black text-slate-950 dark:text-white">{group.name}</h3>
                               {isCreator && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                                   <Crown size={12} />
@@ -491,7 +491,7 @@ export default function MyGroups() {
                                 </span>
                               )}
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                            <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
                               {group.description || 'No description yet.'}
                             </p>
                           </div>
@@ -511,7 +511,7 @@ export default function MyGroups() {
                           )}
                         </div>
 
-                        <div className="mt-4 grid gap-3 text-xs font-semibold text-gray-500 dark:text-gray-400 sm:grid-cols-2">
+                        <div className="mt-4 grid gap-3 text-xs font-semibold text-slate-500 dark:text-slate-400 sm:grid-cols-2">
                           <span className="inline-flex min-w-0 items-center gap-2">
                             <Calendar size={14} className="shrink-0" />
                             <span className="truncate">{formatDate(group.createdAt)}</span>
@@ -519,20 +519,20 @@ export default function MyGroups() {
                           <span className="truncate">Owner: {group.creator?.name || (isCreator ? 'You' : 'Member')}</span>
                         </div>
 
-                        <div className="mt-auto flex flex-col gap-4 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3">
+                        <div className="mt-auto grid gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+                          <div className="flex min-w-0 items-center gap-3">
                             <MemberStack members={group.members || []} />
-                            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Team members</span>
+                            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Team members</span>
                           </div>
 
-                          <div className="workspace-card-actions flex flex-wrap items-center gap-2 sm:justify-end">
+                          <div className="workspace-card-actions grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                             <button
                               type="button"
                               onClick={event => copyJoinCode(group.joinCode, event)}
-                              className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm font-black text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                              className="inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200 dark:hover:bg-slate-800"
                             >
                               {isCopied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
-                              <span>{group.joinCode || 'No code'}</span>
+                              <span className="truncate">{group.joinCode || 'No code'}</span>
                             </button>
                             <button
                               type="button"
@@ -540,7 +540,7 @@ export default function MyGroups() {
                                 event.stopPropagation();
                                 navigate(`/group/${groupId}`);
                               }}
-                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1877f2] px-3 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+                              className="workspace-open-button inline-flex h-10 min-w-[6.25rem] items-center justify-center gap-2 rounded-xl bg-[#0b57d0] px-4 text-sm font-black text-white shadow-sm shadow-blue-600/20 transition hover:bg-[#07036f]"
                             >
                               Open
                               <ArrowRight size={16} />

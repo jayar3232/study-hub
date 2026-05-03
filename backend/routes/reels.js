@@ -12,8 +12,6 @@ const router = express.Router();
 const galleryUploadDir = path.join(__dirname, '..', 'uploads', 'gallery');
 fs.mkdirSync(galleryUploadDir, { recursive: true });
 
-const MAX_GALLERY_UPLOAD_SIZE = 40 * 1024 * 1024;
-
 const getId = (value) => String(value?._id || value?.id || value || '');
 
 const getGalleryType = (file) => {
@@ -32,7 +30,7 @@ const localStorage = multer.diskStorage({
 
 const upload = multer({
   storage: isCloudStorageEnabled ? multer.memoryStorage() : localStorage,
-  limits: { fileSize: MAX_GALLERY_UPLOAD_SIZE },
+  // Gallery intentionally has no app-level fileSize cap; storage/platform limits still apply.
   fileFilter: (req, file, cb) => {
     if (!getGalleryType(file)) {
       const err = new Error('Gallery supports photos and videos only');
@@ -46,10 +44,6 @@ const upload = multer({
 const uploadGallery = (req, res, next) => {
   upload.single('media')(req, res, (err) => {
     if (!err) return next();
-
-    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ msg: 'Gallery upload is too large. Maximum size is 40MB.' });
-    }
 
     return res.status(err.status || 400).json({ msg: err.message || 'Upload failed' });
   });
@@ -90,12 +84,15 @@ const toPayload = (item, currentUserId) => {
     mediaType: plain.fileType,
     fileType: plain.fileType,
     fileName: plain.fileName || '',
+    uploaderName: plain.uploadedBy?.name || '',
     uploadedBy: plain.uploadedBy || null,
+    ownerId: getId(plain.uploadedBy),
     reactionCount: reactions.length,
     savedCount: savedBy.length,
     viewCount: viewers.length,
     reacted: reactions.some(reaction => getId(reaction.userId) === viewerId),
     saved: savedBy.some(userId => getId(userId) === viewerId),
+    canDelete: getId(plain.uploadedBy) === viewerId,
     comments: plain.comments || [],
     createdAt: plain.createdAt,
     updatedAt: plain.updatedAt
@@ -105,6 +102,29 @@ const toPayload = (item, currentUserId) => {
 const findVisibleGalleryItem = async (itemId) => {
   if (!mongoose.Types.ObjectId.isValid(itemId)) return null;
   return GalleryItem.findById(itemId);
+};
+
+const resolveLocalGalleryFilePath = (item) => {
+  const storageCandidate = String(item?.storagePath || '').trim();
+  const fileUrlCandidate = String(item?.fileUrl || '').trim().split('?')[0];
+  const baseName = path.basename(storageCandidate || fileUrlCandidate);
+  if (!baseName || baseName === '.' || baseName === path.sep) return '';
+  const resolved = path.resolve(galleryUploadDir, baseName);
+  const galleryRoot = path.resolve(galleryUploadDir);
+  if (resolved !== galleryRoot && !resolved.startsWith(`${galleryRoot}${path.sep}`)) {
+    return '';
+  }
+  return resolved;
+};
+
+const deleteLocalGalleryFile = async (item) => {
+  const target = resolveLocalGalleryFilePath(item);
+  if (!target) return;
+  try {
+    await fs.promises.unlink(target);
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
+  }
 };
 
 router.get('/', auth, async (req, res) => {
@@ -162,6 +182,29 @@ router.post('/', auth, uploadGallery, async (req, res) => {
       await deleteObject(uploadedFile.path).catch(() => {});
     }
     res.status(err.status || 500).json({ msg: err.message || 'Gallery upload failed' });
+  }
+});
+
+router.delete('/:itemId', auth, async (req, res) => {
+  try {
+    const item = await findVisibleGalleryItem(req.params.itemId);
+    if (!item) return res.status(404).json({ msg: 'Gallery item not found' });
+
+    if (getId(item.uploadedBy) !== getId(req.user)) {
+      return res.status(403).json({ msg: 'Only the uploader can delete this item' });
+    }
+
+    if (item.storageProvider === 'supabase' && item.storagePath) {
+      await deleteObject(item.storagePath).catch(() => {});
+    } else {
+      await deleteLocalGalleryFile(item);
+    }
+
+    await item.deleteOne();
+    res.json({ ok: true, id: getId(item) });
+  } catch (err) {
+    console.error('Gallery delete failed', err);
+    res.status(500).json({ msg: 'Failed to delete gallery item' });
   }
 });
 

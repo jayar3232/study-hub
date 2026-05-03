@@ -7,7 +7,7 @@ export const THEME_OPTIONS = [
   { key: 'dark', label: 'Dark mode', helper: 'Focused low-light workspace' }
 ];
 
-const normalizeTheme = (value) => THEME_OPTIONS.some(theme => theme.key === value) ? value : 'dark';
+const normalizeTheme = (value) => THEME_OPTIONS.some(theme => theme.key === value) ? value : 'light';
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => {

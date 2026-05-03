@@ -492,14 +492,11 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
     };
   }, [drawScene, syncCanvasSize]);
 
-  useEffect(() => {
-    startGame();
-    return () => {
-      const engine = engineRef.current;
-      engine.running = false;
-      if (engine.rafId) cancelAnimationFrame(engine.rafId);
-    };
-  }, [startGame]);
+  useEffect(() => () => {
+    const engine = engineRef.current;
+    engine.running = false;
+    if (engine.rafId) cancelAnimationFrame(engine.rafId);
+  }, []);
 
   const safeRatio = useMemo(() => {
     const total = hits + strikes;
@@ -546,7 +543,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
             )}
             <button type="button" onClick={retry} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100">
               <RotateCcw size={16} />
-              New Run
+              {runActive ? 'New Run' : 'Start Run'}
             </button>
           </div>
         </div>
@@ -563,7 +560,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
           </div>
 
           <div className="rounded-[1.8rem] border border-white/10 bg-gray-950 p-3 shadow-2xl shadow-cyan-500/15">
-            <div className="mx-auto w-full max-w-[640px]">
+            <div className="relative mx-auto w-full max-w-[640px]">
               <canvas
                 ref={canvasRef}
                 className="touch-none select-none rounded-[1.3rem] ring-1 ring-white/10"
@@ -574,6 +571,18 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                 onPointerLeave={handlePointerUp}
                 aria-label="Swipe Ninja game canvas"
               />
+              {!runActive && !gameOver && (
+                <div className="absolute inset-0 grid place-items-center rounded-[1.3rem] bg-black/30 p-4">
+                  <button
+                    type="button"
+                    onClick={retry}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-gray-950"
+                  >
+                    <RotateCcw size={16} />
+                    Start Run
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

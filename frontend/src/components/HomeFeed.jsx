@@ -56,7 +56,7 @@ const isVideoPost = (post) => (
 function Avatar({ user, size = 'h-11 w-11' }) {
   const avatar = resolveMediaUrl(user?.avatar);
   return (
-    <span className={`${size} grid shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-black text-white`}>
+    <span className={`${size} grid shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white`}>
       {avatar ? <img src={avatar} alt={user?.name || 'User'} className="h-full w-full object-cover" /> : (user?.name || 'U').charAt(0).toUpperCase()}
     </span>
   );
@@ -66,7 +66,7 @@ function PrivacyPill({ value = 'public' }) {
   const option = privacyOptions[value] || privacyOptions.public;
   const Icon = option.icon;
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-black text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
       <Icon size={11} />
       {option.label}
     </span>
@@ -240,7 +240,7 @@ export default function HomeFeed({ currentUser }) {
 
   return (
     <section className="home-feed space-y-4">
-      <form onSubmit={createPost} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <form onSubmit={createPost} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
         <div className="p-4">
           <div className="flex items-start gap-3">
             <Avatar user={currentUser} />
@@ -252,18 +252,18 @@ export default function HomeFeed({ currentUser }) {
               }}
               rows={3}
               placeholder={`What's on your mind, ${currentUser?.name?.split(' ')[0] || 'there'}?`}
-              className="min-h-[5rem] min-w-0 flex-1 resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-[15px] font-semibold text-gray-900 outline-none focus:border-[#1877f2] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+              className="min-h-[5rem] min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:bg-slate-950"
             />
           </div>
 
           {mediaFile && (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
-              <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
+            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-gray-950 dark:text-white">{mediaFile.name}</p>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{Math.round(mediaFile.size / 1024)} KB</p>
+                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">{mediaFile.name}</p>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{Math.round(mediaFile.size / 1024)} KB</p>
                 </div>
-                <button type="button" onClick={clearMedia} className="grid h-8 w-8 place-items-center rounded-full bg-white text-gray-500 dark:bg-gray-900 dark:text-gray-300" aria-label="Remove media">
+                <button type="button" onClick={clearMedia} className="grid h-8 w-8 place-items-center rounded-full bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-300" aria-label="Remove media">
                   <X size={16} />
                 </button>
               </div>
@@ -273,17 +273,17 @@ export default function HomeFeed({ currentUser }) {
                   : <img src={mediaPreview} alt="Post preview" className="max-h-80 w-full object-contain" />
               )}
               {posting && uploadProgress > 0 && (
-                <div className="h-1.5 bg-gray-200 dark:bg-gray-800">
-                  <div className="h-full bg-[#1877f2]" style={{ width: `${uploadProgress}%` }} />
+                <div className="h-1.5 bg-slate-200 dark:bg-slate-800">
+                  <div className="h-full bg-[#0b57d0]" style={{ width: `${uploadProgress}%` }} />
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/35 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/35 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-900">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900">
               <ImageIcon size={15} />
               Photo/video
               <input
@@ -293,7 +293,7 @@ export default function HomeFeed({ currentUser }) {
                 onChange={event => selectMedia(event.target.files?.[0])}
               />
             </label>
-            <label className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200">
+            <label className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
               <PrivacySelectIcon size={15} />
               <select value={privacy} onChange={event => setPrivacy(event.target.value)} className="bg-transparent outline-none">
                 <option value="public">Public</option>
@@ -305,7 +305,7 @@ export default function HomeFeed({ currentUser }) {
           <button
             type="submit"
             disabled={!canPost}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-5 py-2.5 text-sm font-black text-white hover:bg-[#0f63d5] disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#07036f] px-5 py-2.5 text-sm font-black text-white hover:bg-[#05004f] disabled:opacity-50"
           >
             {posting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Post
@@ -314,7 +314,7 @@ export default function HomeFeed({ currentUser }) {
       </form>
 
       {loading ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-sm font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
           Loading home feed...
         </div>
       ) : visiblePosts.length ? (
@@ -328,25 +328,25 @@ export default function HomeFeed({ currentUser }) {
             const isOwner = getEntityId(author) === currentUserId;
 
             return (
-              <article key={postId} className="feed-card overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <article key={postId} className="feed-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
                 <header className="flex items-start gap-3 p-4">
                   <Avatar user={author} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="truncate font-black text-gray-950 dark:text-white">{author.name || 'Member'}</p>
+                      <p className="truncate font-black text-slate-950 dark:text-white">{author.name || 'Member'}</p>
                       <PrivacyPill value={post.privacy} />
                     </div>
-                    <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{formatFeedTime(post.createdAt)}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{formatFeedTime(post.createdAt)}</p>
                   </div>
                   {isOwner && (
-                    <button type="button" onClick={() => deletePost(post)} className="grid h-9 w-9 place-items-center rounded-full text-gray-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30" aria-label="Delete post">
+                    <button type="button" onClick={() => deletePost(post)} className="grid h-9 w-9 place-items-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/35 dark:hover:text-rose-300" aria-label="Delete post">
                       <Trash2 size={16} />
                     </button>
                   )}
                 </header>
 
                 <div className="space-y-3 px-4 pb-4">
-                  {post.content && <p className="whitespace-pre-wrap break-words text-[15px] leading-6 text-gray-800 dark:text-gray-100">{post.content}</p>}
+                  {post.content && <p className="whitespace-pre-wrap break-words text-[15px] leading-6 text-slate-800 dark:text-slate-100">{post.content}</p>}
                   {post.fileUrl && (
                     isVideoPost(post) ? (
                       <VideoThumbnail src={mediaUrl} className="max-h-[32rem] w-full rounded-2xl" videoClassName="max-h-[32rem] object-contain" iconSize={30} label={post.fileName || 'Post video'} />
@@ -356,7 +356,7 @@ export default function HomeFeed({ currentUser }) {
                   )}
                 </div>
 
-                <div className="mx-4 flex flex-wrap items-center justify-between gap-2 border-y border-gray-100 py-2 text-xs font-bold text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                <div className="mx-4 flex flex-wrap items-center justify-between gap-2 border-y border-slate-100 py-2 text-xs font-bold text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <span>{post.reactions?.length || 0} reactions</span>
                   <span>{post.comments?.length || 0} comments</span>
                 </div>
@@ -367,25 +367,25 @@ export default function HomeFeed({ currentUser }) {
                       type="button"
                       onClick={() => reactToPost(post, myReaction?.emoji || QUICK_REACTIONS[0])}
                       className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black ${
-                        myReaction ? 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
+                        myReaction ? 'bg-blue-50 text-[#0b57d0] dark:bg-blue-950/30 dark:text-sky-200' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
                       }`}
                     >
                       <SmilePlus size={17} />
                       {myReaction?.emoji || 'React'}
                     </button>
-                    <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 flex translate-y-1 gap-1 rounded-2xl border border-gray-200 bg-white p-1 opacity-0 shadow-xl group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 dark:border-gray-700 dark:bg-gray-900">
+                    <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 flex translate-y-1 gap-1 rounded-2xl border border-slate-200 bg-white p-1 opacity-0 shadow-xl group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 dark:border-slate-700 dark:bg-slate-900">
                       {QUICK_REACTIONS.map(emoji => (
-                        <button key={emoji} type="button" onClick={() => reactToPost(post, emoji)} className="grid h-9 w-9 place-items-center rounded-xl text-xl hover:bg-gray-100 dark:hover:bg-gray-800">
+                        <button key={emoji} type="button" onClick={() => reactToPost(post, emoji)} className="grid h-9 w-9 place-items-center rounded-xl text-xl hover:bg-slate-100 dark:hover:bg-slate-800">
                           {emoji}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <button type="button" onClick={() => savePost(post)} className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                    {saved ? <BookmarkCheck size={17} className="text-[#1877f2]" /> : <Bookmark size={17} />}
+                  <button type="button" onClick={() => savePost(post)} className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800">
+                    {saved ? <BookmarkCheck size={17} className="text-[#0b57d0]" /> : <Bookmark size={17} />}
                     {saved ? 'Saved' : 'Save'}
                   </button>
-                  <button type="button" onClick={() => sharePost(post)} className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                  <button type="button" onClick={() => sharePost(post)} className="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800">
                     <Share2 size={17} />
                     Share
                   </button>
@@ -395,9 +395,9 @@ export default function HomeFeed({ currentUser }) {
                   {(post.comments || []).slice(-3).map((comment, index) => (
                     <div key={`${postId}-${index}-${comment.date}`} className="flex gap-2">
                       <Avatar user={comment.userId} size="h-8 w-8" />
-                      <div className="min-w-0 rounded-2xl bg-gray-100 px-3 py-2 dark:bg-gray-950">
-                        <p className="text-xs font-black text-gray-950 dark:text-white">{comment.userId?.name || 'Member'}</p>
-                        <p className="break-words text-sm text-gray-700 dark:text-gray-200">{comment.text}</p>
+                      <div className="min-w-0 rounded-2xl bg-slate-100 px-3 py-2 dark:bg-slate-950">
+                        <p className="text-xs font-black text-slate-950 dark:text-white">{comment.userId?.name || 'Member'}</p>
+                        <p className="break-words text-sm text-slate-700 dark:text-slate-200">{comment.text}</p>
                       </div>
                     </div>
                   ))}
@@ -407,9 +407,9 @@ export default function HomeFeed({ currentUser }) {
                       value={commentDrafts[postId] || ''}
                       onChange={event => setCommentDrafts(prev => ({ ...prev, [postId]: event.target.value }))}
                       placeholder="Write a comment..."
-                      className="min-w-0 flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-semibold outline-none focus:border-[#1877f2] focus:bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                      className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:bg-slate-950"
                     />
-                    <button type="submit" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#1877f2] text-white disabled:opacity-50" disabled={!String(commentDrafts[postId] || '').trim()}>
+                    <button type="submit" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#0b57d0] text-white disabled:opacity-50" disabled={!String(commentDrafts[postId] || '').trim()}>
                       <MessageCircle size={16} />
                     </button>
                   </form>
@@ -419,16 +419,16 @@ export default function HomeFeed({ currentUser }) {
           })}
 
           {visibleCount < posts.length && (
-            <button type="button" onClick={() => setVisibleCount(count => count + 8)} className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-[#1877f2] shadow-sm hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-blue-950/20">
+            <button type="button" onClick={() => setVisibleCount(count => count + 8)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
               Load more posts
             </button>
           )}
         </>
       ) : (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center dark:border-gray-800 dark:bg-gray-900">
-          <Video className="mx-auto text-[#1877f2]" size={32} />
-          <p className="mt-3 font-black text-gray-950 dark:text-white">No posts yet</p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Share the first update from the composer above.</p>
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
+          <Video className="mx-auto text-[#0b57d0]" size={32} />
+          <p className="mt-3 font-black text-slate-950 dark:text-white">No posts yet</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share the first update from the composer above.</p>
         </div>
       )}
     </section>

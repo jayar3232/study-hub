@@ -1,9 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Eye, Heart, Loader2, MessageCircle, Send, Trash2, X } from 'lucide-react';
 import { resolveMediaUrl } from '../utils/media';
 
 const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const STORY_REACTIONS_CLEAN = STORY_REACTIONS
+  .map((_, index) => ['\u2764\uFE0F', '\u{1F602}', '\u{1F525}', '\u{1F44F}', '\u{1F62E}'][index])
+  .filter(Boolean);
 
 const formatStoryTime = (value) => {
   if (!value) return '';
@@ -55,6 +59,8 @@ export default function StoryViewer({
   const [pendingAction, setPendingAction] = useState('');
   const [activePanel, setActivePanel] = useState('viewers');
   const [showOwnerActivity, setShowOwnerActivity] = useState(false);
+  const [storyProgress, setStoryProgress] = useState(0);
+  const [progressPaused, setProgressPaused] = useState(false);
 
   const storyList = useMemo(() => {
     const source = Array.isArray(stories) && stories.length ? stories : story ? [story] : [];
@@ -93,6 +99,65 @@ export default function StoryViewer({
     return map;
   }, [reactions]);
   const currentUserReaction = reactionByUser.get(getEntityId(currentUser));
+  const activeStoryId = getEntityId(currentStory);
+
+  useEffect(() => {
+    if (!currentStory) return undefined;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, [currentStory]);
+
+  useEffect(() => {
+    setComment('');
+    setPendingAction('');
+    setActivePanel('viewers');
+    setShowOwnerActivity(false);
+    setStoryProgress(0);
+    setProgressPaused(false);
+  }, [activeStoryId]);
+
+  useEffect(() => {
+    if (!currentStory || progressPaused) return undefined;
+    const duration = currentStory.fileType === 'video' ? 12000 : 7000;
+    const intervalMs = 120;
+    const step = (intervalMs / duration) * 100;
+    const interval = window.setInterval(() => {
+      setStoryProgress(prev => {
+        if (prev >= 100) return prev;
+        const next = Math.min(100, prev + step);
+        if (next >= 100 && hasMultipleStories && activeIndex < storyList.length - 1 && onNavigate) {
+          const nextStory = storyList[activeIndex + 1];
+          window.setTimeout(() => onNavigate(nextStory), 0);
+        }
+        return next;
+      });
+    }, intervalMs);
+
+    return () => window.clearInterval(interval);
+  }, [activeIndex, activeStoryId, currentStory, hasMultipleStories, onNavigate, progressPaused, storyList]);
+
+  useEffect(() => {
+    if (!currentStory) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'ArrowRight' && hasMultipleStories && onNavigate) {
+        const nextStory = storyList[(activeIndex + 1) % storyList.length];
+        onNavigate(nextStory);
+      }
+      if (event.key === 'ArrowLeft' && hasMultipleStories && onNavigate) {
+        const previousStory = storyList[(activeIndex - 1 + storyList.length) % storyList.length];
+        onNavigate(previousStory);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeIndex, currentStory, hasMultipleStories, onClose, onNavigate, storyList]);
 
   if (!currentStory) return null;
 
@@ -149,39 +214,84 @@ export default function StoryViewer({
     }
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  const viewer = (
     <div
-      className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-black/95 p-2 sm:p-4`}
+      className={`story-viewer-overlay fixed inset-0 ${zIndexClass} flex items-center justify-center bg-black/96 p-0 sm:p-4`}
       onMouseDown={event => {
         event.stopPropagation();
         if (event.target === event.currentTarget) onClose?.();
       }}
     >
       <div
-        className={`relative grid h-[min(94svh,840px)] w-full overflow-hidden rounded-3xl bg-black shadow-2xl ${
+        className={`story-viewer-shell ${isOwner ? 'story-viewer-shell--owner' : ''} relative grid h-[100dvh] w-full overflow-hidden rounded-none bg-black shadow-2xl sm:h-[min(94dvh,840px)] sm:rounded-3xl ${
           isOwner
-            ? 'max-w-6xl md:grid-cols-[minmax(0,1fr)_22rem] md:grid-rows-1'
-            : 'max-w-[430px]'
+            ? 'max-w-[1180px] md:grid-cols-[15rem_minmax(0,1fr)_22rem] md:grid-rows-1'
+            : 'max-w-none sm:max-w-[430px]'
         }`}
         onMouseDown={event => event.stopPropagation()}
+        onFocusCapture={() => setProgressPaused(true)}
+        onBlurCapture={() => setProgressPaused(false)}
       >
-        <div className="relative min-h-0 overflow-hidden bg-black">
+        {isOwner && (
+          <aside className="story-owner-rail hidden min-w-0 flex-col justify-between border-r border-white/10 bg-[#05070c] p-5 text-white md:flex">
+            <div className="min-w-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="mb-6 grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/15"
+                aria-label="Close My Day"
+              >
+                <X size={18} />
+              </button>
+              <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-lg font-black text-white ring-2 ring-[#1877f2]">
+                {ownerAvatar ? <img src={ownerAvatar} alt={owner?.name || 'Member'} className="h-full w-full object-cover" /> : (owner?.name || 'M').charAt(0).toUpperCase()}
+              </span>
+              <h2 className="mt-3 truncate text-base font-black">{owner?.name || 'Member'}</h2>
+              <p className="text-sm font-semibold text-white/60">My Day</p>
+              {formatStoryTime(currentStory.createdAt) && (
+                <p className="mt-2 text-xs font-bold text-white/45">{formatStoryTime(currentStory.createdAt)}</p>
+              )}
+              {currentStory.caption && (
+                <p className="mt-4 line-clamp-5 text-sm font-semibold leading-6 text-white/75">{currentStory.caption}</p>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-2">
+              <div className="text-center">
+                <p className="text-sm font-black">{viewers.length}</p>
+                <p className="text-[10px] font-bold uppercase text-white/45">Views</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-black">{reactions.length}</p>
+                <p className="text-[10px] font-bold uppercase text-white/45">Reacts</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-black">{comments.length}</p>
+                <p className="text-[10px] font-bold uppercase text-white/45">Replies</p>
+              </div>
+            </div>
+          </aside>
+        )}
+
+        <div className="story-viewer-stage relative min-h-0 overflow-hidden bg-black">
           {currentStory.fileType === 'image' ? (
-            <img src={resolveMediaUrl(currentStory.fileUrl)} alt={currentStory.caption || 'My Day'} decoding="async" className="h-full w-full object-contain" />
+            <img src={resolveMediaUrl(currentStory.fileUrl)} alt={currentStory.caption || 'My Day'} decoding="async" className="story-viewer-media h-full w-full object-contain" />
           ) : (
-            <video key={getEntityId(currentStory)} src={resolveMediaUrl(currentStory.fileUrl)} controls autoPlay playsInline preload="metadata" className="h-full w-full object-contain" />
+            <video key={getEntityId(currentStory)} src={resolveMediaUrl(currentStory.fileUrl)} controls autoPlay playsInline preload="metadata" className="story-viewer-media h-full w-full object-contain" />
           )}
 
-          <div className="absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/90 via-black/50 to-transparent p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-            {hasMultipleStories && (
-              <div className="mb-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${storyList.length}, minmax(0, 1fr))` }}>
-                {storyList.map((item, index) => (
+          <div className="absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/90 via-black/50 to-transparent p-3 pt-[calc(env(safe-area-inset-top)+0.9rem)] sm:p-4 sm:pt-[calc(env(safe-area-inset-top)+1rem)]">
+            <div className="mb-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${storyList.length || 1}, minmax(0, 1fr))` }}>
+              {storyList.map((item, index) => {
+                const width = index < activeIndex ? '100%' : index === activeIndex ? `${storyProgress}%` : '0%';
+                return (
                   <span key={getEntityId(item)} className="h-1 overflow-hidden rounded-full bg-white/25">
-                    <span className={`block h-full rounded-full bg-white transition ${index <= activeIndex ? 'w-full' : 'w-0'}`} />
+                    <span className="block h-full rounded-full bg-white transition-[width]" style={{ width }} />
                   </span>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
             <div className="flex items-center justify-between gap-3 text-white">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-black text-white ring-2 ring-[#1877f2]">
@@ -221,7 +331,7 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={() => goToStory('previous')}
-                className="absolute left-3 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/75"
+                className="absolute left-2 top-1/2 z-30 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/75 sm:left-3 sm:h-11 sm:w-11"
                 aria-label="Previous My Day"
               >
                 <ChevronLeft size={24} />
@@ -229,7 +339,7 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={() => goToStory('next')}
-                className="absolute right-3 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/75"
+                className="absolute right-2 top-1/2 z-30 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/75 sm:right-3 sm:h-11 sm:w-11"
                 aria-label="Next My Day"
               >
                 <ChevronRight size={24} />
@@ -273,7 +383,7 @@ export default function StoryViewer({
             <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-20 text-white">
               {currentStory.caption && <p className="mb-3 text-sm font-bold leading-snug">{currentStory.caption}</p>}
               <div className="mb-3 flex items-center justify-center gap-2">
-                {STORY_REACTIONS.map(emoji => {
+                {STORY_REACTIONS_CLEAN.map(emoji => {
                   const isSelected = currentUserReaction?.emoji === emoji;
                   return (
                     <button
@@ -322,7 +432,7 @@ export default function StoryViewer({
         </div>
 
         {isOwner && (
-          <aside className={`story-owner-activity ${showOwnerActivity ? 'flex' : 'hidden'} absolute inset-x-3 bottom-3 z-40 max-h-[min(58svh,25rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#090d16]/98 text-white shadow-2xl md:static md:flex md:max-h-none md:rounded-none md:border-l md:border-t-0 md:shadow-none`}>
+          <aside className={`story-owner-activity story-owner-activity-sheet ${showOwnerActivity ? 'flex' : 'hidden'} absolute inset-x-2 bottom-2 z-40 max-h-[min(66svh,31rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#090d16]/98 text-white shadow-2xl md:static md:flex md:max-h-none md:rounded-none md:border-l md:border-t-0 md:shadow-none`}>
             <div className="border-b border-white/10 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-black uppercase tracking-wide text-[#8ec5ff]">My Day activity</p>
@@ -386,7 +496,7 @@ export default function StoryViewer({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <div className="story-viewer-activity-list min-h-0 flex-1 overflow-y-auto p-3">
               {activePanel === 'viewers' ? (
                 viewers.length ? viewers.map(viewer => {
                   const person = getPerson(viewer);
@@ -434,4 +544,6 @@ export default function StoryViewer({
       </div>
     </div>
   );
+
+  return createPortal(viewer, document.body);
 }

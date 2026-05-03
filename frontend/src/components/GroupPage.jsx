@@ -118,6 +118,7 @@ const roleLabels = {
 const sectionRoutes = {
   overview: '',
   posts: 'posts',
+  tasks: 'tasks',
   files: 'files',
   memories: 'assets',
   activity: 'updates',
@@ -131,7 +132,7 @@ const routeToSection = {
   posts: 'posts',
   announcements: 'posts',
   calendar: 'overview',
-  tasks: 'overview',
+  tasks: 'tasks',
   files: 'files',
   assets: 'memories',
   media: 'memories',
@@ -2067,8 +2068,9 @@ export default function GroupPage() {
   const needsApprovalTasks = useMemo(() => tasks.filter(task => task.approvalStatus === 'pending' || task.approvalStatus === 'changes_requested'), [tasks]);
 
   const tabs = [
-    { key: 'overview', label: 'Overview', route: '', icon: Activity, count: pinnedPosts.length + files.length + memories.length, description: 'Command center for updates, files, assets, and realtime team conversation.' },
+    { key: 'overview', label: 'Overview', route: '', icon: Activity, count: pinnedPosts.length + tasks.length + files.length + memories.length, description: 'Command center for updates, tasks, files, assets, and realtime team conversation.' },
     { key: 'posts', label: 'Announcements', route: 'posts', icon: FileText, count: posts.length, description: 'Important workspace updates, decisions, reactions, and shared post media.' },
+    { key: 'tasks', label: 'Task Board', route: 'tasks', icon: Columns3, count: tasks.length, description: 'Kanban planning for to-do, in-progress, done tasks, owners, due dates, and approvals.' },
     { key: 'files', label: 'Files', route: 'files', icon: Upload, count: files.length, description: 'Upload, preview, download, and manage workspace documents.' },
     { key: 'memories', label: 'Project Assets', route: 'assets', icon: Images, count: memories.length, description: 'A dedicated gallery for photos, videos, screenshots, and visual references.' },
     { key: 'chat', label: 'Team Chat', route: 'chat', icon: MessageCircle, description: 'Realtime conversation for the members of this workspace.' },
@@ -2087,6 +2089,7 @@ export default function GroupPage() {
   const workspaceModules = tabs.filter(tab => tab.key !== 'overview');
   const moduleDetails = {
     posts: `${posts.length} announcements and decisions`,
+    tasks: `${taskStats.open} open tasks, ${taskStats.inProgress} in progress`,
     files: `${files.length} shared documents`,
     memories: `${memories.length} photos and videos`,
     chat: 'Realtime workspace conversation',
@@ -2094,7 +2097,7 @@ export default function GroupPage() {
     activity: `${activities.length} recent events`,
     settings: canModerate ? 'Manage identity and invitations' : 'View workspace settings'
   };
-  const featuredModules = ['posts', 'chat', 'files', 'memories'];
+  const featuredModules = ['posts', 'tasks', 'chat', 'files'];
   const compactModules = workspaceModules.filter(tab => !featuredModules.includes(tab.key));
   const focusedQuickLinks = workspaceModules.filter(tab => tab.key !== activeTab).slice(0, 5);
   const currentSectionCount = typeof activeSection.count === 'number' ? activeSection.count : null;
@@ -2115,6 +2118,7 @@ export default function GroupPage() {
   const quickStats = [
     { label: 'Members', value: groupMembers.length || group.members?.length || 0 },
     { label: 'Announcements', value: posts.length },
+    { label: 'Open tasks', value: taskStats.open },
     { label: 'Files', value: files.length },
     { label: 'Media', value: memories.length }
   ];
@@ -2177,7 +2181,7 @@ export default function GroupPage() {
             </div>
           </div>
 
-          <div className="mobile-metric-strip grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mobile-metric-strip grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2 lg:grid-cols-5">
             {quickStats.map(stat => (
               <div key={stat.label} className="bg-white p-4 dark:bg-gray-900">
                 <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{stat.label}</p>
@@ -2346,8 +2350,9 @@ export default function GroupPage() {
         {activeTab === 'overview' && (
           <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
             <section className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <MetricCard icon={FileText} label="Announcements" value={posts.length} tone="blue" />
+                <MetricCard icon={Columns3} label="Open tasks" value={taskStats.open} tone="gray" />
                 <MetricCard icon={MessageCircle} label="Team chat" value={groupMembers.length || group.members?.length || 0} tone="emerald" />
                 <MetricCard icon={Upload} label="Files" value={files.length} tone="amber" />
                 <MetricCard icon={Images} label="Assets" value={memories.length} tone="gray" />
@@ -2421,7 +2426,7 @@ export default function GroupPage() {
                     <button
                       key={activity._id || `${activity.type}-${activity.createdAt}`}
                       type="button"
-                      onClick={() => setActiveTab(activity.type === 'post' ? 'posts' : ['file', 'memory'].includes(activity.type) ? 'files' : 'activity')}
+                      onClick={() => setActiveTab(activity.type === 'post' ? 'posts' : activity.type === 'task' ? 'tasks' : ['file', 'memory'].includes(activity.type) ? 'files' : 'activity')}
                       className="w-full rounded-lg border border-gray-100 p-3 text-left transition hover:border-pink-200 hover:bg-pink-50 dark:border-gray-800 dark:hover:border-pink-900 dark:hover:bg-pink-950/20"
                     >
                       <p className="line-clamp-1 text-sm font-semibold text-gray-950 dark:text-white">{activity.title || activity.description || 'Workspace update'}</p>
@@ -2557,6 +2562,31 @@ export default function GroupPage() {
 
         {activeTab === 'tasks' && (
           <motion.div key="tasks" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+            <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-blue-950/50 dark:bg-gray-900">
+              <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-50 text-[#0b57d0] dark:bg-blue-950/35 dark:text-blue-200">
+                    <Columns3 size={23} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-[#0b57d0] dark:text-blue-200">Workspace task board</p>
+                    <h2 className="mt-1 text-xl font-black text-gray-950 dark:text-white">Plan, assign, review, and finish work in one board.</h2>
+                    <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-gray-500 dark:text-gray-400">
+                      Move cards between To do, In progress, and Done. Keep owners, due dates, priority, approvals, labels, comments, and updates attached to each task.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateTask(true)}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0b57d0] px-4 text-sm font-black text-white transition hover:bg-[#07036f]"
+                >
+                  <PlusCircle size={17} />
+                  New task
+                </button>
+              </div>
+            </section>
+
             <div className="grid gap-3 md:grid-cols-4">
               <MetricCard icon={CheckCircle} label="Open" value={taskStats.open} tone="blue" />
               <MetricCard icon={Clock} label="In progress" value={taskStats.inProgress} tone="gray" />

@@ -10,12 +10,16 @@ import {
   Edit3,
   Download,
   FileText,
+  Flame,
   Image as ImageIcon,
   Info,
   Loader2,
   MessageCircle,
   Mic,
+  MicOff,
   MoreVertical,
+  Phone,
+  PhoneOff,
   Pin,
   PinOff,
   Plus,
@@ -32,6 +36,7 @@ import {
   User,
   Users,
   Video,
+  VideoOff,
   Volume2,
   VolumeX,
   X
@@ -54,6 +59,10 @@ let socket;
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
 const MESSAGE_RENDER_BATCH = 100;
 const MOBILE_MESSAGE_RENDER_BATCH = 48;
+const INITIAL_MESSAGE_PAGE_LIMIT = 80;
+const OLDER_MESSAGE_PAGE_LIMIT = 70;
+const CONVERSATION_ROW_HEIGHT = 90;
+const CONVERSATION_VIRTUAL_OVERSCAN = 6;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
 const shouldAutoFocusComposer = () => (
@@ -73,6 +82,80 @@ const shouldPreloadAdjacentMedia = () => (
 );
 
 const getDisplayName = (entity, fallback = 'User') => entity?.name || fallback;
+const getMessageAttachments = (message = {}) => {
+  const attachments = Array.isArray(message.attachments) ? message.attachments.filter(item => item?.fileUrl) : [];
+  if (attachments.length) return attachments;
+  if (!message.fileUrl) return [];
+  return [{
+    fileUrl: message.fileUrl,
+    fileType: message.fileType,
+    fileName: message.fileName,
+    mimeType: message.mimeType,
+    fileSize: message.fileSize,
+    storagePath: message.storagePath,
+    storageProvider: message.storageProvider
+  }];
+};
+
+const getSelectedAttachmentItems = (attachment) => {
+  if (!attachment) return [];
+  if (Array.isArray(attachment.items)) return attachment.items;
+  if (!attachment.file) return [];
+  return [{
+    id: `${attachment.file.name}-${attachment.file.size}-${attachment.file.lastModified || Date.now()}`,
+    file: attachment.file,
+    fileType: attachment.fileType,
+    previewUrl: attachment.previewUrl || ''
+  }];
+};
+
+const createAttachmentId = (file) => `${file.name}-${file.size}-${file.lastModified || Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+const getAttachmentTypeLabel = (items = []) => {
+  if (!items.length) return 'Attachment';
+  if (items.length === 1) {
+    if (items[0].fileType === 'image') return 'Photo';
+    if (items[0].fileType === 'video') return 'Video';
+    if (items[0].fileType === 'audio') return 'Voice message';
+    return 'File attachment';
+  }
+
+  const mediaCount = items.filter(item => ['image', 'video'].includes(item.fileType)).length;
+  return mediaCount === items.length ? `${items.length} photos/videos` : `${items.length} attachments`;
+};
+const CALL_ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+];
+
+const createCallId = () => `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const serializeCallUser = (person) => ({
+  _id: getEntityId(person),
+  id: getEntityId(person),
+  name: person?.name || person?.email || 'User',
+  email: person?.email || '',
+  avatar: person?.avatar || person?.profilePicture || '',
+  profilePicture: person?.profilePicture || person?.avatar || ''
+});
+
+const formatCallDuration = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
+};
+
+const toSessionDescription = (description) => (
+  typeof RTCSessionDescription !== 'undefined'
+    ? new RTCSessionDescription(description)
+    : description
+);
+
+const toIceCandidate = (candidate) => (
+  typeof RTCIceCandidate !== 'undefined'
+    ? new RTCIceCandidate(candidate)
+    : candidate
+);
 
 const MY_DAY_REPLY_PREFIX = 'Replied to your My Day:';
 
@@ -108,9 +191,11 @@ const getFileType = (file) => {
 
 const getMessageSnippet = (message) => {
   if (!message) return '';
+  const attachments = getMessageAttachments(message);
   if (message.unsent) return 'Message unsent';
   if (isMyDayReplyMessage(message)) return `My Day reply: ${getMyDayReplyBody(message.text) || 'Reply'}`;
   if (message.text?.trim()) return message.text;
+  if (attachments.length > 1) return getAttachmentTypeLabel(attachments);
   if (message.fileType === 'image') return 'Photo';
   if (message.fileType === 'video') return 'Video';
   if (message.fileType === 'audio') return 'Voice message';
@@ -209,6 +294,9 @@ export default function Messages() {
   const [selectedMessageInfo, setSelectedMessageInfo] = useState(null);
   const [unreadDividerMessageId, setUnreadDividerMessageId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [oldestMessageCursor, setOldestMessageCursor] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
@@ -236,8 +324,24 @@ export default function Messages() {
   const [savingNote, setSavingNote] = useState(false);
   const [userNotes, setUserNotes] = useState({});
   const [mediaPreview, setMediaPreview] = useState(null);
+  const [conversationListScrollTop, setConversationListScrollTop] = useState(0);
+  const [conversationListViewportHeight, setConversationListViewportHeight] = useState(0);
   const [, setPresenceClock] = useState(0);
+  const [callState, setCallState] = useState('idle');
+  const [callMode, setCallMode] = useState('audio');
+  const [callPartner, setCallPartner] = useState(null);
+  const [activeCallId, setActiveCallId] = useState('');
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [callError, setCallError] = useState('');
+  const [localStreamReady, setLocalStreamReady] = useState(false);
+  const [remoteStreamReady, setRemoteStreamReady] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
+  const [callStartedAt, setCallStartedAt] = useState(null);
+  const [callClock, setCallClock] = useState(Date.now());
+  const [chatStreak, setChatStreak] = useState(null);
 
+  const conversationListRef = useRef(null);
   const messageThreadRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -256,6 +360,20 @@ export default function Messages() {
   const selectedUserRef = useRef(null);
   const messageRefs = useRef({});
   const reactionPressTimerRef = useRef(null);
+  const loadingOlderMessagesRef = useRef(false);
+  const peerConnectionRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
+  const pendingIceCandidatesRef = useRef([]);
+  const activeCallRef = useRef({
+    state: 'idle',
+    callId: '',
+    partnerId: '',
+    mode: 'audio'
+  });
 
   const currentUserId = getEntityId(user);
   const deferredConversationSearch = useDeferredValue(conversationSearch);
@@ -403,7 +521,12 @@ export default function Messages() {
   }, [setComposerText]);
 
   const clearAttachment = useCallback(() => {
-    setSelectedAttachment(null);
+    setSelectedAttachment(prev => {
+      getSelectedAttachmentItems(prev).forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+      return null;
+    });
     setUploadProgress(0);
     setAttachmentPreview(prev => {
       if (prev) URL.revokeObjectURL(prev);
@@ -495,13 +618,25 @@ export default function Messages() {
     openingConversationRef.current = true;
     setLoading(true);
     setVisibleMessageCount(getMessageRenderBatch());
+    setHasOlderMessages(false);
+    setOldestMessageCursor(null);
+    setLoadingOlderMessages(false);
+    loadingOlderMessagesRef.current = false;
 
     try {
-      const res = await api.get(`/messages/${id}`);
+      const res = await api.get(`/messages/${id}`, {
+        params: {
+          paginated: 1,
+          limit: INITIAL_MESSAGE_PAGE_LIMIT
+        }
+      });
       if (latestFetchIdRef.current !== fetchId) return;
 
-      const loadedMessages = res.data || [];
+      const payload = res.data || {};
+      const loadedMessages = Array.isArray(payload) ? payload : (payload.items || []);
       setMessages(loadedMessages);
+      setHasOlderMessages(Boolean(!Array.isArray(payload) && payload.hasMore));
+      setOldestMessageCursor(Array.isArray(payload) ? null : (payload.nextCursor || null));
       const firstUnreadIncoming = loadedMessages.find(message => (
         getEntityId(message.from) === id
         && getEntityId(message.to) === currentUserId
@@ -516,7 +651,544 @@ export default function Messages() {
     } finally {
       if (latestFetchIdRef.current === fetchId) setLoading(false);
     }
-  }, [currentUserId, markChatAsRead, scrollToBottom]);
+  }, [currentUserId, markChatAsRead]);
+
+  const fetchChatStreak = useCallback(async (userId) => {
+    const id = getEntityId(userId);
+    if (!id) {
+      setChatStreak(null);
+      return null;
+    }
+
+    try {
+      const res = await api.get(`/messages/streak/${id}`);
+      setChatStreak(res.data || null);
+      return res.data;
+    } catch (err) {
+      console.error('Chat streak failed', err);
+      setChatStreak(null);
+      return null;
+    }
+  }, []);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedUserId || !hasOlderMessages || loading || loadingOlderMessagesRef.current) return;
+    const before = oldestMessageCursor || messages[0]?.createdAt;
+    if (!before) {
+      setHasOlderMessages(false);
+      return;
+    }
+
+    const thread = messageThreadRef.current;
+    const previousScrollHeight = thread?.scrollHeight || 0;
+    const previousScrollTop = thread?.scrollTop || 0;
+    setLoadingOlderMessages(true);
+    loadingOlderMessagesRef.current = true;
+
+    try {
+      const res = await api.get(`/messages/${selectedUserId}`, {
+        params: {
+          paginated: 1,
+          limit: OLDER_MESSAGE_PAGE_LIMIT,
+          before
+        }
+      });
+      const payload = res.data || {};
+      const olderMessages = Array.isArray(payload) ? payload : (payload.items || []);
+
+      setMessages(prev => {
+        const seenIds = new Set(prev.map(message => getEntityId(message)));
+        const uniqueOlder = olderMessages.filter(message => {
+          const messageId = getEntityId(message);
+          return messageId && !seenIds.has(messageId);
+        });
+        if (!uniqueOlder.length) return prev;
+        return [...uniqueOlder, ...prev];
+      });
+      setHasOlderMessages(Boolean(!Array.isArray(payload) && payload.hasMore));
+      setOldestMessageCursor(Array.isArray(payload) ? null : (payload.nextCursor || null));
+
+      requestAnimationFrame(() => {
+        const node = messageThreadRef.current;
+        if (!node) return;
+        const nextScrollHeight = node.scrollHeight;
+        node.scrollTop = previousScrollTop + (nextScrollHeight - previousScrollHeight);
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to load earlier messages');
+    } finally {
+      setLoadingOlderMessages(false);
+      loadingOlderMessagesRef.current = false;
+    }
+  }, [hasOlderMessages, loading, messages, oldestMessageCursor, selectedUserId]);
+
+  const emitCallSignal = useCallback((eventName, payload = {}) => {
+    const activeSocket = socket || getSocket();
+    if (!activeSocket.connected) activeSocket.connect();
+    activeSocket.emit(eventName, payload);
+  }, []);
+
+  const cleanupCallMedia = useCallback(() => {
+    const peer = peerConnectionRef.current;
+    if (peer) {
+      peer.onicecandidate = null;
+      peer.ontrack = null;
+      peer.onconnectionstatechange = null;
+      peer.close();
+      peerConnectionRef.current = null;
+    }
+
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    remoteStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current = null;
+    remoteStreamRef.current = null;
+    pendingIceCandidatesRef.current = [];
+
+    [localVideoRef, remoteVideoRef, remoteAudioRef].forEach(ref => {
+      if (ref.current) ref.current.srcObject = null;
+    });
+
+    setLocalStreamReady(false);
+    setRemoteStreamReady(false);
+  }, []);
+
+  const resetCall = useCallback((nextError = '') => {
+    cleanupCallMedia();
+    activeCallRef.current = {
+      state: 'idle',
+      callId: '',
+      partnerId: '',
+      mode: 'audio'
+    };
+    setCallState('idle');
+    setCallMode('audio');
+    setCallPartner(null);
+    setActiveCallId('');
+    setIncomingCall(null);
+    setCallError(nextError);
+    setMicMuted(false);
+    setCameraOff(false);
+    setCallStartedAt(null);
+  }, [cleanupCallMedia]);
+
+  const flushPendingIceCandidates = useCallback(async (peer = peerConnectionRef.current) => {
+    if (!peer || !peer.remoteDescription) return;
+
+    const queuedCandidates = pendingIceCandidatesRef.current.splice(0);
+    for (const candidate of queuedCandidates) {
+      try {
+        await peer.addIceCandidate(toIceCandidate(candidate));
+      } catch (err) {
+        console.warn('Failed to apply queued call candidate', err);
+      }
+    }
+  }, []);
+
+  const markCallConnected = useCallback(() => {
+    setCallState('connected');
+    setCallStartedAt(prev => prev || Date.now());
+  }, []);
+
+  const getLocalCallStream = useCallback(async (mode) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Calls are not supported in this browser.');
+    }
+
+    return navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: mode === 'video'
+        ? {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          }
+        : false
+    });
+  }, []);
+
+  const createPeerConnection = useCallback((partnerId, nextCallId) => {
+    if (typeof RTCPeerConnection === 'undefined') {
+      throw new Error('Calls are not supported in this browser.');
+    }
+
+    const peer = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+
+    peer.onicecandidate = (event) => {
+      if (!event.candidate || !partnerId || !currentUserId) return;
+      emitCallSignal('call:ice-candidate', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: partnerId,
+        type: activeCallRef.current.mode,
+        candidate: event.candidate
+      });
+    };
+
+    peer.ontrack = (event) => {
+      if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
+      const incomingTracks = event.streams?.[0]?.getTracks?.() || [event.track].filter(Boolean);
+      incomingTracks.forEach(track => {
+        const alreadyAdded = remoteStreamRef.current.getTracks().some(item => item.id === track.id);
+        if (!alreadyAdded) remoteStreamRef.current.addTrack(track);
+      });
+      setRemoteStreamReady(remoteStreamRef.current.getTracks().length > 0);
+    };
+
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === 'connected') {
+        markCallConnected();
+        return;
+      }
+
+      if (peer.connectionState === 'failed') {
+        setCallError('Call connection failed. Please try again.');
+      }
+    };
+
+    peerConnectionRef.current = peer;
+    return peer;
+  }, [currentUserId, emitCallSignal, markCallConnected]);
+
+  const prepareLocalCall = useCallback(async (mode, partnerId, nextCallId) => {
+    cleanupCallMedia();
+    const stream = await getLocalCallStream(mode);
+    localStreamRef.current = stream;
+    remoteStreamRef.current = new MediaStream();
+    setLocalStreamReady(true);
+    setRemoteStreamReady(false);
+    setMicMuted(false);
+    setCameraOff(mode !== 'video');
+
+    const peer = createPeerConnection(partnerId, nextCallId);
+    stream.getTracks().forEach(track => peer.addTrack(track, stream));
+    return peer;
+  }, [cleanupCallMedia, createPeerConnection, getLocalCallStream]);
+
+  useEffect(() => {
+    activeCallRef.current = {
+      state: callState,
+      callId: activeCallId,
+      partnerId: getEntityId(callPartner),
+      mode: callMode
+    };
+  }, [activeCallId, callMode, callPartner, callState]);
+
+  useEffect(() => {
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+  }, [callState, localStreamReady]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStreamRef.current;
+    }
+  }, [callState, remoteStreamReady]);
+
+  useEffect(() => {
+    if (!callStartedAt) return undefined;
+    const timer = setInterval(() => setCallClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [callStartedAt]);
+
+  useEffect(() => () => cleanupCallMedia(), [cleanupCallMedia]);
+
+  const startCall = useCallback(async (mode = 'audio') => {
+    const partnerId = selectedUserId;
+    if (!currentUserId || !partnerId || !selectedUser) return;
+
+    if (activeCallRef.current.state !== 'idle') {
+      toast.error('Finish your current call first.');
+      return;
+    }
+
+    if (!onlineUsers.has(partnerId)) {
+      toast.error(`${getDisplayName(selectedUser, 'This user')} is offline right now.`);
+      return;
+    }
+
+    const nextCallId = createCallId();
+    const partner = serializeCallUser(selectedUser);
+    const caller = serializeCallUser(user);
+
+    activeCallRef.current = {
+      state: 'calling',
+      callId: nextCallId,
+      partnerId,
+      mode
+    };
+    setCallState('calling');
+    setCallMode(mode);
+    setCallPartner(partner);
+    setActiveCallId(nextCallId);
+    setIncomingCall(null);
+    setCallError('');
+
+    try {
+      const peer = await prepareLocalCall(mode, partnerId, nextCallId);
+      emitCallSignal('call:start', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: partnerId,
+        type: mode,
+        caller
+      });
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      emitCallSignal('call:offer', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: partnerId,
+        type: mode,
+        offer
+      });
+      setCallState('connecting');
+    } catch (err) {
+      console.error('Start call failed', err);
+      resetCall(err.message || 'Could not start the call.');
+      toast.error(err.message || 'Could not start the call.');
+    }
+  }, [currentUserId, emitCallSignal, onlineUsers, prepareLocalCall, resetCall, selectedUser, selectedUserId, user]);
+
+  const acceptCall = useCallback(async () => {
+    const pendingCall = incomingCall;
+    const callerId = getEntityId(pendingCall?.from);
+    const nextCallId = pendingCall?.callId;
+    const mode = pendingCall?.type || 'audio';
+
+    if (!pendingCall || !callerId || !nextCallId) return;
+    if (!pendingCall.offer) {
+      toast.error('Call is still connecting. Please wait a second.');
+      return;
+    }
+
+    activeCallRef.current = {
+      state: 'connecting',
+      callId: nextCallId,
+      partnerId: callerId,
+      mode
+    };
+    setCallState('connecting');
+    setCallMode(mode);
+    setCallPartner(pendingCall.caller || { _id: callerId, id: callerId, name: 'Caller' });
+    setActiveCallId(nextCallId);
+    setCallError('');
+
+    try {
+      const peer = await prepareLocalCall(mode, callerId, nextCallId);
+      await peer.setRemoteDescription(toSessionDescription(pendingCall.offer));
+      await flushPendingIceCandidates(peer);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      emitCallSignal('call:answer', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: callerId,
+        type: mode,
+        answer
+      });
+      setIncomingCall(null);
+      markCallConnected();
+    } catch (err) {
+      console.error('Accept call failed', err);
+      emitCallSignal('call:reject', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: callerId,
+        type: mode,
+        reason: 'media-error'
+      });
+      resetCall(err.message || 'Could not join the call.');
+      toast.error(err.message || 'Could not join the call.');
+    }
+  }, [currentUserId, emitCallSignal, flushPendingIceCandidates, incomingCall, markCallConnected, prepareLocalCall, resetCall]);
+
+  const endCall = useCallback((reason = 'ended', notify = true) => {
+    const activeCall = activeCallRef.current;
+    if (notify && activeCall.callId && activeCall.partnerId && currentUserId) {
+      emitCallSignal('call:end', {
+        callId: activeCall.callId,
+        from: currentUserId,
+        to: activeCall.partnerId,
+        type: activeCall.mode,
+        reason
+      });
+    }
+    resetCall();
+  }, [currentUserId, emitCallSignal, resetCall]);
+
+  const rejectCall = useCallback((reason = 'declined') => {
+    const pendingCall = incomingCall || activeCallRef.current;
+    const partnerId = getEntityId(pendingCall.from || pendingCall.partnerId);
+    const nextCallId = pendingCall.callId;
+    const mode = pendingCall.type || pendingCall.mode || callMode;
+
+    if (nextCallId && partnerId && currentUserId) {
+      emitCallSignal('call:reject', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: partnerId,
+        type: mode,
+        reason
+      });
+    }
+
+    resetCall();
+  }, [callMode, currentUserId, emitCallSignal, incomingCall, resetCall]);
+
+  const toggleCallMic = useCallback(() => {
+    const audioTracks = localStreamRef.current?.getAudioTracks?.() || [];
+    if (!audioTracks.length) return;
+    const nextMuted = !micMuted;
+    audioTracks.forEach(track => {
+      track.enabled = !nextMuted;
+    });
+    setMicMuted(nextMuted);
+  }, [micMuted]);
+
+  const toggleCallCamera = useCallback(() => {
+    const videoTracks = localStreamRef.current?.getVideoTracks?.() || [];
+    if (!videoTracks.length) return;
+    const nextCameraOff = !cameraOff;
+    videoTracks.forEach(track => {
+      track.enabled = !nextCameraOff;
+    });
+    setCameraOff(nextCameraOff);
+  }, [cameraOff]);
+
+  const handleIncomingCallStart = useCallback((payload = {}) => {
+    const fromId = getEntityId(payload.from);
+    const toId = getEntityId(payload.to);
+    if (!fromId || fromId === currentUserId || (toId && toId !== currentUserId)) return;
+
+    if (activeCallRef.current.state !== 'idle') {
+      emitCallSignal('call:busy', {
+        callId: payload.callId,
+        from: currentUserId,
+        to: fromId,
+        type: payload.type || 'audio',
+        reason: 'busy'
+      });
+      return;
+    }
+
+    const nextCallId = payload.callId || createCallId();
+    const mode = payload.type || 'audio';
+    const caller = payload.caller || { _id: fromId, id: fromId, name: payload.callerName || 'Incoming call' };
+
+    activeCallRef.current = {
+      state: 'incoming',
+      callId: nextCallId,
+      partnerId: fromId,
+      mode
+    };
+    setCallState('incoming');
+    setCallMode(mode);
+    setCallPartner(caller);
+    setActiveCallId(nextCallId);
+    setIncomingCall(prev => ({ ...(prev || {}), ...payload, callId: nextCallId, from: fromId, type: mode, caller }));
+    setCallError('');
+
+    if (soundEnabled) playUiSound('message', 0.45);
+  }, [currentUserId, emitCallSignal, soundEnabled]);
+
+  const handleCallOffer = useCallback((payload = {}) => {
+    const fromId = getEntityId(payload.from);
+    const toId = getEntityId(payload.to);
+    if (!fromId || fromId === currentUserId || (toId && toId !== currentUserId)) return;
+
+    const nextCallId = payload.callId || createCallId();
+    const activeCall = activeCallRef.current;
+
+    if (activeCall.state !== 'idle' && activeCall.callId !== nextCallId) {
+      emitCallSignal('call:busy', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: fromId,
+        type: payload.type || 'audio',
+        reason: 'busy'
+      });
+      return;
+    }
+
+    const mode = payload.type || activeCall.mode || 'audio';
+    const fallbackCaller = payload.caller || callPartner || { _id: fromId, id: fromId, name: 'Incoming call' };
+
+    activeCallRef.current = {
+      state: 'incoming',
+      callId: nextCallId,
+      partnerId: fromId,
+      mode
+    };
+    setCallState('incoming');
+    setCallMode(mode);
+    setCallPartner(prev => payload.caller || prev || fallbackCaller);
+    setActiveCallId(nextCallId);
+    setIncomingCall(prev => ({
+      ...(prev || {}),
+      ...payload,
+      callId: nextCallId,
+      from: fromId,
+      type: mode,
+      caller: payload.caller || prev?.caller || fallbackCaller,
+      offer: payload.offer
+    }));
+  }, [callPartner, currentUserId, emitCallSignal]);
+
+  const handleCallAnswer = useCallback(async (payload = {}) => {
+    const activeCall = activeCallRef.current;
+    if (!payload.answer || payload.callId !== activeCall.callId) return;
+
+    const peer = peerConnectionRef.current;
+    if (!peer) return;
+
+    try {
+      await peer.setRemoteDescription(toSessionDescription(payload.answer));
+      await flushPendingIceCandidates(peer);
+      markCallConnected();
+    } catch (err) {
+      console.error('Call answer failed', err);
+      resetCall('Call failed while connecting.');
+    }
+  }, [flushPendingIceCandidates, markCallConnected, resetCall]);
+
+  const handleCallIceCandidate = useCallback(async (payload = {}) => {
+    const activeCall = activeCallRef.current;
+    if (!payload.candidate || payload.callId !== activeCall.callId) return;
+
+    const peer = peerConnectionRef.current;
+    if (!peer || !peer.remoteDescription) {
+      pendingIceCandidatesRef.current.push(payload.candidate);
+      return;
+    }
+
+    try {
+      await peer.addIceCandidate(toIceCandidate(payload.candidate));
+    } catch (err) {
+      console.warn('Failed to apply call candidate', err);
+    }
+  }, []);
+
+  const handleRemoteCallEnd = useCallback((payload = {}) => {
+    if (payload.callId && payload.callId !== activeCallRef.current.callId) return;
+    resetCall();
+    if (payload.reason !== 'replaced') toast.success('Call ended');
+  }, [resetCall]);
+
+  const handleRemoteCallRejected = useCallback((payload = {}) => {
+    if (payload.callId && payload.callId !== activeCallRef.current.callId) return;
+    resetCall(payload.reason === 'busy' ? 'User is on another call.' : '');
+    toast.error(payload.reason === 'busy' ? 'User is on another call.' : 'Call declined');
+  }, [resetCall]);
+
+  const handleCallUnavailable = useCallback((payload = {}) => {
+    if (payload.callId && payload.callId !== activeCallRef.current.callId) return;
+    resetCall('User is offline right now.');
+    toast.error('User is offline right now.');
+  }, [resetCall]);
 
   useEffect(() => {
     const load = async () => {
@@ -696,6 +1368,7 @@ export default function Messages() {
           if (soundEnabled && !mutedConversationIds.has(fromId)) playUiSound('message', 0.5);
           markChatAsRead(fromId);
         }
+        fetchChatStreak(fromId === currentUserId ? toId : fromId);
       } else if (toId === currentUserId && fromId !== currentUserId) {
         if (!mutedConversationIds.has(fromId)) {
           if (soundEnabled) playUiSound('message', 0.5);
@@ -763,6 +1436,14 @@ export default function Messages() {
     socket.on('message-updated', onMessageUpdated);
     socket.on('message-hidden', onMessageHidden);
     socket.on('conversation-deleted', onConversationDeleted);
+    socket.on('call:start', handleIncomingCallStart);
+    socket.on('call:offer', handleCallOffer);
+    socket.on('call:answer', handleCallAnswer);
+    socket.on('call:ice-candidate', handleCallIceCandidate);
+    socket.on('call:end', handleRemoteCallEnd);
+    socket.on('call:reject', handleRemoteCallRejected);
+    socket.on('call:busy', handleRemoteCallRejected);
+    socket.on('call:unavailable', handleCallUnavailable);
 
     if (socket.connected) {
       announceOnline();
@@ -790,11 +1471,27 @@ export default function Messages() {
       socket.off('message-updated', onMessageUpdated);
       socket.off('message-hidden', onMessageHidden);
       socket.off('conversation-deleted', onConversationDeleted);
+      socket.off('call:start', handleIncomingCallStart);
+      socket.off('call:offer', handleCallOffer);
+      socket.off('call:answer', handleCallAnswer);
+      socket.off('call:ice-candidate', handleCallIceCandidate);
+      socket.off('call:end', handleRemoteCallEnd);
+      socket.off('call:reject', handleRemoteCallRejected);
+      socket.off('call:busy', handleRemoteCallRejected);
+      socket.off('call:unavailable', handleCallUnavailable);
       clearInterval(heartbeat);
     };
   }, [
     currentUserId,
     fetchConversations,
+    fetchChatStreak,
+    handleCallAnswer,
+    handleCallIceCandidate,
+    handleCallOffer,
+    handleCallUnavailable,
+    handleIncomingCallStart,
+    handleRemoteCallEnd,
+    handleRemoteCallRejected,
     markChatAsRead,
     mutedConversationIds,
     scrollToBottom,
@@ -805,11 +1502,21 @@ export default function Messages() {
     if (selectedUser) {
       setMessages([]);
       setVisibleMessageCount(getMessageRenderBatch());
+      setHasOlderMessages(false);
+      setOldestMessageCursor(null);
+      setLoadingOlderMessages(false);
+      loadingOlderMessagesRef.current = false;
       openingConversationRef.current = true;
       fetchMessages(selectedUser._id || selectedUser.id);
+      fetchChatStreak(selectedUser._id || selectedUser.id);
     } else {
       setMessages([]);
+      setHasOlderMessages(false);
+      setOldestMessageCursor(null);
+      setLoadingOlderMessages(false);
+      loadingOlderMessagesRef.current = false;
       openingConversationRef.current = false;
+      setChatStreak(null);
     }
 
     setReplyingTo(null);
@@ -824,7 +1531,7 @@ export default function Messages() {
     clearAttachment();
     clearComposerText();
     setOtherUserTyping(false);
-  }, [clearAttachment, clearComposerText, fetchMessages, selectedUser]);
+  }, [clearAttachment, clearComposerText, fetchChatStreak, fetchMessages, selectedUser]);
 
   useLayoutEffect(() => {
     if (loading || !messages.length || !selectedUserId || !openingConversationRef.current) return;
@@ -869,7 +1576,7 @@ export default function Messages() {
     return () => clearInterval(interval);
   }, []);
 
-  const uploadMessageAttachment = async (file, fileType = '') => {
+  const uploadMessageAttachment = async (file, fileType = '', onProgress = null) => {
     const uploadFile = fileType === 'image' ? await optimizeImageFile(file) : file;
     const formData = new FormData();
     formData.append('file', uploadFile);
@@ -877,7 +1584,9 @@ export default function Messages() {
     const res = await api.post('/messages/upload', formData, {
       onUploadProgress: (progressEvent) => {
         if (!progressEvent.total) return;
-        setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+        const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        if (onProgress) onProgress(progress);
+        else setUploadProgress(progress);
       }
     });
 
@@ -887,9 +1596,9 @@ export default function Messages() {
   const sendMessage = async (overrideAttachment = null) => {
     const draftText = composerTextRef.current;
     const text = draftText.trim();
-    if ((!text && !selectedAttachment && !overrideAttachment) || !selectedUser || sending) return;
-
     const attachment = overrideAttachment || selectedAttachment;
+    const attachmentItems = getSelectedAttachmentItems(attachment);
+    if ((!text && attachmentItems.length === 0) || !selectedUser || sending) return;
 
     setSending(true);
     clearComposerText();
@@ -899,9 +1608,19 @@ export default function Messages() {
       const payload = { to: getEntityId(selectedUser), text };
       if (replyingTo) payload.replyTo = getEntityId(replyingTo);
 
-      if (attachment?.file) {
-        const upload = await uploadMessageAttachment(attachment.file, attachment.fileType);
-        Object.assign(payload, upload);
+      if (attachmentItems.length) {
+        const uploadedAttachments = [];
+        for (let index = 0; index < attachmentItems.length; index += 1) {
+          const item = attachmentItems[index];
+          const upload = await uploadMessageAttachment(item.file, item.fileType, (progress) => {
+            const totalProgress = Math.round(((index + (progress / 100)) / attachmentItems.length) * 100);
+            setUploadProgress(totalProgress);
+          });
+          uploadedAttachments.push(upload);
+        }
+
+        payload.attachments = uploadedAttachments;
+        Object.assign(payload, uploadedAttachments[0]);
       }
 
       const res = await api.post('/messages', payload);
@@ -912,6 +1631,7 @@ export default function Messages() {
       fetchConversations();
       setReplyingTo(null);
       clearAttachment();
+      fetchChatStreak(getEntityId(selectedUser));
       if (soundEnabled) playUiSound('send', 0.35);
       scrollToBottom();
     } catch (err) {
@@ -1025,26 +1745,38 @@ export default function Messages() {
   };
 
   const handleAttachmentSelect = (event, expectedType = null) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
-    if (!file) return;
+    if (!files.length) return;
 
-    if (file.size > MAX_MESSAGE_UPLOAD_SIZE) {
-      toast.error('Maximum attachment size is 25MB');
+    const oversizedFiles = files.filter(file => file.size > MAX_MESSAGE_UPLOAD_SIZE);
+    if (oversizedFiles.length) {
+      toast.error('Maximum attachment size is 25MB per file');
       return;
     }
 
-    const fileType = getFileType(file);
-    if (expectedType && fileType !== expectedType) {
+    const items = files.map(file => ({
+      id: createAttachmentId(file),
+      file,
+      fileType: getFileType(file),
+      previewUrl: ['image', 'video', 'audio'].includes(getFileType(file)) ? URL.createObjectURL(file) : ''
+    }));
+
+    if (expectedType && items.some(item => item.fileType !== expectedType)) {
+      items.forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
       toast.error(`Please choose a ${expectedType} file`);
       return;
     }
 
     clearAttachment();
-    setSelectedAttachment({ file, fileType });
-    if (fileType === 'image' || fileType === 'video' || fileType === 'audio') {
-      setAttachmentPreview(URL.createObjectURL(file));
-    }
+    setSelectedAttachment({
+      items,
+      file: items[0].file,
+      fileType: items.length > 1 ? 'album' : items[0].fileType
+    });
+    setAttachmentPreview(items.length === 1 ? items[0].previewUrl : null);
   };
 
   const startRecording = async () => {
@@ -1270,6 +2002,61 @@ export default function Messages() {
     });
   }, [conversationFilter, conversations, deferredConversationSearch, favoriteConversationIds, mutedConversationIds, pinnedConversationIds]);
 
+  const measureConversationViewport = useCallback(() => {
+    const nextHeight = conversationListRef.current?.clientHeight || 0;
+    setConversationListViewportHeight(prev => (prev === nextHeight ? prev : nextHeight));
+  }, []);
+
+  const handleConversationListScroll = useCallback((event) => {
+    setConversationListScrollTop(event.currentTarget.scrollTop || 0);
+  }, []);
+
+  useEffect(() => {
+    measureConversationViewport();
+  }, [filteredConversations.length, measureConversationViewport]);
+
+  useEffect(() => {
+    setConversationListScrollTop(0);
+    if (conversationListRef.current) conversationListRef.current.scrollTop = 0;
+  }, [conversationFilter, deferredConversationSearch]);
+
+  useEffect(() => {
+    window.addEventListener('resize', measureConversationViewport);
+    return () => window.removeEventListener('resize', measureConversationViewport);
+  }, [measureConversationViewport]);
+
+  const virtualizedConversationState = useMemo(() => {
+    const total = filteredConversations.length;
+    const canVirtualize = total > 30 && conversationListViewportHeight > 0;
+    if (!canVirtualize) {
+      return {
+        enabled: false,
+        startIndex: 0,
+        items: filteredConversations,
+        paddingTop: 0,
+        paddingBottom: 0
+      };
+    }
+
+    const visibleRows = Math.ceil(conversationListViewportHeight / CONVERSATION_ROW_HEIGHT);
+    const startIndex = Math.max(0, Math.floor(conversationListScrollTop / CONVERSATION_ROW_HEIGHT) - CONVERSATION_VIRTUAL_OVERSCAN);
+    const endIndex = Math.min(
+      total,
+      startIndex + visibleRows + (CONVERSATION_VIRTUAL_OVERSCAN * 2)
+    );
+    const items = filteredConversations.slice(startIndex, endIndex);
+    const paddingTop = startIndex * CONVERSATION_ROW_HEIGHT;
+    const paddingBottom = Math.max(0, (total - endIndex) * CONVERSATION_ROW_HEIGHT);
+
+    return {
+      enabled: true,
+      startIndex,
+      items,
+      paddingTop,
+      paddingBottom
+    };
+  }, [conversationListScrollTop, conversationListViewportHeight, filteredConversations]);
+
   const selectedIsOnline = selectedUserId ? onlineUsers.has(selectedUserId) : false;
   const selectedIsFavorite = selectedUserId ? favoriteConversationIds.has(selectedUserId) : false;
   const selectedIsMuted = selectedUserId ? mutedConversationIds.has(selectedUserId) : false;
@@ -1279,6 +2066,24 @@ export default function Messages() {
   const selectedThemeKey = selectedUserId ? conversationThemes[selectedUserId] || 'default' : 'default';
   const selectedTheme = CHAT_THEMES[selectedThemeKey] || CHAT_THEMES.default;
   const selectedLastSeen = selectedUserId ? lastSeenByUser[selectedUserId] || selectedUser?.lastSeen : null;
+  const callIsActive = callState !== 'idle';
+  const callPartnerName = getDisplayName(callPartner, selectedDisplayName);
+  const canStartCall = Boolean(selectedUserId && currentUserId && socketConnected && !callIsActive);
+  const callDurationText = callStartedAt ? formatCallDuration(Math.floor((callClock - callStartedAt) / 1000)) : '';
+  const selectedAttachmentItems = getSelectedAttachmentItems(selectedAttachment);
+  const chatStreakCount = chatStreak?.currentStreak || 0;
+  const chatStreakText = chatStreakCount > 0
+    ? `${chatStreakCount} day${chatStreakCount === 1 ? '' : 's'}`
+    : 'Start streak';
+  const callStatusText = callState === 'incoming'
+    ? `${callMode === 'video' ? 'Video' : 'Audio'} call`
+    : callState === 'calling'
+      ? 'Ringing...'
+      : callState === 'connecting'
+        ? 'Connecting...'
+        : callState === 'connected'
+          ? callDurationText || 'Connected'
+          : callError || '';
   const offlineText = selectedLastSeen
     ? `Offline ${formatDistanceToNow(new Date(selectedLastSeen), { addSuffix: true })}`
     : 'Offline';
@@ -1355,23 +2160,29 @@ export default function Messages() {
 
   const mediaGalleryItems = useMemo(() => (
     messages
-      .filter(message => !message.unsent && message.fileUrl && ['image', 'video'].includes(message.fileType))
-      .map(message => {
+      .filter(message => !message.unsent)
+      .flatMap(message => {
         const messageId = getEntityId(message);
         const senderName = getEntityId(message.from) === currentUserId
           ? 'You'
           : getDisplayName(message.from, selectedDisplayName);
-        const mediaTypeLabel = message.fileType === 'image' ? 'Photo' : 'Video';
         const sentTime = message.createdAt ? formatMessageTime(message.createdAt) : '';
 
-        return {
-          id: messageId,
-          messageId,
-          type: message.fileType,
-          url: resolveMediaUrl(message.fileUrl),
-          name: message.fileName || mediaTypeLabel,
-          details: [senderName, sentTime].filter(Boolean).join(' - ')
-        };
+        return getMessageAttachments(message)
+          .map((attachment, index) => ({ attachment, index }))
+          .filter(item => ['image', 'video'].includes(item.attachment.fileType))
+          .map(({ attachment, index }) => {
+            const mediaTypeLabel = attachment.fileType === 'image' ? 'Photo' : 'Video';
+            return {
+              id: `${messageId}-${index}`,
+              messageId,
+              attachmentIndex: index,
+              type: attachment.fileType,
+              url: resolveMediaUrl(attachment.fileUrl),
+              name: attachment.fileName || mediaTypeLabel,
+              details: [senderName, sentTime].filter(Boolean).join(' - ')
+            };
+          });
       })
   ), [currentUserId, messages, selectedDisplayName]);
 
@@ -1387,20 +2198,23 @@ export default function Messages() {
       ].filter(Boolean).join(' - ')
     : '';
 
-  const openMediaPreview = (message) => {
+  const openMediaPreview = (message, attachmentIndex = 0) => {
     const messageId = getEntityId(message);
-    const galleryItem = mediaGalleryItems.find(item => item.id === messageId);
+    const galleryItem = mediaGalleryItems.find(item => item.messageId === messageId && item.attachmentIndex === attachmentIndex);
     if (galleryItem) {
       setMediaPreview(galleryItem);
       return;
     }
 
-    const mediaTypeLabel = message.fileType === 'image' ? 'Photo' : 'Video';
+    const attachment = getMessageAttachments(message)[attachmentIndex] || getMessageAttachments(message)[0] || message;
+    const mediaTypeLabel = attachment.fileType === 'image' ? 'Photo' : 'Video';
     setMediaPreview({
-      id: messageId,
-      type: message.fileType,
-      url: resolveMediaUrl(message.fileUrl),
-      name: message.fileName || mediaTypeLabel,
+      id: `${messageId}-${attachmentIndex}`,
+      messageId,
+      attachmentIndex,
+      type: attachment.fileType,
+      url: resolveMediaUrl(attachment.fileUrl),
+      name: attachment.fileName || mediaTypeLabel,
       details: mediaTypeLabel
     });
   };
@@ -1413,7 +2227,7 @@ export default function Messages() {
 
   const sharedMediaItems = useMemo(() => (
     messages
-      .filter(message => !message.unsent && message.fileUrl && ['image', 'video'].includes(message.fileType))
+      .filter(message => !message.unsent && getMessageAttachments(message).some(attachment => ['image', 'video'].includes(attachment.fileType)))
       .reverse()
   ), [messages]);
 
@@ -1431,17 +2245,13 @@ export default function Messages() {
 
   const sharedFileItems = useMemo(() => (
     messages
-      .filter(message => !message.unsent && message.fileUrl && !['image', 'video'].includes(message.fileType))
+      .filter(message => !message.unsent && getMessageAttachments(message).some(attachment => !['image', 'video'].includes(attachment.fileType)))
       .slice(-5)
       .reverse()
   ), [messages]);
 
-  const messageSearchActive = Boolean(messageSearch.trim());
-  const renderedMessages = useMemo(() => {
-    if (messageSearchActive) return messages;
-    return messages.slice(-visibleMessageCount);
-  }, [messageSearchActive, messages, visibleMessageCount]);
-  const hiddenMessageCount = Math.max(0, messages.length - renderedMessages.length);
+  const renderedMessages = useMemo(() => messages, [messages]);
+  const hiddenMessageCount = hasOlderMessages ? 1 : 0;
 
   useEffect(() => {
     if (!selectedUserId || !socket) return undefined;
@@ -1531,9 +2341,90 @@ export default function Messages() {
       return <p className="text-sm italic opacity-75">This message was unsent</p>;
     }
 
-    const mediaUrl = resolveMediaUrl(message.fileUrl);
+    const attachments = getMessageAttachments(message);
+    const primaryAttachment = attachments[0] || message;
+    const mediaUrl = resolveMediaUrl(primaryAttachment.fileUrl);
 
-    if (message.fileUrl && message.fileType === 'image') {
+    if (attachments.length > 1) {
+      const visibleAttachments = attachments.slice(0, 4);
+      const extraCount = attachments.length - visibleAttachments.length;
+
+      return (
+        <div className="message-album-attachment relative overflow-hidden rounded-2xl bg-black/5 p-1 dark:bg-white/5">
+          <div className={`grid gap-1 ${visibleAttachments.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {visibleAttachments.map((attachment, index) => {
+              const isMedia = ['image', 'video'].includes(attachment.fileType);
+              const itemUrl = resolveMediaUrl(attachment.fileUrl);
+              const isLastWithMore = extraCount > 0 && index === visibleAttachments.length - 1;
+
+              const content = (
+                <span className="relative block aspect-square overflow-hidden rounded-xl bg-slate-900">
+                  {attachment.fileType === 'image' ? (
+                    <img
+                      src={itemUrl}
+                      alt={attachment.fileName || 'Album photo'}
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                      onLoad={keepOpeningThreadPinned}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : attachment.fileType === 'video' ? (
+                    <VideoThumbnail
+                      src={itemUrl}
+                      className="h-full w-full"
+                      videoClassName="h-full w-full object-cover opacity-95"
+                      iconSize={22}
+                      label={attachment.fileName || 'Album video'}
+                      onReady={keepOpeningThreadPinned}
+                    />
+                  ) : (
+                    <span className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-100 p-3 text-slate-600 dark:bg-gray-900 dark:text-gray-300">
+                      <FileText size={24} />
+                      <span className="max-w-full truncate text-xs font-bold">{attachment.fileName || 'Attachment'}</span>
+                    </span>
+                  )}
+                  {isLastWithMore && (
+                    <span className="absolute inset-0 grid place-items-center bg-black/55 text-2xl font-black text-white">
+                      +{extraCount}
+                    </span>
+                  )}
+                </span>
+              );
+
+              return isMedia ? (
+                <button
+                  key={`${attachment.fileUrl}-${index}`}
+                  type="button"
+                  onClick={() => openMediaPreview(message, index)}
+                  className="block min-w-0"
+                  aria-label={`Open album item ${index + 1}`}
+                >
+                  {content}
+                </button>
+              ) : (
+                <a
+                  key={`${attachment.fileUrl}-${index}`}
+                  href={itemUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block min-w-0"
+                >
+                  {content}
+                </a>
+              );
+            })}
+          </div>
+          <span className={`absolute right-2 top-2 rounded-full px-2 py-1 text-xs font-black shadow-sm ${
+            isMe ? 'bg-white text-[#1877f2]' : 'bg-slate-950/80 text-white'
+          }`}>
+            {attachments.length}
+          </span>
+        </div>
+      );
+    }
+
+    if (primaryAttachment.fileUrl && primaryAttachment.fileType === 'image') {
       return (
         <button
           type="button"
@@ -1545,7 +2436,7 @@ export default function Messages() {
         >
           <img
             src={mediaUrl}
-            alt={message.fileName || 'Attachment'}
+            alt={primaryAttachment.fileName || 'Attachment'}
             loading="lazy"
             decoding="async"
             draggable={false}
@@ -1556,7 +2447,7 @@ export default function Messages() {
       );
     }
 
-    if (message.fileUrl && message.fileType === 'video') {
+    if (primaryAttachment.fileUrl && primaryAttachment.fileType === 'video') {
       return (
         <button
           type="button"
@@ -1570,7 +2461,7 @@ export default function Messages() {
               className="max-h-80 w-full"
               videoClassName="max-h-80 object-contain opacity-95"
               iconSize={25}
-              label={message.fileName || 'Video attachment'}
+              label={primaryAttachment.fileName || 'Video attachment'}
               onReady={keepOpeningThreadPinned}
             />
           </span>
@@ -1578,7 +2469,7 @@ export default function Messages() {
       );
     }
 
-    if (message.fileUrl && message.fileType === 'audio') {
+    if (primaryAttachment.fileUrl && primaryAttachment.fileType === 'audio') {
       return (
         <div className={`rounded-2xl p-2 ${isMe ? 'bg-white/15' : 'bg-gray-100 dark:bg-gray-800'}`}>
           <audio controls src={mediaUrl} className="w-full max-w-72" />
@@ -1586,7 +2477,7 @@ export default function Messages() {
       );
     }
 
-    if (message.fileUrl) {
+    if (primaryAttachment.fileUrl) {
       return (
         <a
           href={mediaUrl}
@@ -1600,8 +2491,8 @@ export default function Messages() {
         >
           <FileText size={20} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold">{message.fileName || 'Attachment'}</span>
-            {message.fileSize > 0 && <span className="text-xs opacity-75">{formatBytes(message.fileSize)}</span>}
+            <span className="block truncate font-semibold">{primaryAttachment.fileName || 'Attachment'}</span>
+            {primaryAttachment.fileSize > 0 && <span className="text-xs opacity-75">{formatBytes(primaryAttachment.fileSize)}</span>}
           </span>
           <Download size={17} />
         </a>
@@ -1612,7 +2503,7 @@ export default function Messages() {
   };
 
   const ChatDetailsContent = ({ compact = false }) => (
-    <div className={`${compact ? 'max-h-[76svh] overflow-y-auto px-4 pb-4' : ''}`}>
+    <div className={`${compact ? 'max-h-[76svh] overflow-y-auto px-4 pb-4 lg:max-h-[calc(100svh-5rem)]' : ''}`}>
       <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
         <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
           <span className="relative block">
@@ -1626,6 +2517,17 @@ export default function Messages() {
         <p className={`text-sm font-semibold ${selectedIsOnline ? 'text-emerald-500' : 'text-slate-500 dark:text-gray-400'}`}>
           {otherUserTyping ? 'Typing...' : presenceText}
         </p>
+        <div className={`mx-auto mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-black ${
+          chatStreakCount > 0
+            ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200'
+            : 'bg-slate-100 text-slate-500 dark:bg-gray-900 dark:text-gray-300'
+        }`}>
+          <Flame size={16} className={chatStreakCount > 0 ? 'fill-orange-500 text-orange-500' : 'text-slate-400'} />
+          {chatStreakText}
+          {chatStreak?.longestStreak > chatStreakCount && (
+            <span className="text-xs font-bold opacity-70">best {chatStreak.longestStreak}</span>
+          )}
+        </div>
         {userNotes[selectedUserId] && (
           <p className="mx-auto mt-3 line-clamp-2 rounded-2xl bg-pink-50 px-3 py-2 text-sm font-semibold text-pink-700 dark:bg-pink-950/30 dark:text-pink-200">
             {userNotes[selectedUserId].text}
@@ -1703,22 +2605,24 @@ export default function Messages() {
           {sharedMediaItems.length > 0 ? (
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-3">
               {sharedMediaItems.slice(0, 8).map(message => {
-                const mediaUrl = resolveMediaUrl(message.fileUrl);
+                const mediaAttachmentIndex = getMessageAttachments(message).findIndex(attachment => ['image', 'video'].includes(attachment.fileType));
+                const mediaAttachment = getMessageAttachments(message)[mediaAttachmentIndex] || getMessageAttachments(message)[0] || message;
+                const mediaUrl = resolveMediaUrl(mediaAttachment.fileUrl);
                 return (
                   <button
                     key={getEntityId(message)}
                     type="button"
                     onClick={() => {
                       setShowChatDetails(false);
-                      openMediaPreview(message);
+                      openMediaPreview(message, Math.max(0, mediaAttachmentIndex));
                     }}
                     className="aspect-square overflow-hidden rounded-2xl bg-slate-100 dark:bg-gray-900"
                     aria-label="Open shared media"
                   >
-                    {message.fileType === 'image' ? (
-              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
+                    {mediaAttachment.fileType === 'image' ? (
+              <img src={mediaUrl} alt={mediaAttachment.fileName || 'Shared media'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
             ) : (
-              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} preload="none" />
+              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={mediaAttachment.fileName || 'Shared video'} preload="none" />
             )}
                   </button>
                 );
@@ -1953,7 +2857,11 @@ export default function Messages() {
 
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div
+            ref={conversationListRef}
+            onScroll={handleConversationListScroll}
+            className="min-h-0 flex-1 overflow-y-auto p-2"
+          >
             {filteredConversations.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center px-6 text-center text-gray-500">
                 <div className="mb-3 rounded-full bg-pink-50 p-4 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300">
@@ -1963,7 +2871,13 @@ export default function Messages() {
                 <p className="mt-1 text-sm">Start a chat or try another filter.</p>
               </div>
             ) : (
-              filteredConversations.map((conversation) => {
+              <div
+                style={{
+                  paddingTop: virtualizedConversationState.paddingTop,
+                  paddingBottom: virtualizedConversationState.paddingBottom
+                }}
+              >
+                {virtualizedConversationState.items.map((conversation) => {
                 const otherUser = conversation.user;
                 const otherUserId = getEntityId(otherUser);
                 const isOnline = onlineUsers.has(otherUserId);
@@ -2014,7 +2928,8 @@ export default function Messages() {
                     </div>
                   </button>
                 );
-              })
+                })}
+              </div>
             )}
           </div>
         </aside>
@@ -2036,54 +2951,49 @@ export default function Messages() {
                   }`} />
                 </button>
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="min-w-0 flex-1 text-left" title="View profile">
-                  <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedDisplayName}</div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedDisplayName}</div>
+                    <span className={`hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black sm:inline-flex ${
+                      chatStreakCount > 0
+                        ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200'
+                        : 'bg-slate-100 text-slate-500 dark:bg-gray-800 dark:text-gray-300'
+                    }`}>
+                      <Flame size={12} className={chatStreakCount > 0 ? 'fill-orange-500 text-orange-500' : 'text-slate-400'} />
+                      {chatStreakText}
+                    </span>
+                  </div>
                   <div className={`mt-0.5 text-xs font-medium ${otherUserTyping ? 'text-[#1877f2] dark:text-sky-300' : selectedIsOnline ? 'text-emerald-500' : !socketConnected || !presenceReady ? 'text-amber-500' : 'text-gray-500'}`}>
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
                 </button>
                 <button
                   type="button"
-                  onClick={() => togglePinnedConversation(selectedUserId)}
-                  className={`relative rounded-full p-2 transition ${
-                    selectedIsPinned
-                      ? 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-300'
-                      : 'text-gray-500 hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30'
-                  }`}
-                  aria-label={selectedIsPinned ? 'Unpin chat' : 'Pin chat'}
-                  title={selectedIsPinned ? 'Unpin chat' : 'Pin chat'}
+                  onClick={() => startCall('audio')}
+                  disabled={!canStartCall}
+                  className="rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                  aria-label="Start audio call"
+                  title={selectedIsOnline ? 'Audio call' : 'User must be online to call'}
                 >
-                  <Pin size={18} />
+                  <Phone size={18} />
                 </button>
                 <button
-                  onClick={() => setShowPinnedPanel(value => !value)}
-                  disabled={pinnedMessages.length === 0}
-                  className="relative rounded-full p-2 text-gray-500 transition hover:bg-yellow-50 hover:text-yellow-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-yellow-950/30"
-                  aria-label="View pinned messages"
-                  title="View pinned messages"
+                  type="button"
+                  onClick={() => startCall('video')}
+                  disabled={!canStartCall}
+                  className="rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                  aria-label="Start video call"
+                  title={selectedIsOnline ? 'Video call' : 'User must be online to call'}
                 >
-                  <Pin size={18} />
-                  {pinnedMessages.length > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-yellow-500 px-1 text-[11px] font-bold text-white">
-                      {pinnedMessages.length > 9 ? '9+' : pinnedMessages.length}
-                    </span>
-                  )}
+                  <Video size={18} />
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowChatDetails(true)}
-                  className="rounded-full p-2 text-gray-500 transition hover:bg-cyan-50 hover:text-cyan-600 dark:hover:bg-cyan-950/30 xl:hidden"
-                  aria-label="Open chat settings"
-                  title="Chat settings"
+                  className="rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
+                  aria-label="Open chat details"
+                  title="Chat details"
                 >
-                  <Settings size={18} />
-                </button>
-                <button
-                  onClick={handleDeleteConversation}
-                  className="rounded-full p-2 text-gray-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
-                  aria-label="Delete conversation"
-                  title="Delete conversation"
-                >
-                  <Trash2 size={18} />
+                  <Info size={18} />
                 </button>
               </header>
 
@@ -2177,10 +3087,11 @@ export default function Messages() {
                         <div className="mb-4 flex justify-center">
                           <button
                             type="button"
-                            onClick={() => setVisibleMessageCount(count => Math.min(messages.length, count + getMessageRenderBatch()))}
+                            onClick={loadOlderMessages}
+                            disabled={loadingOlderMessages}
                             className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-[#1877f2] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:text-sky-200"
                           >
-                            Show earlier messages ({hiddenMessageCount})
+                            {loadingOlderMessages ? 'Loading earlier messages...' : 'Show earlier messages'}
                           </button>
                         </div>
                       )}
@@ -2452,25 +3363,42 @@ export default function Messages() {
                     </div>
                   )}
 
-                {selectedAttachment && (
+                {selectedAttachmentItems.length > 0 && (
                     <div className="mb-2 rounded-2xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
-                          {selectedAttachment.fileType === 'image' && attachmentPreview && <img src={attachmentPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
-                          {selectedAttachment.fileType === 'video' && attachmentPreview && (
-                            <VideoThumbnail
-                              src={attachmentPreview}
-                              className="h-12 w-12"
-                              iconSize={16}
-                              rounded="rounded-xl"
-                              label="Selected video preview"
-                            />
-                          )}
-                                {selectedAttachment.fileType === 'audio' && <Mic size={22} className="text-[#1877f2] dark:text-sky-300" />}
-                          {selectedAttachment.fileType === 'file' && <FileText size={22} className="text-[#1877f2] dark:text-sky-300" />}
+                          <div className={`grid shrink-0 gap-1 ${selectedAttachmentItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                            {selectedAttachmentItems.slice(0, 4).map((item, index) => (
+                              <span key={item.id} className="relative block h-12 w-12 overflow-hidden rounded-xl bg-slate-200 dark:bg-gray-900">
+                                {item.fileType === 'image' && item.previewUrl && <img src={item.previewUrl} alt="preview" className="h-full w-full object-cover" />}
+                                {item.fileType === 'video' && item.previewUrl && (
+                                  <VideoThumbnail
+                                    src={item.previewUrl}
+                                    className="h-full w-full"
+                                    iconSize={15}
+                                    rounded="rounded-xl"
+                                    label="Selected video preview"
+                                  />
+                                )}
+                                {item.fileType === 'audio' && <span className="grid h-full w-full place-items-center"><Mic size={20} className="text-[#1877f2] dark:text-sky-300" /></span>}
+                                {item.fileType === 'file' && <span className="grid h-full w-full place-items-center"><FileText size={20} className="text-[#1877f2] dark:text-sky-300" /></span>}
+                                {selectedAttachmentItems.length > 4 && index === 3 && (
+                                  <span className="absolute inset-0 grid place-items-center bg-black/55 text-xs font-black text-white">
+                                    +{selectedAttachmentItems.length - 4}
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{selectedAttachment.file.name}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{formatBytes(selectedAttachment.file.size)}</p>
+                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                              {selectedAttachmentItems.length === 1 ? selectedAttachmentItems[0].file.name : getAttachmentTypeLabel(selectedAttachmentItems)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {selectedAttachmentItems.length === 1
+                                ? formatBytes(selectedAttachmentItems[0].file.size)
+                                : `${selectedAttachmentItems.reduce((total, item) => total + item.file.size, 0) ? formatBytes(selectedAttachmentItems.reduce((total, item) => total + item.file.size, 0)) : ''} total`}
+                            </p>
                           </div>
                         </div>
                         <button onClick={clearAttachment} className="rounded-full p-1 text-gray-500 transition hover:bg-white dark:hover:bg-gray-900" aria-label="Remove attachment">
@@ -2498,14 +3426,14 @@ export default function Messages() {
                 )}
 
                 <div className="message-composer-grid">
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={event => handleAttachmentSelect(event, 'image')} />
-                  <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={event => handleAttachmentSelect(event, 'video')} />
+                  <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={event => handleAttachmentSelect(event)} />
+                  <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={event => handleAttachmentSelect(event, 'video')} />
 
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || recording || Boolean(editingMessage)}
                     className="message-composer-action"
-                    aria-label="Send picture"
+                    aria-label="Send photos or videos"
                   >
                     <ImageIcon size={19} />
                   </button>
@@ -2554,7 +3482,7 @@ export default function Messages() {
                   />
                   <button
                     onClick={submitComposer}
-                    disabled={(!composerHasText && !selectedAttachment) || sending || recording}
+                    disabled={(!composerHasText && selectedAttachmentItems.length === 0) || sending || recording}
                     className="message-composer-send"
                     aria-label="Send message"
                   >
@@ -2576,7 +3504,7 @@ export default function Messages() {
           )}
 
           {selectedUser && (
-            <aside className="messages-details-panel hidden w-[18.5rem] shrink-0 flex-col border-l border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 xl:flex">
+            <aside className="messages-details-panel hidden w-[18.5rem] shrink-0 flex-col border-l border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950">
               <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
                   <span className="relative block">
@@ -2683,20 +3611,22 @@ export default function Messages() {
                   </div>
                   {sharedMediaItems.length > 0 ? (
                     <div className="grid grid-cols-3 gap-2">
-                      {sharedMediaItems.slice(0, 6).map(message => {
-                        const mediaUrl = resolveMediaUrl(message.fileUrl);
+                    {sharedMediaItems.slice(0, 6).map(message => {
+                        const mediaAttachmentIndex = getMessageAttachments(message).findIndex(attachment => ['image', 'video'].includes(attachment.fileType));
+                        const mediaAttachment = getMessageAttachments(message)[mediaAttachmentIndex] || getMessageAttachments(message)[0] || message;
+                        const mediaUrl = resolveMediaUrl(mediaAttachment.fileUrl);
                         return (
                           <button
                             key={getEntityId(message)}
                             type="button"
-                            onClick={() => openMediaPreview(message)}
+                            onClick={() => openMediaPreview(message, Math.max(0, mediaAttachmentIndex))}
                             className="aspect-square overflow-hidden rounded-2xl bg-slate-100 dark:bg-gray-900"
                             aria-label="Open shared media"
                           >
-                            {message.fileType === 'image' ? (
-                              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
+                            {mediaAttachment.fileType === 'image' ? (
+                              <img src={mediaUrl} alt={mediaAttachment.fileName || 'Shared media'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
                             ) : (
-                              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} preload="none" />
+                              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={mediaAttachment.fileName || 'Shared video'} preload="none" />
                             )}
                           </button>
                         );
@@ -2735,6 +3665,130 @@ export default function Messages() {
           )}
         </div>
 
+      {callIsActive && (
+        <div className="fixed inset-0 z-[105] flex items-end justify-center bg-slate-950/80 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="mobile-bottom-sheet w-full max-w-2xl overflow-hidden rounded-t-[1.75rem] border border-white/10 bg-slate-950 text-white shadow-2xl shadow-black/40 sm:rounded-[1.75rem]">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-wide text-sky-300">
+                  {callMode === 'video' ? 'Video call' : 'Audio call'}
+                </p>
+                <h3 className="truncate text-xl font-black">{callPartnerName}</h3>
+                <p className="mt-0.5 text-sm font-semibold text-slate-300">{callStatusText}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => (callState === 'incoming' ? rejectCall() : endCall())}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-slate-200 transition hover:bg-white/15"
+                aria-label="Close call"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {callMode === 'video' ? (
+                <div className="relative aspect-video overflow-hidden rounded-3xl bg-slate-900 ring-1 ring-white/10">
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className={`h-full w-full object-cover ${remoteStreamReady ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                  {!remoteStreamReady && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 text-center">
+                      {renderAvatar(callPartner || selectedUser, 'h-24 w-24', 40)}
+                      <p className="mt-4 text-lg font-black">{callPartnerName}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-400">{callStatusText}</p>
+                    </div>
+                  )}
+                  {localStreamReady && (
+                    <div className="absolute bottom-4 right-4 h-28 w-20 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-xl sm:h-36 sm:w-28">
+                      <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+                      {cameraOff && (
+                        <div className="absolute inset-0 grid place-items-center bg-slate-900/95">
+                          <VideoOff size={22} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex min-h-[18rem] flex-col items-center justify-center rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-center ring-1 ring-white/10">
+                  {renderAvatar(callPartner || selectedUser, 'h-28 w-28', 46)}
+                  <h3 className="mt-5 max-w-full truncate text-2xl font-black">{callPartnerName}</h3>
+                  <p className="mt-2 text-sm font-semibold text-slate-300">{callStatusText}</p>
+                  <audio ref={remoteAudioRef} autoPlay />
+                </div>
+              )}
+
+              {callError && (
+                <p className="mt-4 rounded-2xl bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-100 ring-1 ring-rose-400/20">
+                  {callError}
+                </p>
+              )}
+
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                {callState === 'incoming' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => rejectCall()}
+                      className="flex h-12 min-w-32 items-center justify-center gap-2 rounded-full bg-rose-600 px-5 text-sm font-black text-white transition hover:bg-rose-500"
+                    >
+                      <PhoneOff size={18} />
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      onClick={acceptCall}
+                      disabled={!incomingCall?.offer}
+                      className="flex h-12 min-w-32 items-center justify-center gap-2 rounded-full bg-[#1877f2] px-5 text-sm font-black text-white transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {callMode === 'video' ? <Video size={18} /> : <Phone size={18} />}
+                      Accept
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={toggleCallMic}
+                      className={`grid h-12 w-12 place-items-center rounded-full transition ${
+                        micMuted ? 'bg-amber-400 text-slate-950' : 'bg-white/10 text-white hover:bg-white/15'
+                      }`}
+                      aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    >
+                      {micMuted ? <MicOff size={20} /> : <Mic size={20} />}
+                    </button>
+                    {callMode === 'video' && (
+                      <button
+                        type="button"
+                        onClick={toggleCallCamera}
+                        className={`grid h-12 w-12 place-items-center rounded-full transition ${
+                          cameraOff ? 'bg-amber-400 text-slate-950' : 'bg-white/10 text-white hover:bg-white/15'
+                        }`}
+                        aria-label={cameraOff ? 'Turn camera on' : 'Turn camera off'}
+                      >
+                        {cameraOff ? <VideoOff size={20} /> : <Video size={20} />}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => endCall()}
+                      className="flex h-12 min-w-36 items-center justify-center gap-2 rounded-full bg-rose-600 px-5 text-sm font-black text-white transition hover:bg-rose-500"
+                    >
+                      <PhoneOff size={18} />
+                      End call
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <NewChatModal
           onClose={() => setShowModal(false)}
@@ -2752,11 +3806,11 @@ export default function Messages() {
       />
 
       {selectedUser && showChatDetails && (
-        <div className="fixed inset-0 z-[88] flex items-end justify-center bg-black/50 p-0 xl:hidden">
-          <div className="mobile-bottom-sheet w-full max-w-lg overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
+        <div className="fixed inset-0 z-[88] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4 lg:items-stretch lg:justify-end">
+          <div className="mobile-bottom-sheet w-full max-w-lg overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 sm:rounded-3xl lg:h-full lg:max-h-none lg:w-[24rem]">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-gray-800">
               <div className="min-w-0">
-                <p className="text-xs font-black uppercase text-pink-500">Chat settings</p>
+                <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Chat details</p>
                 <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>
               </div>
               <button

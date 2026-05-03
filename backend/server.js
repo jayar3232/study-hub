@@ -275,6 +275,42 @@ io.on('connection', (socket) => {
     }
   });
 
+  const forwardDirectCallEvent = (eventName, rawPayload = {}) => {
+    const fromId = normalizeId(socket.data?.userId || rawPayload.from);
+    const toId = normalizeId(rawPayload.to);
+
+    if (!fromId || !toId || fromId === toId) return;
+
+    const payload = {
+      ...rawPayload,
+      from: fromId,
+      to: toId,
+      sentAt: new Date().toISOString()
+    };
+
+    if (eventName === 'call:start' && !onlineUsers.has(toId)) {
+      socket.emit('call:unavailable', {
+        ...payload,
+        reason: 'offline'
+      });
+      return;
+    }
+
+    io.to(`user_${toId}`).emit(eventName, payload);
+  };
+
+  [
+    'call:start',
+    'call:offer',
+    'call:answer',
+    'call:ice-candidate',
+    'call:reject',
+    'call:end',
+    'call:busy'
+  ].forEach(eventName => {
+    socket.on(eventName, payload => forwardDirectCallEvent(eventName, payload));
+  });
+
   // Direct messages
   socket.on('sendMessage', (message) => {
     const toId = normalizeId(message?.to);

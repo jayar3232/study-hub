@@ -11,18 +11,35 @@ import {
   Play,
   RefreshCw,
   Send,
-  Upload
+  Trash2,
+  Upload,
+  X
 } from 'lucide-react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { resolveMediaUrl } from '../utils/media';
 
 const getMemoryId = (memory) => String(memory?._id || memory?.id || memory?.videoId || '');
+const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
 
 const formatCount = (value = 0) => {
   const number = Number(value || 0);
   if (number >= 1000000) return `${(number / 1000000).toFixed(1)}M`;
   if (number >= 1000) return `${(number / 1000).toFixed(1)}K`;
   return String(number);
+};
+
+const formatBytes = (bytes = 0) => {
+  if (!bytes) return 'Unknown size';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
 function MemoryPlayer({ memory, active }) {
@@ -105,7 +122,7 @@ function MemoryActionButton({ active, children, label, onClick }) {
   );
 }
 
-function MemoryCard({ memory, active, onReact, onSave, onView }) {
+function MemoryCard({ memory, active, canDelete, deleting, onDelete, onReact, onSave, onView }) {
   const viewedRef = useRef(false);
   const memoryId = getMemoryId(memory);
 
@@ -129,9 +146,22 @@ function MemoryCard({ memory, active, onReact, onSave, onView }) {
 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-4 text-white">
         <span className="rounded-full bg-black/45 px-3 py-1 text-xs font-black">Gallery</span>
-        <span className="rounded-full bg-black/45 px-3 py-1 text-xs font-black">
-          {memory.mediaType === 'image' ? 'Photo' : 'Video'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-black/45 px-3 py-1 text-xs font-black">
+            {memory.mediaType === 'image' ? 'Photo' : 'Video'}
+          </span>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(memory)}
+              disabled={deleting}
+              className="pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-black/60 text-white transition hover:bg-rose-500 disabled:opacity-50"
+              aria-label="Delete gallery item"
+            >
+              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-4 pr-20 text-white">
@@ -158,6 +188,7 @@ function MemoryCard({ memory, active, onReact, onSave, onView }) {
 }
 
 export default function Reels() {
+  const { user } = useAuth();
   const [memories, setMemories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeMemoryId, setActiveMemoryId] = useState('');
@@ -166,10 +197,15 @@ export default function Reels() {
   const [galleryFile, setGalleryFile] = useState(null);
   const [galleryPreview, setGalleryPreview] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
+  const [deletingMemoryId, setDeletingMemoryId] = useState('');
   const [commentText, setCommentText] = useState('');
   const feedRef = useRef(null);
   const touchStartYRef = useRef(0);
   const wheelLockedRef = useRef(false);
+  const currentUserId = getEntityId(user);
+  const currentUserEmail = normalizeEmail(user?.email);
 
   const activeMemory = useMemo(() => (
     memories.find(memory => getMemoryId(memory) === activeMemoryId) || memories[0]
@@ -259,10 +295,64 @@ export default function Reels() {
     setMemories(prev => prev.map(memory => getMemoryId(memory) === getMemoryId(updatedMemory) ? updatedMemory : memory));
   };
 
+  const canDeleteMemory = useCallback((memory) => {
+    const ownerIds = [
+      memory?.ownerId,
+      memory?.uploadedBy,
+      memory?.uploadedBy?._id,
+      memory?.uploadedBy?.id,
+      memory?.userId,
+      memory?.user
+    ].map(getEntityId).filter(Boolean);
+    const ownerEmails = [
+      memory?.uploadedBy?.email,
+      memory?.userId?.email,
+      memory?.user?.email
+    ].map(normalizeEmail).filter(Boolean);
+
+    return Boolean(
+      memory?.canDelete === true ||
+      (currentUserId && ownerIds.includes(currentUserId)) ||
+      (currentUserEmail && ownerEmails.includes(currentUserEmail))
+    );
+  }, [currentUserEmail, currentUserId]);
+
+  const handleDeleteMemory = async (memory) => {
+    const memoryId = getMemoryId(memory);
+    if (!memoryId || !canDeleteMemory(memory) || deletingMemoryId) return;
+    if (!window.confirm('Delete this gallery item?')) return;
+
+    setDeletingMemoryId(memoryId);
+    try {
+      await api.delete(`/reels/${memoryId}`);
+      setMemories(prev => {
+        const currentIndex = prev.findIndex(item => getMemoryId(item) === memoryId);
+        const nextItems = prev.filter(item => getMemoryId(item) !== memoryId);
+        if (!nextItems.length) {
+          setActiveMemoryId('');
+          return nextItems;
+        }
+        if (getMemoryId(activeMemory) === memoryId) {
+          const nextActive = nextItems[Math.min(Math.max(currentIndex, 0), nextItems.length - 1)] || nextItems[0];
+          const nextActiveId = getMemoryId(nextActive);
+          setActiveMemoryId(nextActiveId);
+          window.setTimeout(() => scrollToMemory(nextActiveId), 0);
+        }
+        return nextItems;
+      });
+      toast.success('Gallery item deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Delete failed');
+    } finally {
+      setDeletingMemoryId('');
+    }
+  };
+
   const clearUploadForm = () => {
     setGalleryTitle('');
     setGalleryCaption('');
     setGalleryFile(null);
+    setUploadProgress(0);
     setGalleryPreview(prev => {
       if (prev) URL.revokeObjectURL(prev);
       return '';
@@ -305,7 +395,11 @@ export default function Reels() {
     setUploading(true);
     try {
       const res = await api.post('/reels', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          if (!progressEvent.total) return;
+          setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+        }
       });
       const nextItem = res.data?.galleryItem || res.data?.reel;
       if (nextItem) {
@@ -314,11 +408,13 @@ export default function Reels() {
         window.setTimeout(() => scrollToMemory(getMemoryId(nextItem)), 0);
       }
       clearUploadForm();
+      setMobileUploadOpen(false);
       toast.success('Added to Gallery');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gallery upload failed');
     } finally {
       setUploading(false);
+      window.setTimeout(() => setUploadProgress(0), 500);
     }
   };
 
@@ -385,7 +481,10 @@ export default function Reels() {
   };
 
   const renderUploadForm = (compact = false) => (
-    <form onSubmit={handleUploadGallery} className="space-y-2">
+    <form onSubmit={handleUploadGallery} className="space-y-3">
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-xs font-bold leading-5 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-blue-100">
+        Upload photos or videos with no app-level file-size cap. The uploader keeps the delete control.
+      </div>
       <input
         value={galleryTitle}
         onChange={event => setGalleryTitle(event.target.value)}
@@ -410,6 +509,17 @@ export default function Reels() {
           )}
         </div>
       )}
+      {galleryFile && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+          <p className="truncate text-sm font-black text-gray-950 dark:text-white">{galleryFile.name}</p>
+          <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{formatBytes(galleryFile.size)} - {galleryFile.type.startsWith('video/') ? 'Video upload' : 'Photo upload'}</p>
+          {(uploading || uploadProgress > 0) && (
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white dark:bg-gray-950">
+              <div className="h-full rounded-full bg-[#0b57d0] transition-all" style={{ width: `${Math.max(4, uploadProgress)}%` }} />
+            </div>
+          )}
+        </div>
+      )}
       <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-3 text-sm font-black text-[#1877f2] dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-sky-200">
         <ImageIcon size={16} />
         {galleryFile ? 'Change media' : 'Choose media'}
@@ -425,8 +535,8 @@ export default function Reels() {
         disabled={uploading || !galleryFile || !galleryTitle.trim()}
         className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 text-sm font-black text-white disabled:opacity-50"
       >
-        {uploading ? <Loader2 size={16} /> : <Upload size={16} />}
-        Add to Gallery
+        {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+        {uploading ? `Uploading ${uploadProgress || 0}%` : 'Add to Gallery'}
       </button>
     </form>
   );
@@ -439,8 +549,8 @@ export default function Reels() {
             <Clapperboard size={15} />
             Gallery
           </p>
-          <h1 className="mt-2 text-2xl font-black text-gray-950 dark:text-white">SYNCROVA Gallery</h1>
-          <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">Your uploaded photos and videos</p>
+          <h1 className="mt-2 text-2xl font-black text-gray-950 dark:text-white">Gallery Studio</h1>
+          <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">Upload, preview, comment, save, and manage your own photos and videos.</p>
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
@@ -481,7 +591,7 @@ export default function Reels() {
       </aside>
 
       <section className="reels-stage min-h-0">
-        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:hidden">
+        <div className="reels-mobile-toolbar rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-lg font-black text-gray-950 dark:text-white">Gallery</p>
@@ -489,18 +599,52 @@ export default function Reels() {
                 {activeMemory?.title || 'Upload photos and videos'}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={loadMemories}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-600 dark:bg-gray-900 dark:text-gray-300"
-              aria-label="Refresh memories"
-            >
-              <RefreshCw size={16} />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileUploadOpen(value => !value)}
+                className={`grid h-10 w-10 place-items-center rounded-full transition ${
+                  mobileUploadOpen
+                    ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950'
+                    : 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-200'
+                }`}
+                aria-label={mobileUploadOpen ? 'Close gallery upload' : 'Open gallery upload'}
+              >
+                {mobileUploadOpen ? <X size={16} /> : <Upload size={16} />}
+              </button>
+              <button
+                type="button"
+                onClick={loadMemories}
+                className="grid h-10 w-10 place-items-center rounded-full bg-gray-100 text-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                aria-label="Refresh memories"
+              >
+                <RefreshCw size={16} />
+              </button>
+            </div>
           </div>
-          <div className="mt-3">
-            {renderUploadForm(true)}
-          </div>
+          {mobileUploadOpen && (
+            <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/70">
+              {renderUploadForm(false)}
+            </div>
+          )}
+          {memories.length > 1 && (
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {memories.map((memory, index) => (
+                <button
+                  key={`mobile-queue-${getMemoryId(memory)}`}
+                  type="button"
+                  onClick={() => scrollToMemory(getMemoryId(memory))}
+                  className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black ${
+                    getMemoryId(activeMemory) === getMemoryId(memory)
+                      ? 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-200'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-900 dark:text-gray-400'
+                  }`}
+                >
+                  {index + 1}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="reels-feed-shell relative min-h-0">
@@ -524,6 +668,9 @@ export default function Reels() {
                   key={getMemoryId(memory)}
                   memory={memory}
                   active={getMemoryId(memory) === getMemoryId(activeMemory)}
+                  canDelete={canDeleteMemory(memory)}
+                  deleting={deletingMemoryId === getMemoryId(memory)}
+                  onDelete={handleDeleteMemory}
                   onReact={handleReact}
                   onSave={handleSave}
                   onView={handleView}
@@ -560,11 +707,92 @@ export default function Reels() {
             </div>
           )}
         </div>
+
+        <section className="reels-mobile-details rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Now viewing</p>
+              <h2 className="mt-1 line-clamp-2 text-base font-black text-gray-950 dark:text-white">
+                {activeMemory?.title || 'Gallery item'}
+              </h2>
+              {activeMemory?.caption && (
+                <p className="mt-1 line-clamp-2 text-xs font-semibold text-gray-500 dark:text-gray-400">{activeMemory.caption}</p>
+              )}
+            </div>
+            {activeMemory && canDeleteMemory(activeMemory) && (
+              <button
+                type="button"
+                onClick={() => handleDeleteMemory(activeMemory)}
+                disabled={deletingMemoryId === getMemoryId(activeMemory)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-50 dark:bg-rose-950/40 dark:text-rose-200"
+                aria-label="Delete active gallery item"
+              >
+                {deletingMemoryId === getMemoryId(activeMemory) ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-gray-50 p-2.5 text-center dark:bg-gray-900">
+              <p className="text-sm font-black text-gray-950 dark:text-white">{formatCount(activeMemory?.reactionCount)}</p>
+              <p className="text-[10px] font-black uppercase text-gray-400">Likes</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-2.5 text-center dark:bg-gray-900">
+              <p className="text-sm font-black text-gray-950 dark:text-white">{formatCount(activeMemory?.savedCount)}</p>
+              <p className="text-[10px] font-black uppercase text-gray-400">Saved</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-2.5 text-center dark:bg-gray-900">
+              <p className="text-sm font-black text-gray-950 dark:text-white">{formatCount(activeMemory?.viewCount)}</p>
+              <p className="text-[10px] font-black uppercase text-gray-400">Views</p>
+            </div>
+          </div>
+
+          <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1">
+            {(activeMemory?.comments || []).length ? activeMemory.comments.map(comment => (
+              <div key={comment._id || `${comment.text}-${comment.createdAt}`} className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-900">
+                <p className="text-[11px] font-black text-gray-500 dark:text-gray-400">{comment.userId?.name || 'Member'}</p>
+                <p className="mt-0.5 text-xs font-semibold text-gray-800 dark:text-gray-100">{comment.text}</p>
+              </div>
+            )) : (
+              <p className="rounded-xl bg-gray-50 p-2.5 text-xs font-semibold text-gray-500 dark:bg-gray-900 dark:text-gray-400">No comments yet.</p>
+            )}
+          </div>
+
+          <form onSubmit={handleComment} className="mt-3 flex gap-2">
+            <input
+              value={commentText}
+              onChange={event => setCommentText(event.target.value)}
+              placeholder="Write a comment"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-950 outline-none focus:border-blue-300 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+            />
+            <button
+              type="submit"
+              disabled={!activeMemory || !commentText.trim()}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#1877f2] text-white disabled:opacity-50"
+              aria-label="Post comment"
+            >
+              <Send size={16} />
+            </button>
+          </form>
+        </section>
       </section>
 
       <aside className="hidden min-h-0 flex-col gap-3 lg:flex">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
-          <p className="text-sm font-black text-gray-950 dark:text-white">Title</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-black text-gray-950 dark:text-white">Title</p>
+            {activeMemory && canDeleteMemory(activeMemory) && (
+              <button
+                type="button"
+                onClick={() => handleDeleteMemory(activeMemory)}
+                disabled={deletingMemoryId === getMemoryId(activeMemory)}
+                className="grid h-9 w-9 place-items-center rounded-xl bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-50 dark:bg-rose-950/40 dark:text-rose-200"
+                aria-label="Delete active gallery item"
+              >
+                {deletingMemoryId === getMemoryId(activeMemory) ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              </button>
+            )}
+          </div>
           <h2 className="mt-3 line-clamp-3 text-xl font-black leading-tight text-gray-950 dark:text-white">
             {activeMemory?.title || 'Gallery item'}
           </h2>

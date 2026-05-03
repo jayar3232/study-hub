@@ -36,10 +36,10 @@ const emptySummary = {
 };
 
 const statusCopy = {
-  none: { label: 'Not connected', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' },
+  none: { label: 'Not connected', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
   friends: { label: 'Friends', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/60' },
   outgoing: { label: 'Pending', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60' },
-  incoming: { label: 'Needs reply', className: 'bg-pink-50 text-pink-700 ring-pink-100 dark:bg-pink-950/30 dark:text-pink-200 dark:ring-pink-900/60' }
+  incoming: { label: 'Needs reply', className: 'bg-blue-50 text-[#0b57d0] ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/60' }
 };
 
 const formatSince = (value) => {
@@ -66,7 +66,7 @@ function Avatar({ person, size = 'md' }) {
   const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : 'h-11 w-11 text-sm';
 
   return (
-    <div className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-pink-500 to-indigo-500 font-black text-white shadow-sm`}>
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b57d0] to-[#2387a8] font-black text-white shadow-sm`}>
       {avatar ? (
         <img src={avatar} alt={person?.name || 'User'} className="h-full w-full object-cover" />
       ) : (
@@ -87,12 +87,12 @@ function RelationshipPill({ status }) {
 
 function EmptyPanel({ icon: Icon, title, message }) {
   return (
-    <div className="rounded-3xl border border-dashed border-gray-200 bg-white/70 px-5 py-12 text-center dark:border-gray-800 dark:bg-gray-900/60">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+    <div className="rounded-3xl border border-dashed border-slate-200 bg-white/70 px-5 py-12 text-center dark:border-slate-800 dark:bg-slate-900/60">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0b57d0] dark:bg-blue-950/30 dark:text-sky-200">
         <Icon size={24} />
       </div>
-      <h3 className="mt-4 text-lg font-black text-gray-950 dark:text-white">{title}</h3>
-      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-gray-500 dark:text-gray-400">{message}</p>
+      <h3 className="mt-4 text-lg font-black text-slate-950 dark:text-white">{title}</h3>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">{message}</p>
     </div>
   );
 }
@@ -245,7 +245,7 @@ export default function Friends() {
             type="button"
             onClick={() => declineRequest(requestId)}
             disabled={actionKey === `decline-${requestId}`}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-black text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <X size={14} />
             Decline
@@ -259,7 +259,7 @@ export default function Friends() {
         <button
           type="button"
           onClick={() => openMessages(person)}
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gray-950 px-3 py-2 text-xs font-black text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0b57d0] px-3 py-2 text-xs font-black text-white transition hover:bg-[#07036f]"
         >
           <MessageCircle size={14} />
           Message
@@ -285,7 +285,7 @@ export default function Friends() {
         type="button"
         onClick={() => sendRequest(person)}
         disabled={actionKey === `send-${personId}`}
-        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-pink-600 px-3 py-2 text-xs font-black text-white transition hover:bg-pink-700 disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0b57d0] px-3 py-2 text-xs font-black text-white transition hover:bg-[#07036f] disabled:opacity-50"
       >
         {actionKey === `send-${personId}` ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
         Add
@@ -301,19 +301,19 @@ export default function Friends() {
 
   return (
     <div className="mobile-page mx-auto max-w-7xl space-y-4 sm:space-y-6">
-      <section className="mobile-hero-panel overflow-hidden rounded-3xl bg-gray-950 text-white shadow-2xl shadow-pink-500/10">
+      <section className="mobile-hero-panel overflow-hidden rounded-3xl bg-gradient-to-br from-[#07036f] via-[#0b2f80] to-[#123f63] text-white shadow-2xl shadow-blue-900/20">
         <div className="relative p-5 sm:p-7">
           <div className="absolute -right-12 top-3 h-32 w-32 rounded-full border-[14px] border-cyan-300/20" />
-          <div className="absolute -bottom-16 left-1/2 h-40 w-40 rounded-full border-[18px] border-pink-400/20" />
+          <div className="absolute -bottom-16 left-1/2 h-40 w-40 rounded-full border-[18px] border-blue-300/15" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex items-center gap-4">
               <div
-                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-white text-gray-950 shadow-xl"
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-white text-[#0b57d0] shadow-xl"
               >
                 <Users size={30} />
               </div>
               <div>
-                <p className="text-sm font-black uppercase text-pink-200">SYNCROVA Network</p>
+                <p className="text-sm font-black uppercase text-sky-200">SYNCROVA Network</p>
                 <h1 className="mt-1 text-3xl font-black tracking-normal sm:text-4xl">Friends</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
                   Manage your trusted teammates, review requests, and start conversations faster.
@@ -337,7 +337,7 @@ export default function Friends() {
         </div>
       </section>
 
-      <section className="mobile-control-panel rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <section className="mobile-control-panel rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {tabs.map(tab => (
@@ -347,12 +347,12 @@ export default function Friends() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition ${
                   activeTab === tab.key
-                    ? 'bg-gray-950 text-white shadow-lg shadow-gray-950/10 dark:bg-white dark:text-gray-950'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-300 dark:hover:bg-gray-800'
+                    ? 'bg-[#0b57d0] text-white shadow-lg shadow-blue-600/15'
+                    : 'bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-[#0b57d0] dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
                 }`}
               >
                 {tab.label}
-                <span className={`rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-white/15' : 'bg-white dark:bg-gray-900'}`}>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-white/15' : 'bg-white dark:bg-slate-900'}`}>
                   {tab.count}
                 </span>
               </button>
@@ -361,18 +361,18 @@ export default function Friends() {
 
           <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_210px] lg:max-w-xl">
             <div className="relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={query}
                 onChange={event => setQuery(event.target.value)}
                 placeholder="Search people, course, campus"
-                className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:border-pink-500"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500"
               />
             </div>
             <select
               value={campusFilter}
               onChange={event => setCampusFilter(event.target.value)}
-              className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-700 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:focus:border-pink-500"
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-blue-500"
             >
               <option value="">All campuses</option>
               {CAMPUS_OPTIONS.map(campus => <option key={campus} value={campus}>{campus}</option>)}
@@ -388,21 +388,21 @@ export default function Friends() {
           {activeTab === 'friends' && (
             <section className="space-y-4">
               {summary.incoming?.length > 0 && (
-                <div className="rounded-3xl border border-pink-100 bg-pink-50 p-4 dark:border-pink-900/50 dark:bg-pink-950/20">
+                <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-pink-600 shadow-sm dark:bg-gray-900 dark:text-pink-300">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#0b57d0] shadow-sm dark:bg-slate-900 dark:text-sky-300">
                         <Inbox size={20} />
                       </div>
                       <div>
-                        <h2 className="font-black text-gray-950 dark:text-white">You have friend requests</h2>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">Review them before they join your friends list.</p>
+                        <h2 className="font-black text-slate-950 dark:text-white">You have friend requests</h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">Review them before they join your friends list.</p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setActiveTab('requests')}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white transition hover:bg-pink-700"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0b57d0] px-4 py-2 text-sm font-black text-white transition hover:bg-[#07036f]"
                     >
                       Review
                     </button>
@@ -419,21 +419,21 @@ export default function Friends() {
                       key={item._id}
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-500/10 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-pink-900/60"
+                      className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-500/10 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60"
                     >
                       <div className="flex items-start gap-3">
-                        <button type="button" onClick={() => setProfileUser(item.user)} className="shrink-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-pink-500/20">
+                        <button type="button" onClick={() => setProfileUser(item.user)} className="shrink-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20">
                           <Avatar person={item.user} size="lg" />
                         </button>
                         <div className="min-w-0 flex-1">
                           <button type="button" onClick={() => setProfileUser(item.user)} className="block max-w-full text-left">
-                            <h3 className="truncate text-lg font-black text-gray-950 dark:text-white">{item.user?.name || 'User'}</h3>
-                            <p className="truncate text-sm text-gray-500">{item.user?.email}</p>
-                            <p className="truncate text-xs font-semibold text-gray-400">{[item.user?.course, item.user?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                            <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">{item.user?.name || 'User'}</h3>
+                            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{item.user?.email}</p>
+                            <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[item.user?.course, item.user?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                           </button>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <RelationshipPill status="friends" />
-                            <span className="text-xs font-semibold text-gray-500">Since {formatSince(item.since)}</span>
+                            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Since {formatSince(item.since)}</span>
                           </div>
                         </div>
                       </div>
@@ -442,7 +442,7 @@ export default function Friends() {
                         <button
                           type="button"
                           onClick={() => openMessages(item.user)}
-                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gray-950 px-3 py-2.5 text-sm font-black text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100"
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0b57d0] px-3 py-2.5 text-sm font-black text-white transition hover:bg-[#07036f]"
                         >
                           <MessageCircle size={16} />
                           Message
@@ -451,7 +451,7 @@ export default function Friends() {
                           type="button"
                           onClick={() => removeFriend(item._id)}
                           disabled={actionKey === `remove-${item._id}`}
-                          className="inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2.5 text-gray-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:border-gray-700 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/20 dark:hover:text-rose-300"
+                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:border-slate-700 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/20 dark:hover:text-rose-300"
                           title="Remove friend"
                         >
                           {actionKey === `remove-${item._id}` ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
@@ -474,14 +474,14 @@ export default function Friends() {
                     key={getEntityId(person)}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-lg hover:shadow-cyan-500/10 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-cyan-900/60 sm:flex-row sm:items-center"
+                    className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-lg hover:shadow-blue-500/10 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 sm:flex-row sm:items-center"
                   >
                     <button type="button" onClick={() => setProfileUser(person)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <Avatar person={person} />
                       <div className="min-w-0">
-                        <h3 className="truncate font-black text-gray-950 dark:text-white">{person.name}</h3>
-                        <p className="truncate text-sm text-gray-500">{person.email}</p>
-                        <p className="truncate text-xs font-semibold text-gray-400">{[person.course, person.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                        <h3 className="truncate font-black text-slate-950 dark:text-white">{person.name}</h3>
+                        <p className="truncate text-sm text-slate-500 dark:text-slate-400">{person.email}</p>
+                        <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[person.course, person.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                       </div>
                     </button>
                     <div className="flex items-center justify-between gap-3 sm:justify-end">
@@ -498,25 +498,25 @@ export default function Friends() {
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck size={20} className="text-pink-500" />
-                  <h2 className="text-lg font-black text-gray-950 dark:text-white">Incoming Requests</h2>
+                  <ShieldCheck size={20} className="text-[#0b57d0] dark:text-sky-300" />
+                  <h2 className="text-lg font-black text-slate-950 dark:text-white">Incoming Requests</h2>
                 </div>
                 {incoming.length === 0 ? (
                   <EmptyPanel icon={Inbox} title="No incoming requests" message="Friend requests from other users will appear here for confirmation." />
                 ) : (
                   incoming.map(item => (
-                    <article key={item._id} className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <article key={item._id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-start gap-3">
                         <button type="button" onClick={() => setProfileUser(item.requester)} className="shrink-0">
                           <Avatar person={item.requester} />
                         </button>
                         <div className="min-w-0 flex-1">
                           <button type="button" onClick={() => setProfileUser(item.requester)} className="block max-w-full text-left">
-                            <h3 className="truncate font-black text-gray-950 dark:text-white">{item.requester?.name}</h3>
-                            <p className="truncate text-sm text-gray-500">{item.requester?.email}</p>
-                            <p className="truncate text-xs font-semibold text-gray-400">{[item.requester?.course, item.requester?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                            <h3 className="truncate font-black text-slate-950 dark:text-white">{item.requester?.name}</h3>
+                            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{item.requester?.email}</p>
+                            <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[item.requester?.course, item.requester?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                           </button>
-                          <p className="mt-1 text-xs font-semibold text-gray-400">Requested {formatSince(item.createdAt)}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500">Requested {formatSince(item.createdAt)}</p>
                         </div>
                       </div>
                       <div className="mt-4 flex gap-2">
@@ -533,7 +533,7 @@ export default function Friends() {
                           type="button"
                           onClick={() => declineRequest(item._id)}
                           disabled={actionKey === `decline-${item._id}`}
-                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                           <UserX size={16} />
                           Decline
@@ -547,24 +547,24 @@ export default function Friends() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Clock size={20} className="text-amber-500" />
-                  <h2 className="text-lg font-black text-gray-950 dark:text-white">Sent Requests</h2>
+                  <h2 className="text-lg font-black text-slate-950 dark:text-white">Sent Requests</h2>
                 </div>
                 {outgoing.length === 0 ? (
                   <EmptyPanel icon={Clock} title="No pending sent requests" message="Requests you send from Add Friend will stay here until accepted or declined." />
                 ) : (
                   outgoing.map(item => (
-                    <article key={item._id} className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <article key={item._id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center gap-3">
                         <button type="button" onClick={() => setProfileUser(item.recipient)} className="shrink-0">
                           <Avatar person={item.recipient} />
                         </button>
                         <div className="min-w-0 flex-1">
                           <button type="button" onClick={() => setProfileUser(item.recipient)} className="block max-w-full text-left">
-                            <h3 className="truncate font-black text-gray-950 dark:text-white">{item.recipient?.name}</h3>
-                            <p className="truncate text-sm text-gray-500">{item.recipient?.email}</p>
-                            <p className="truncate text-xs font-semibold text-gray-400">{[item.recipient?.course, item.recipient?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                            <h3 className="truncate font-black text-slate-950 dark:text-white">{item.recipient?.name}</h3>
+                            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{item.recipient?.email}</p>
+                            <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[item.recipient?.course, item.recipient?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
                           </button>
-                          <p className="mt-1 text-xs font-semibold text-gray-400">Sent {formatSince(item.createdAt)}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500">Sent {formatSince(item.createdAt)}</p>
                         </div>
                         <RelationshipPill status="outgoing" />
                       </div>

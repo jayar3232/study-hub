@@ -201,7 +201,7 @@ export default function OpsArena() {
   const [typingResult, setTypingResult] = useState(null);
   const [typingSeconds, setTypingSeconds] = useState(0);
   const [typingBusy, setTypingBusy] = useState(false);
-  const [activeGame, setActiveGame] = useState('blocks');
+  const [activeGame, setActiveGame] = useState('');
   const [arenaView, setArenaView] = useState('home');
   const [profileUser, setProfileUser] = useState(null);
 
@@ -678,14 +678,41 @@ export default function OpsArena() {
     }
   ];
 
+  const season = summary?.stats?.season;
+  const seasonStart = season?.startsAt ? new Date(season.startsAt).getTime() : 0;
+  const seasonEnd = season?.endsAt ? new Date(season.endsAt).getTime() : 0;
+  const nowMs = Date.now();
+  const seasonProgress = seasonStart && seasonEnd && seasonEnd > seasonStart
+    ? Math.min(100, Math.max(0, Math.round(((nowMs - seasonStart) / (seasonEnd - seasonStart)) * 100)))
+    : 0;
+  const seasonDaysLeft = seasonEnd ? Math.max(0, Math.ceil((seasonEnd - nowMs) / 86400000)) : 0;
+  const arenaMissions = [
+    {
+      label: 'Warm-up runs',
+      value: `${Math.min(summary?.stats?.totalPlays || 0, 5)}/5`,
+      complete: (summary?.stats?.totalPlays || 0) >= 5
+    },
+    {
+      label: 'Score target',
+      value: `${summary?.stats?.highScore || 0}/1000`,
+      complete: (summary?.stats?.highScore || 0) >= 1000
+    },
+    {
+      label: 'Accuracy mark',
+      value: `${summary?.stats?.bestAccuracy || 0}%/80%`,
+      complete: (summary?.stats?.bestAccuracy || 0) >= 80
+    }
+  ];
+
   const openArenaView = (view) => {
+    if (view === 'games') setActiveGame('');
     setArenaView(view);
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   };
 
-  const activeGameInfo = gameCards.find(game => game.key === activeGame) || gameCards[0];
+  const activeGameInfo = gameCards.find(game => game.key === activeGame) || null;
   const viewMeta = {
     home: {
       eyebrow: 'Member reports + developer response',
@@ -695,7 +722,7 @@ export default function OpsArena() {
     games: {
       eyebrow: 'Game panel',
       title: activeGameInfo?.title || 'Games',
-      description: 'Play one optimized challenge at a time. Scores from every game contribute to your Division Rank.'
+      description: 'Choose one game first. Nothing starts until you press the game start button.'
     },
     report: {
       eyebrow: 'Private member report',
@@ -746,8 +773,8 @@ export default function OpsArena() {
 
   return (
     <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      <section className="fix-arena-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="grid gap-5 p-5 md:p-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-center">
+      <section className={`fix-arena-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 ${arenaView === 'report' || arenaView === 'developer' ? 'fix-report-hero' : ''}`}>
+        <div className={`grid gap-5 p-5 md:p-6 ${arenaView === 'report' || arenaView === 'developer' ? '2xl:grid-cols-[minmax(0,1fr)_340px] 2xl:items-center' : 'xl:grid-cols-[minmax(0,1fr)_340px] xl:items-center'}`}>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <ArenaMark />
             <div className="min-w-0">
@@ -842,6 +869,64 @@ export default function OpsArena() {
         </div>
 
         <div className="space-y-4 p-4">
+          <section className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_24rem]">
+            <div className="overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-[#07036f] via-[#0b57d0] to-[#2387a8] p-5 text-white shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-xs font-black uppercase ring-1 ring-white/15">
+                    <Crown size={14} />
+                    {season?.label || 'Current season'}
+                  </p>
+                  <h2 className="mt-3 text-2xl font-black tracking-normal">Game Hub Season</h2>
+                  <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-white/75">
+                    Every ranked run counts toward your season score, rewards, profile frame, and arena leaderboard.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-center sm:min-w-56">
+                  <div className="rounded-2xl bg-white/12 p-3 ring-1 ring-white/10">
+                    <p className="text-2xl font-black">{summary?.stats?.seasonScore || 0}</p>
+                    <p className="text-[11px] font-black uppercase text-white/60">Season score</p>
+                  </div>
+                  <div className="rounded-2xl bg-white/12 p-3 ring-1 ring-white/10">
+                    <p className="text-2xl font-black">{seasonDaysLeft || '-'}</p>
+                    <p className="text-[11px] font-black uppercase text-white/60">Days left</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full rounded-full bg-white transition-all" style={{ width: `${seasonProgress || 2}%` }} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-black text-white/70">
+                <span>Highest: {summary?.stats?.highestRank?.shortName || summary?.stats?.highestRank?.name || 'Recruit'}</span>
+                <span>Previous: {summary?.stats?.previousSeasonRank?.shortName || 'Recruit'}</span>
+                <span>Reward: {summary?.stats?.rewards?.current?.title || 'Rank reward'}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-[#0b57d0] dark:text-blue-200">Season missions</p>
+                  <h3 className="font-black text-gray-950 dark:text-white">Weekly push</h3>
+                </div>
+                <Target className="text-[#0b57d0]" size={22} />
+              </div>
+              <div className="space-y-2">
+                {arenaMissions.map(mission => (
+                  <div key={mission.label} className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-gray-900">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-black text-gray-950 dark:text-white">{mission.label}</span>
+                      <span className="block text-xs font-semibold text-gray-500 dark:text-gray-400">{mission.value}</span>
+                    </span>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${mission.complete ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200' : 'bg-blue-50 text-[#0b57d0] dark:bg-blue-950/30 dark:text-blue-200'}`}>
+                      {mission.complete ? 'Done' : 'Active'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
           <div className="mobile-game-tabs grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             {gameCards.map(game => {
               const Logo = game.Logo;
@@ -886,6 +971,20 @@ export default function OpsArena() {
           <div className="mobile-game-active grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="min-w-0">
             <Suspense fallback={<LoadingSpinner label="Loading game" />}>
+            {!activeGame && (
+              <section className="grid min-h-[28rem] place-items-center overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                <div className="max-w-md">
+                  <span className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-blue-50 text-[#1877f2] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-blue-200 dark:ring-blue-900/60">
+                    <Gamepad2 size={28} />
+                  </span>
+                  <h2 className="mt-4 text-2xl font-black text-gray-950 dark:text-white">Select a game</h2>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-gray-500 dark:text-gray-400">
+                    Pick a card above, then start the run inside that game panel.
+                  </p>
+                </div>
+              </section>
+            )}
+
             {activeGame === 'blocks' && (
               <BlockStackGame stats={summary} onScoreSaved={() => loadArena({ silent: true })} onExit={() => openArenaView('home')} />
             )}
@@ -1094,7 +1193,7 @@ export default function OpsArena() {
       )}
 
       {(arenaView === 'report' || arenaView === 'developer') && (
-        <section className="space-y-5">
+        <section className="fix-report-shell space-y-5">
           {arenaView === 'developer' && !isDeveloper && (
             <section className="mx-auto max-w-3xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
               <div className="border-b border-gray-100 p-5 dark:border-gray-800 sm:p-6">
@@ -1163,7 +1262,7 @@ export default function OpsArena() {
           )}
 
           {arenaView === 'report' && (
-            <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="fix-report-submit-grid grid gap-5 2xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <div className="border-b border-gray-100 p-5 dark:border-gray-800 sm:p-6">
                   <div className="flex items-center gap-4">
@@ -1231,7 +1330,7 @@ export default function OpsArena() {
                 )}
               </div>
 
-              <aside className="space-y-4">
+              <aside className="fix-report-status-grid grid gap-4 md:grid-cols-2 2xl:block 2xl:space-y-4">
                 <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                   <p className="text-sm font-black text-gray-950 dark:text-white">Report status</p>
                   <div className="mt-4 grid grid-cols-3 gap-2">
@@ -1265,7 +1364,7 @@ export default function OpsArena() {
           )}
 
           {(arenaView === 'report' || (arenaView === 'developer' && isDeveloper)) && (
-            <section className="grid min-w-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <section className="fix-report-workspace-grid grid min-w-0 gap-5 2xl:grid-cols-[360px_minmax(0,1fr)]">
               <aside className="min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <div className="border-b border-gray-100 p-5 dark:border-gray-800">
                   <div className="flex items-start justify-between gap-3">
@@ -1303,7 +1402,7 @@ export default function OpsArena() {
                     ))}
                   </div>
                 </div>
-                <div className="max-h-[72svh] overflow-y-auto p-3">
+                <div className="fix-report-inbox-list max-h-[28rem] overflow-y-auto p-3 2xl:max-h-[72svh]">
                   {filteredIssues.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400">
                       {issues.length ? 'No reports match this view.' : isDeveloper ? 'No member reports yet.' : 'No submitted reports yet.'}
@@ -1339,7 +1438,7 @@ export default function OpsArena() {
                 </div>
               </aside>
 
-              <div className="min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className="fix-report-detail-panel min-w-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 {selectedIssue ? (
                   <>
                     <div className="border-b border-gray-100 p-5 dark:border-gray-800 sm:p-6">
@@ -1386,16 +1485,16 @@ export default function OpsArena() {
                       </div>
                     </div>
 
-                    <div className="grid min-w-0 gap-4 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-                      <div className="space-y-4">
+                    <div className="fix-report-detail-grid grid min-w-0 gap-4 p-5 sm:p-6 2xl:grid-cols-[minmax(0,1fr)_300px]">
+                      <div className="min-w-0 space-y-4">
                         <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-950/50">
                           <p className="text-sm font-black text-gray-950 dark:text-white">Report details</p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{selectedIssue.details}</p>
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-600 dark:text-gray-300">{selectedIssue.details}</p>
                         </div>
                         {selectedIssue.expected && (
                           <div className="rounded-2xl bg-blue-50 p-4 dark:bg-blue-950/20">
                             <p className="text-sm font-black text-blue-900 dark:text-blue-100">Expected result</p>
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-blue-800 dark:text-blue-200">{selectedIssue.expected}</p>
+                            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-blue-800 dark:text-blue-200">{selectedIssue.expected}</p>
                           </div>
                         )}
 
@@ -1409,7 +1508,7 @@ export default function OpsArena() {
                               {(selectedIssue.messages || []).length} updates
                             </span>
                           </div>
-                          <div className="max-h-96 space-y-3 overflow-y-auto bg-gray-50/60 p-4 dark:bg-gray-950/30">
+                          <div className="fix-report-thread-list max-h-[30rem] space-y-3 overflow-y-auto bg-gray-50/60 p-4 dark:bg-gray-950/30">
                             {(selectedIssue.messages || []).map(message => {
                               const avatar = resolveMediaUrl(message.senderId?.avatar);
                               const isDevMessage = message.role === 'developer';
@@ -1422,7 +1521,7 @@ export default function OpsArena() {
                                   )}
                                   <div className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-sm ${isDevMessage ? 'bg-[#1877f2] text-white' : 'bg-white text-gray-800 dark:bg-gray-800 dark:text-gray-100'}`}>
                                     <p className="text-xs font-black uppercase opacity-70">{isDevMessage ? 'Developer' : message.senderId?.name || 'Member'}</p>
-                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{message.text}</p>
+                                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6">{message.text}</p>
                                     <p className="mt-2 text-[11px] opacity-60">{formatDateTime(message.createdAt)}</p>
                                   </div>
                                 </div>
@@ -1438,7 +1537,7 @@ export default function OpsArena() {
                         </div>
                       </div>
 
-                      <aside className="space-y-4">
+                      <aside className="fix-report-side-grid grid gap-4 xl:grid-cols-3 2xl:block 2xl:space-y-4">
                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
                           <p className="text-sm font-black text-gray-950 dark:text-white">Decision</p>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1468,9 +1567,9 @@ export default function OpsArena() {
                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm dark:border-gray-800 dark:bg-gray-950/50">
                           <p className="font-black text-gray-950 dark:text-white">Metadata</p>
                           <div className="mt-3 space-y-2 text-gray-600 dark:text-gray-300">
-                            <p>Type: <span className="font-bold capitalize">{selectedIssue.type}</span></p>
-                            <p>Workspace: <span className="font-bold">{selectedIssue.workspaceName || 'Not specified'}</span></p>
-                            <p>Updated: <span className="font-bold">{formatDateTime(selectedIssue.updatedAt)}</span></p>
+                            <p className="break-words">Type: <span className="font-bold capitalize">{selectedIssue.type}</span></p>
+                            <p className="break-words">Workspace: <span className="font-bold">{selectedIssue.workspaceName || 'Not specified'}</span></p>
+                            <p className="break-words">Updated: <span className="font-bold">{formatDateTime(selectedIssue.updatedAt)}</span></p>
                           </div>
                         </div>
                       </aside>
