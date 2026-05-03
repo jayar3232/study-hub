@@ -54,6 +54,7 @@ export default function StoryViewer({
   const [comment, setComment] = useState('');
   const [pendingAction, setPendingAction] = useState('');
   const [activePanel, setActivePanel] = useState('viewers');
+  const [showOwnerActivity, setShowOwnerActivity] = useState(false);
 
   const storyList = useMemo(() => {
     const source = Array.isArray(stories) && stories.length ? stories : story ? [story] : [];
@@ -105,7 +106,13 @@ export default function StoryViewer({
     setComment('');
     setPendingAction('');
     setActivePanel('viewers');
+    setShowOwnerActivity(false);
     await onNavigate(storyList[nextIndex]);
+  };
+
+  const openOwnerActivity = (panel) => {
+    setActivePanel(panel);
+    setShowOwnerActivity(true);
   };
 
   const submitComment = async (event) => {
@@ -144,7 +151,7 @@ export default function StoryViewer({
 
   return (
     <div
-      className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-black/95 p-2 backdrop-blur-sm sm:p-4`}
+      className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-black/95 p-2 sm:p-4`}
       onMouseDown={event => {
         event.stopPropagation();
         if (event.target === event.currentTarget) onClose?.();
@@ -153,16 +160,16 @@ export default function StoryViewer({
       <div
         className={`relative grid h-[min(94svh,840px)] w-full overflow-hidden rounded-3xl bg-black shadow-2xl ${
           isOwner
-            ? 'max-w-6xl grid-rows-[minmax(0,1fr)_minmax(14rem,17rem)] md:grid-cols-[minmax(0,1fr)_22rem] md:grid-rows-1'
+            ? 'max-w-6xl md:grid-cols-[minmax(0,1fr)_22rem] md:grid-rows-1'
             : 'max-w-[430px]'
         }`}
         onMouseDown={event => event.stopPropagation()}
       >
         <div className="relative min-h-0 overflow-hidden bg-black">
           {currentStory.fileType === 'image' ? (
-            <img src={resolveMediaUrl(currentStory.fileUrl)} alt={currentStory.caption || 'My Day'} className="h-full w-full object-contain" />
+            <img src={resolveMediaUrl(currentStory.fileUrl)} alt={currentStory.caption || 'My Day'} decoding="async" className="h-full w-full object-contain" />
           ) : (
-            <video key={getEntityId(currentStory)} src={resolveMediaUrl(currentStory.fileUrl)} controls autoPlay playsInline className="h-full w-full object-contain" />
+            <video key={getEntityId(currentStory)} src={resolveMediaUrl(currentStory.fileUrl)} controls autoPlay playsInline preload="metadata" className="h-full w-full object-contain" />
           )}
 
           <div className="absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/90 via-black/50 to-transparent p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
@@ -182,7 +189,7 @@ export default function StoryViewer({
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-black">{owner?.name || 'Member'}</span>
-                  <span className="block truncate text-xs font-semibold text-white/60">My Day{hasMultipleStories ? ` · ${activeIndex + 1} of ${storyList.length}` : ''}</span>
+                  <span className="block truncate text-xs font-semibold text-white/60">My Day{hasMultipleStories ? ` - ${activeIndex + 1} of ${storyList.length}` : ''}</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -191,7 +198,7 @@ export default function StoryViewer({
                     type="button"
                     onClick={deleteStory}
                     disabled={pendingAction === 'delete'}
-                    className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition hover:bg-rose-500 disabled:opacity-50"
+                    className="grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white transition hover:bg-rose-500 disabled:opacity-50"
                     aria-label="Delete My Day"
                   >
                     {pendingAction === 'delete' ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
@@ -200,7 +207,7 @@ export default function StoryViewer({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition hover:bg-white/20"
+                  className="grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white transition hover:bg-white/20"
                   aria-label="Close My Day"
                 >
                   <X size={18} />
@@ -214,7 +221,7 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={() => goToStory('previous')}
-                className="absolute left-3 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"
+                className="absolute left-3 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/75"
                 aria-label="Previous My Day"
               >
                 <ChevronLeft size={24} />
@@ -222,7 +229,7 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={() => goToStory('next')}
-                className="absolute right-3 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"
+                className="absolute right-3 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/75"
                 aria-label="Next My Day"
               >
                 <ChevronRight size={24} />
@@ -230,9 +237,35 @@ export default function StoryViewer({
             </>
           )}
 
-          {isOwner && currentStory.caption && (
-            <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4 pt-16 text-white">
-              <p className="text-sm font-bold">{currentStory.caption}</p>
+          {isOwner && (
+            <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/55 to-transparent p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-16 text-white">
+              {currentStory.caption && <p className="mb-3 line-clamp-2 text-sm font-bold leading-snug">{currentStory.caption}</p>}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => openOwnerActivity('viewers')}
+                  className="flex items-center justify-center gap-1.5 rounded-2xl bg-white/[0.12] px-2 py-2 text-xs font-black text-white ring-1 ring-white/10 transition hover:bg-white/20"
+                >
+                  <Eye size={15} />
+                  {viewers.length}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openOwnerActivity('reactions')}
+                  className="flex items-center justify-center gap-1.5 rounded-2xl bg-white/[0.12] px-2 py-2 text-xs font-black text-white ring-1 ring-white/10 transition hover:bg-white/20"
+                >
+                  <Heart size={15} />
+                  {reactions.length}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openOwnerActivity('replies')}
+                  className="flex items-center justify-center gap-1.5 rounded-2xl bg-white/[0.12] px-2 py-2 text-xs font-black text-white ring-1 ring-white/10 transition hover:bg-white/20"
+                >
+                  <MessageCircle size={15} />
+                  {comments.length}
+                </button>
+              </div>
             </div>
           )}
 
@@ -248,7 +281,7 @@ export default function StoryViewer({
                       type="button"
                       onClick={() => reactToStory(emoji)}
                       disabled={Boolean(pendingAction)}
-                      className={`grid h-11 w-11 place-items-center rounded-full text-xl shadow-lg backdrop-blur transition hover:-translate-y-0.5 disabled:opacity-50 ${
+                      className={`grid h-11 w-11 place-items-center rounded-full text-xl shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50 ${
                         isSelected ? 'bg-[#1877f2] ring-2 ring-white/70' : 'bg-black/40 ring-1 ring-white/10 hover:bg-white/20'
                       }`}
                       aria-label={`React ${emoji}`}
@@ -260,14 +293,14 @@ export default function StoryViewer({
               </div>
               {reactionSummary.length > 0 && (
                 <div className="mb-3 flex justify-center">
-                  <div className="inline-flex max-w-full items-center gap-1 rounded-full bg-black/50 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/10 backdrop-blur">
+                  <div className="inline-flex max-w-full items-center gap-1 rounded-full bg-black/60 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/10">
                     {reactionSummary.slice(0, 3).map(([emoji]) => <span key={emoji}>{emoji}</span>)}
                     <span className="ml-1 text-white/70">{reactions.length}</span>
                   </div>
                 </div>
               )}
               {onComment && (
-                <form onSubmit={submitComment} className="flex items-center gap-2 rounded-full bg-black/50 p-1.5 ring-1 ring-white/10 backdrop-blur">
+                <form onSubmit={submitComment} className="flex items-center gap-2 rounded-full bg-black/60 p-1.5 ring-1 ring-white/10">
                   <input
                     value={comment}
                     onChange={event => setComment(event.target.value)}
@@ -289,9 +322,19 @@ export default function StoryViewer({
         </div>
 
         {isOwner && (
-          <aside className="flex min-h-0 flex-col border-t border-white/10 bg-[#090d16] text-white md:border-l md:border-t-0">
+          <aside className={`story-owner-activity ${showOwnerActivity ? 'flex' : 'hidden'} absolute inset-x-3 bottom-3 z-40 max-h-[min(58svh,25rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#090d16]/98 text-white shadow-2xl md:static md:flex md:max-h-none md:rounded-none md:border-l md:border-t-0 md:shadow-none`}>
             <div className="border-b border-white/10 p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-[#8ec5ff]">My Day activity</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-black uppercase tracking-wide text-[#8ec5ff]">My Day activity</p>
+                <button
+                  type="button"
+                  onClick={() => setShowOwnerActivity(false)}
+                  className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white md:hidden"
+                  aria-label="Close My Day activity"
+                >
+                  <X size={16} />
+                </button>
+              </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-2xl bg-white/10 p-3 text-center">
                   <Eye className="mx-auto text-[#1877f2]" size={18} />

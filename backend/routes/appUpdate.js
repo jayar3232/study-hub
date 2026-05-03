@@ -4,8 +4,9 @@ const path = require('path');
 
 const router = express.Router();
 
-const DEFAULT_RELEASE_APK_PATH = '/uploads/releases/syncrova-latest.apk';
-const releaseApkPath = path.join(__dirname, '..', 'uploads', 'releases', 'syncrova-latest.apk');
+const DEFAULT_RELEASE_APK_PATH = '/releases/syncrova-latest.apk';
+const bundledReleaseApkPath = path.join(__dirname, '..', 'public', 'releases', 'syncrova-latest.apk');
+const uploadedReleaseApkPath = path.join(__dirname, '..', 'uploads', 'releases', 'syncrova-latest.apk');
 
 const toBoolean = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -27,17 +28,19 @@ const toAbsoluteUrl = (req, value) => {
 
 router.get('/update', (req, res) => {
   const apkUrl = process.env.APP_APK_URL || DEFAULT_RELEASE_APK_PATH;
-  const apkAvailable = Boolean(process.env.APP_APK_URL) || fs.existsSync(releaseApkPath);
+  const apkAvailable = Boolean(process.env.APP_APK_URL)
+    || fs.existsSync(bundledReleaseApkPath)
+    || fs.existsSync(uploadedReleaseApkPath);
 
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 3),
-    versionName: process.env.APP_VERSION_NAME || '1.0.2',
+    versionCode: Number(process.env.APP_VERSION_CODE || 4),
+    versionName: process.env.APP_VERSION_NAME || '1.0.3',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Latest SYNCROVA mobile improvements and fixes.'
+    notes: process.env.APP_UPDATE_NOTES || 'Optimized games, smoother media viewing, and improved My Day mobile activity.'
   });
 });
 

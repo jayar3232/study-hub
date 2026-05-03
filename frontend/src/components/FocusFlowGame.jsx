@@ -47,6 +47,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
   const [saving, setSaving] = useState(false);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const animationRef = useRef(null);
+  const markerRef = useRef(null);
   const lastFrameRef = useRef(null);
   const positionRef = useRef(0);
   const targetCenterRef = useRef(50);
@@ -55,6 +56,10 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
 
   const attemptsLeft = Math.max(0, MAX_MISSES - misses);
   const speedLevel = Math.max(1, Math.floor((hits + misses) / 5) + 1);
+
+  const syncMarkerPosition = (nextPosition) => {
+    if (markerRef.current) markerRef.current.style.left = `${nextPosition}%`;
+  };
 
   const nextTarget = () => {
     const next = 18 + Math.round(Math.random() * 64);
@@ -68,6 +73,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
     setMisses(0);
     setPosition(0);
     positionRef.current = 0;
+    syncMarkerPosition(0);
     directionRef.current = 1;
     setScore(0);
     setHits(0);
@@ -154,7 +160,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
         directionRef.current = 1;
       }
       positionRef.current = next;
-      setPosition(next);
+      syncMarkerPosition(next);
 
       animationRef.current = requestAnimationFrame(tick);
     };
@@ -265,6 +271,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
                       style={{ left: `${targetCenter - TARGET_WIDTH / 2}%`, width: `${TARGET_WIDTH}%` }}
                     />
                     <div
+                      ref={markerRef}
                       className="focus-flow-marker absolute top-1/2 grid h-12 w-12 place-items-center rounded-2xl bg-white text-gray-950 shadow-2xl shadow-cyan-400/30"
                       style={{ left: `${position}%`, transform: 'translate3d(-50%, -50%, 0)' }}
                     >
@@ -292,7 +299,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
                   initial={{ opacity: 0, scale: 0.78, y: 18 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.88, y: -18 }}
-                  className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(78%,340px)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-white/10 bg-gray-950/90 p-5 text-center shadow-2xl shadow-emerald-400/20 backdrop-blur"
+                  className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(78%,340px)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-white/10 bg-gray-950/95 p-5 text-center shadow-2xl shadow-emerald-400/20"
                 >
                   <p className={`text-3xl font-black ${feedback.tone}`}>{feedback.label}</p>
                   <p className="mt-1 text-sm font-bold text-white/70">{feedback.detail}</p>

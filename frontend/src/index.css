@@ -1221,6 +1221,20 @@
       display: block;
     }
 
+    .mobile-game-active .block-stack-board {
+      max-width: min(100%, calc(100vw - 2.2rem)) !important;
+      padding: 0.42rem !important;
+      border-radius: 1.15rem !important;
+    }
+
+    .mobile-game-active .block-stack-grid {
+      gap: 0.18rem !important;
+    }
+
+    .mobile-game-active .block-cell {
+      border-radius: 0.52rem !important;
+    }
+
     .mobile-game-active .block-tray-panel {
       position: sticky;
       bottom: calc(5.25rem + env(safe-area-inset-bottom));
@@ -1230,7 +1244,7 @@
       border-radius: 1.25rem !important;
       background: rgba(15, 23, 42, 0.92) !important;
       box-shadow: 0 18px 55px rgba(0, 0, 0, 0.35);
-      backdrop-filter: blur(18px);
+      backdrop-filter: none;
     }
 
     .mobile-game-active .block-tray-list {
@@ -1273,9 +1287,14 @@
     }
 
     .mobile-game-active .block-piece-cell {
-      height: 0.24rem !important;
-      width: 0.24rem !important;
+      height: 0.38rem !important;
+      width: 0.38rem !important;
       border-radius: 0.13rem !important;
+    }
+
+    .mobile-game-active .block-drag-ghost .block-piece-cell {
+      height: 0.72rem !important;
+      width: 0.72rem !important;
     }
   }
 }
@@ -1339,9 +1358,29 @@
   will-change: auto;
 }
 
+.workspace-card,
+.fix-arena-action-card,
+.fix-arena-stat-card,
+.message-row {
+  content-visibility: auto;
+}
+
+.workspace-card,
+.fix-arena-action-card {
+  contain-intrinsic-size: auto 10rem;
+}
+
+.fix-arena-stat-card {
+  contain-intrinsic-size: auto 7rem;
+}
+
 .jet-arena-stage,
 .bug-hunt-stage,
 .bug-hunt-screen,
+.block-stack-board,
+.block-stack-grid,
+.block-cell,
+.block-drag-ghost,
 .block-tray-piece,
 .block-piece-preview {
   contain: layout paint style;
@@ -1352,6 +1391,8 @@
 .jet-arena-stage > span,
 .jet-arena-stage > div,
 .focus-flow-marker,
+.block-cell,
+.block-drag-ghost,
 .block-piece-cell,
 .block-tray-piece {
   backface-visibility: hidden;
@@ -1364,9 +1405,19 @@
 }
 
 .bug-hunt-stage,
+.block-stack-board,
+.block-stack-grid,
+.block-cell,
 .block-tray-piece,
+.jet-arena-stage,
 .focus-flow-marker {
-  touch-action: manipulation;
+  touch-action: none;
+  user-select: none;
+}
+
+.story-owner-activity {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .jet-arena-stage::before {

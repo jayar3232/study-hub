@@ -145,6 +145,8 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
   const boardRef = useRef(null);
   const dragFrameRef = useRef(null);
   const pendingDragRef = useRef(null);
+  const activeDragRef = useRef(null);
+  const dragPointerIdRef = useRef(null);
   const [board, setBoard] = useState(() => emptyBoard());
   const [pieces, setPieces] = useState(() => createTray());
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -166,6 +168,28 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
 
   const selectedPiece = pieces[selectedIndex];
   const fill = useMemo(() => filledPercent(board), [board]);
+  const validPlacementCells = useMemo(() => {
+    const cells = new Set();
+    if (!selectedPiece) return cells;
+
+    for (let row = 0; row < BOARD_SIZE; row += 1) {
+      for (let col = 0; col < BOARD_SIZE; col += 1) {
+        if (findPlacement(board, selectedPiece, row, col)) cells.add(`${row}-${col}`);
+      }
+    }
+
+    return cells;
+  }, [board, selectedPiece]);
+  const ghostCells = useMemo(() => {
+    const cells = new Set();
+    if (!dragState?.placement || !dragState?.piece) return cells;
+
+    dragState.piece.cells.forEach(([pieceRow, pieceCol]) => {
+      cells.add(`${dragState.placement.row + pieceRow}-${dragState.placement.col + pieceCol}`);
+    });
+
+    return cells;
+  }, [dragState]);
 
   useEffect(() => () => {
     if (dragFrameRef.current) cancelAnimationFrame(dragFrameRef.current);
@@ -216,6 +240,13 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
     setComboBanner(null);
     setClearPulseKey(0);
     setDragState(null);
+    activeDragRef.current = null;
+    dragPointerIdRef.current = null;
+    pendingDragRef.current = null;
+    if (dragFrameRef.current) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
   };
 
   const saveScore = async (payload) => {
@@ -224,7 +255,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
     try {
       const res = await api.post('/games/block-stack/submit', payload);
       setSavedScore(res.data?.result?.score || payload.score);
-      toast.success('WorkGrid score saved');
+      toast.success('Block Blast score saved');
       onScoreSaved?.();
     } catch (err) {
       if (err.response?.status === 404) {
@@ -356,28 +387,52 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
     if (!piece || gameOver) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    activeDragRef.current = {
+      index,
+      piece,
+      startX: event.clientX,
+      startY: event.clientY,
+      hasMoved: false
+    };
+    dragPointerIdRef.current = event.pointerId;
     setSelectedIndex(index);
     updateDragState(event, index, piece);
   };
 
   const handlePiecePointerMove = (event) => {
-    if (!dragState) return;
+    const activeDrag = activeDragRef.current;
+    if (!activeDrag) return;
+    if (dragPointerIdRef.current !== null && event.pointerId !== undefined && event.pointerId !== dragPointerIdRef.current) return;
     event.preventDefault();
-    scheduleDragState(event, dragState.index, dragState.piece);
+    if (Math.hypot(event.clientX - activeDrag.startX, event.clientY - activeDrag.startY) > 8) {
+      activeDrag.hasMoved = true;
+    }
+    scheduleDragState(event, activeDrag.index, activeDrag.piece);
   };
 
   const handlePiecePointerEnd = (event) => {
-    if (!dragState) return;
+    const activeDrag = activeDragRef.current;
+    if (!activeDrag) return;
+    if (dragPointerIdRef.current !== null && event.pointerId !== undefined && event.pointerId !== dragPointerIdRef.current) return;
     event.preventDefault();
     if (dragFrameRef.current) {
       cancelAnimationFrame(dragFrameRef.current);
       dragFrameRef.current = null;
       pendingDragRef.current = null;
     }
-    const liveDragState = buildDragState(event.clientX, event.clientY, dragState.index, dragState.piece);
+    const endedOverBoard = Boolean(getPointerCell(event.clientX, event.clientY));
+    if (!activeDrag.hasMoved && !endedOverBoard) {
+      activeDragRef.current = null;
+      dragPointerIdRef.current = null;
+      setDragState(null);
+      return;
+    }
+    const liveDragState = buildDragState(event.clientX, event.clientY, activeDrag.index, activeDrag.piece);
     const placement = liveDragState.placement;
-    const placed = placement ? commitPiecePlacement(dragState.index, placement.row, placement.col) : false;
-    if (!placed) setShakeKey(value => value + 1);
+    const placed = placement ? commitPiecePlacement(activeDrag.index, placement.row, placement.col) : false;
+    if (!placed && activeDrag.hasMoved) setShakeKey(value => value + 1);
+    activeDragRef.current = null;
+    dragPointerIdRef.current = null;
     setDragState(null);
   };
 
@@ -390,8 +445,8 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
             <BlockGameLogo />
             <div>
               <p className="text-xs font-black uppercase text-cyan-200">Puzzle Game</p>
-              <h2 className="text-2xl font-black tracking-normal">WorkGrid Blocks</h2>
-              <p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Place workload blocks, clear sprint lanes, build combos, and keep the project board alive.</p>
+              <h2 className="text-2xl font-black tracking-normal">Block Blast</h2>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-white/65">Drag blocks onto the board, clear full rows or columns, and keep space open for bigger pieces.</p>
             </div>
           </div>
           <button type="button" onClick={resetGame} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/15">
@@ -423,23 +478,21 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
             key={`${shakeKey}-${clearPulseKey}`}
             animate={{ x: shakeKey ? [0, -6, 6, -3, 3, 0] : 0 }}
             transition={{ duration: 0.22 }}
-            className={`relative mx-auto aspect-square w-full max-w-[450px] rounded-[1.65rem] bg-gray-900 p-2.5 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10 ${clearPulseKey ? 'block-board-cleared' : ''}`}
+            className={`block-stack-board relative mx-auto aspect-square w-full max-w-[450px] rounded-[1.65rem] bg-gray-900 p-2.5 shadow-2xl shadow-cyan-500/10 ring-1 ring-white/10 ${clearPulseKey ? 'block-board-cleared' : ''}`}
           >
             <div className="absolute inset-3 rounded-[1.45rem] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:12.5%_12.5%]" />
 
-            <div ref={boardRef} className="relative grid h-full w-full grid-cols-8 gap-1">
+            <div ref={boardRef} className="block-stack-grid relative grid h-full w-full grid-cols-8 gap-1">
               {board.map((row, rowIndex) => row.map((cell, colIndex) => {
-                const valid = selectedPiece && Boolean(findPlacement(board, selectedPiece, rowIndex, colIndex));
+                const valid = validPlacementCells.has(`${rowIndex}-${colIndex}`);
                 const flash = flashCells.has(`${rowIndex}-${colIndex}`);
-                const ghost = dragState?.placement && dragState.piece?.cells.some(([pieceRow, pieceCol]) => (
-                  dragState.placement.row + pieceRow === rowIndex && dragState.placement.col + pieceCol === colIndex
-                ));
+                const ghost = ghostCells.has(`${rowIndex}-${colIndex}`);
                 return (
                   <button
                     key={`${rowIndex}-${colIndex}`}
                     type="button"
                     onClick={() => handleCellClick(rowIndex, colIndex)}
-                    className={`relative aspect-square overflow-hidden rounded-lg border transition-colors duration-150 ${
+                    className={`block-cell relative aspect-square overflow-hidden rounded-lg border transition-colors duration-150 ${
                       flash
                         ? 'block-cell-flash border-white bg-white shadow-[0_0_22px_rgba(255,255,255,0.6)]'
                         : cell
@@ -466,7 +519,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                   initial={{ opacity: 0, scale: 0.7, y: 18 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.88, y: -12 }}
-                  className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(78%,340px)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-yellow-200/40 bg-gray-950/90 p-5 text-center shadow-2xl shadow-yellow-400/20 backdrop-blur"
+                  className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(78%,340px)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-yellow-200/40 bg-gray-950/95 p-5 text-center shadow-2xl shadow-yellow-400/20"
                 >
                   <p className="text-3xl font-black text-yellow-200">{comboBanner.text}</p>
                   <p className="mt-1 text-sm font-bold text-white/70">{comboBanner.detail}</p>
@@ -519,6 +572,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
                   onPointerMove={handlePiecePointerMove}
                   onPointerUp={handlePiecePointerEnd}
                   onPointerCancel={handlePiecePointerEnd}
+                  onLostPointerCapture={handlePiecePointerEnd}
                   whileTap={piece && !gameOver ? { scale: 0.99 } : undefined}
                   className={`block-tray-piece touch-none w-full rounded-2xl border p-3 text-left transition ${
                     selectedIndex === index && piece
@@ -590,13 +644,13 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
             animate={{ opacity: 1, scale: 1, x: '-50%', y: '-70%' }}
             exit={{ opacity: 0, scale: 0.86, x: '-50%', y: '-70%' }}
             transition={{ duration: 0.12 }}
-            className="pointer-events-none fixed z-[100] rounded-2xl border border-white/25 bg-gray-950/90 p-2 shadow-2xl shadow-cyan-500/25 backdrop-blur"
+            className="block-drag-ghost pointer-events-none fixed z-[100] rounded-2xl border border-white/25 bg-gray-950/95 p-2 shadow-2xl shadow-cyan-500/25"
             style={{
               left: dragState.x,
               top: dragState.y
             }}
           >
-            {renderPiecePreview(dragState.piece, 'h-2.5 w-2.5')}
+            {renderPiecePreview(dragState.piece, 'h-3 w-3')}
           </motion.div>
         )}
       </AnimatePresence>
@@ -605,7 +659,7 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
         open={gameOver}
         title="Board locked"
         score={score}
-        detail={score <= 0 ? 'Clear at least one lane to save a ranked score.' : 'Your WorkGrid run is complete.'}
+        detail={score <= 0 ? 'Clear at least one lane to save a ranked score.' : 'Your Block Blast run is complete.'}
         saving={saving}
         saved={Boolean(savedScore)}
         onRetry={resetGame}

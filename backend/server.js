@@ -80,6 +80,7 @@ app.use(cors(corsOptions));
 // Middleware
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/releases', express.static(path.join(__dirname, 'public', 'releases')));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

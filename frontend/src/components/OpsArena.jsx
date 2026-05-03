@@ -617,9 +617,9 @@ export default function OpsArena() {
   const gameCards = [
     {
       key: 'blocks',
-      title: 'WorkGrid Blocks',
+      title: 'Block Blast',
       label: 'Puzzle Game',
-      description: 'Clear sprint lanes with workload blocks.',
+      description: 'Drag blocks, clear rows and columns, and keep the board alive.',
       status: 'Live',
       best: summary?.blockStats?.highScore || 0,
       Logo: BlockGameLogo,
@@ -695,7 +695,7 @@ export default function OpsArena() {
     games: {
       eyebrow: 'Game panel',
       title: activeGameInfo?.title || 'Games',
-      description: 'Play one live challenge at a time. Scores from every game contribute to your Division Rank.'
+      description: 'Play one optimized challenge at a time. Scores from every game contribute to your Division Rank.'
     },
     report: {
       eyebrow: 'Private member report',
@@ -713,7 +713,7 @@ export default function OpsArena() {
     {
       key: 'games',
       title: 'Enter Games',
-      description: 'WorkGrid Blocks, Jet Fighter, Bug Hunt, Focus Flow, and Code Quiz.',
+      description: 'Block Blast, Jet Fighter, Bug Hunt, Focus Flow, and Code Quiz.',
       icon: Gamepad2,
       tone: 'from-cyan-400 to-pink-500',
       meta: `${summary?.stats?.highScore || 0} best score`
