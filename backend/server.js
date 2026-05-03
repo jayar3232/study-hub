@@ -84,6 +84,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/groups', require('./routes/groups'));
+app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/posts', require('./routes/posts'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/files', require('./routes/files'));
@@ -96,6 +97,7 @@ app.use('/api/activity', require('./routes/activity'));
 app.use('/api/games', require('./routes/games'));
 app.use('/api/friends', require('./routes/friends'));
 app.use('/api/stories', require('./routes/stories'));
+app.use('/api/app', require('./routes/appUpdate'));
 
 const notifications = require('./routes/notifications');
 app.use('/api/notifications', notifications.router);

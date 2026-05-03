@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Bug, CheckCircle2, Crosshair, Eye, RotateCcw, Save, Search, Trophy } from 'lucide-react';
@@ -88,6 +88,7 @@ export default function BugHuntGame({ stats, onScoreSaved, onExit }) {
   const [result, setResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const [pulse, setPulse] = useState(null);
+  const lastMissToastRef = useRef(0);
 
   const foundSet = useMemo(() => new Set(found), [found]);
   const totalPoints = useMemo(
@@ -170,7 +171,11 @@ export default function BugHuntGame({ stats, onScoreSaved, onExit }) {
   const registerMiss = () => {
     if (!running) return;
     setMistakes(value => value + 1);
-    toast.error('No issue there');
+    const now = Date.now();
+    if (now - lastMissToastRef.current > 650) {
+      lastMissToastRef.current = now;
+      toast.error('No issue there');
+    }
   };
 
   return (

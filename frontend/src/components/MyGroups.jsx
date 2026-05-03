@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   ArrowRight,
@@ -9,7 +9,7 @@ import {
   Check,
   Copy,
   Crown,
-  Grid3X3,
+  FolderKanban,
   Image as ImageIcon,
   KeyRound,
   ListFilter,
@@ -17,23 +17,24 @@ import {
   LogOut,
   MailCheck,
   PlusCircle,
+  RefreshCw,
   Search,
   SortAsc,
-  Sparkles,
   Users,
   X
 } from 'lucide-react';
 import api from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
-import EmptyState from './EmptyState';
 import { resolveMediaUrl } from '../utils/media';
 import CreateGroupModal from './CreateGroupModal';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
+const getInitial = (value) => String(value || '?').charAt(0).toUpperCase();
+
 const getGroupAccent = (value = '') => {
-  const colors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+  const colors = ['#1877f2', '#0f766e', '#16a34a', '#f59e0b', '#475569', '#7c3aed'];
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
     hash = ((hash << 5) - hash) + value.charCodeAt(index);
@@ -43,45 +44,79 @@ const getGroupAccent = (value = '') => {
 
 const formatDate = (value) => {
   if (!value) return 'Recently created';
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Recently created';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+const getMemberName = (member) => (
+  member?.name || member?.user?.name || member?.email || member?.user?.email || 'Member'
+);
+
+const getMemberAvatar = (member) => resolveMediaUrl(member?.avatar || member?.user?.avatar);
 
 const MemberStack = ({ members = [] }) => (
   <div className="flex -space-x-2">
-    {members.slice(0, 4).map(member => (
-      <div
-        key={getEntityId(member)}
-        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-900 text-xs font-bold text-white dark:border-gray-900 dark:bg-gray-700"
-        title={member.name || member.email}
-      >
-        {(member.name || member.email || '?').charAt(0).toUpperCase()}
-      </div>
-    ))}
+    {members.slice(0, 4).map(member => {
+      const name = getMemberName(member);
+      const avatar = getMemberAvatar(member);
+      return (
+        <div
+          key={getEntityId(member)}
+          className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 border-white bg-slate-900 text-xs font-black text-white dark:border-gray-900 dark:bg-gray-700"
+          title={name}
+        >
+          {avatar ? <img src={avatar} alt={name} className="h-full w-full object-cover" /> : getInitial(name)}
+        </div>
+      );
+    })}
     {members.length > 4 && (
-      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-100 text-xs font-bold text-gray-600 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-300">
+      <div className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-gray-100 text-xs font-black text-gray-600 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-300">
         +{members.length - 4}
       </div>
     )}
   </div>
 );
 
-const StatCard = ({ icon: Icon, label, value, helper }) => (
-  <motion.div whileHover={{ y: -7, scale: 1.018 }} className="group relative overflow-hidden rounded-2xl border border-white/60 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/50 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60">
-    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
-    <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
-    <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
-        <p className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{value}</p>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+const toneClasses = {
+  blue: 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-blue-200',
+  emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200',
+  amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
+};
+
+const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => (
+  <div className="workspace-stat-card rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="mt-2 text-2xl font-black text-gray-950 dark:text-white">{value}</p>
+        <p className="mt-1 truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{helper}</p>
       </div>
-      <div className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
-        <Icon size={22} />
+      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${toneClasses[tone] || toneClasses.blue}`}>
+        <Icon size={21} />
       </div>
     </div>
-    <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
-  </motion.div>
+  </div>
+);
+
+const EmptyWorkspacePanel = ({ onCreate }) => (
+  <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-blue-200">
+      <FolderKanban size={26} />
+    </div>
+    <h3 className="mt-4 text-lg font-black text-gray-950 dark:text-white">No workspaces found</h3>
+    <p className="mx-auto mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
+      Create a workspace or join one with an access code to start collaborating.
+    </p>
+    <button
+      type="button"
+      onClick={onCreate}
+      className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+    >
+      <PlusCircle size={17} />
+      Create workspace
+    </button>
+  </div>
 );
 
 export default function MyGroups() {
@@ -99,10 +134,6 @@ export default function MyGroups() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  useEffect(() => {
-    fetchGroups();
-  }, []);
-
   const fetchGroups = async () => {
     setLoading(true);
     try {
@@ -110,7 +141,7 @@ export default function MyGroups() {
         api.get('/groups'),
         api.get('/groups/invites/me').catch(() => ({ data: [] }))
       ]);
-      setGroups(groupsRes.data);
+      setGroups(groupsRes.data || []);
       setInvites(invitesRes.data || []);
       window.dispatchEvent(new Event('groupsUpdated'));
     } catch (err) {
@@ -119,6 +150,10 @@ export default function MyGroups() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchGroups();
+  }, []);
 
   const createGroup = async (name, description) => {
     if (!name.trim()) {
@@ -188,6 +223,11 @@ export default function MyGroups() {
 
   const copyJoinCode = async (code, event) => {
     event.stopPropagation();
+    if (!code) {
+      toast.error('No access code available');
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(code);
       setCopiedCode(code);
@@ -198,16 +238,17 @@ export default function MyGroups() {
     }
   };
 
+  const currentUserId = getEntityId(user);
   const totalMembers = groups.reduce((sum, group) => sum + (group.members?.length || 0), 0);
-  const createdCount = groups.filter(group => getEntityId(group.creator) === getEntityId(user)).length;
-  const joinedCount = groups.length - createdCount;
+  const createdCount = groups.filter(group => getEntityId(group.creator) === currentUserId).length;
+  const joinedCount = Math.max(groups.length - createdCount, 0);
 
   const filteredGroups = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return groups
       .filter(group => {
-        const isCreator = getEntityId(group.creator) === getEntityId(user);
+        const isCreator = getEntityId(group.creator) === currentUserId;
         const filterMatch = filter === 'all' || (filter === 'owned' ? isCreator : !isCreator);
         const searchMatch = !query
           || group.name?.toLowerCase().includes(query)
@@ -221,94 +262,99 @@ export default function MyGroups() {
         if (sort === 'members') return (b.members?.length || 0) - (a.members?.length || 0);
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       });
-  }, [filter, groups, search, sort, user]);
+  }, [currentUserId, filter, groups, search, sort]);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading) {
+    return (
+      <div className="mobile-page mobile-workspaces-page mx-auto max-w-7xl px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
+        <LoadingSpinner label="Loading workspaces" />
+      </div>
+    );
+  }
 
   return (
-    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      <motion.section
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-        className="mobile-hero-panel relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-500 via-violet-500 to-indigo-500 shadow-xl shadow-pink-500/15"
-      >
-        <div className="absolute inset-0 bg-black/15" />
-        <div className="relative flex flex-col gap-5 p-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="inline-flex items-center gap-2 text-sm font-semibold uppercase text-white/75">
-              <Sparkles size={16} />
-              Workspace portfolio
-            </p>
-            <h1 className="mt-1 text-3xl font-bold text-white">Workspaces</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">
-              A polished directory for projects, teams, client spaces, and active collaboration.
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-2 text-white backdrop-blur">
-            <div className="rounded-xl bg-white/10 px-3 py-2">
-              <p className="text-lg font-black">{groups.length}</p>
-              <p className="text-[10px] font-black uppercase text-white/65">Spaces</p>
-            </div>
-            <div className="rounded-xl bg-white/10 px-3 py-2">
-              <p className="text-lg font-black">{createdCount}</p>
-              <p className="text-[10px] font-black uppercase text-white/65">Owned</p>
-            </div>
-            <div className="rounded-xl bg-white/10 px-3 py-2">
-              <p className="text-lg font-black">{totalMembers}</p>
-              <p className="text-[10px] font-black uppercase text-white/65">People</p>
-            </div>
-          </div>
-        </div>
-      </motion.section>
-
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-        whileHover={{ y: -4 }}
-        className="mobile-control-panel group relative grid gap-4 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"
-      >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
-        <div className="pointer-events-none absolute right-0 top-0 h-20 w-20 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[12px_-12px_42px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
-        <div className="pointer-events-none absolute bottom-0 left-0 h-20 w-20 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-12px_12px_42px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
-        <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
-
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mobile-page mobile-workspaces-page mx-auto max-w-7xl space-y-5 px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <div
-                className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20"
-              >
-                <PlusCircle size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-gray-950 dark:text-white">Create a project space</p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Set up a dedicated room for announcements, files, chat, and shared assets.
-                </p>
-              </div>
-            </div>
+            <p className="text-sm font-black uppercase text-[#1877f2] dark:text-blue-300">Workspaces</p>
+            <h1 className="mt-1 text-3xl font-black tracking-normal text-gray-950 dark:text-white">Team spaces</h1>
+            <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500 dark:text-gray-400">
+              Manage project rooms, members, invitations, files, chat, and shared work.
+            </p>
           </div>
-          <motion.button
-            whileHover={{ y: -3, scale: 1.035 }}
-            whileTap={{ scale: 0.98 }}
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-gray-900/10 transition hover:bg-pink-600 hover:shadow-xl hover:shadow-pink-500/20 dark:bg-white dark:text-gray-950 dark:hover:bg-pink-100"
-          >
-            <PlusCircle size={18} />
-            Create
-          </motion.button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={fetchGroups}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-black text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <RefreshCw size={17} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+            >
+              <PlusCircle size={17} />
+              Create
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <StatCard icon={FolderKanban} label="Total Workspaces" value={groups.length} helper="Active project rooms" />
+        <StatCard icon={Crown} label="Owned by You" value={createdCount} helper="Created under your account" tone="amber" />
+        <StatCard icon={Users} label="Members Reached" value={totalMembers} helper={`${joinedCount} joined as member`} tone="emerald" />
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)]">
+        <div className="workspace-toolbar rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_160px]">
+            <label className="relative">
+              <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Search by name, code, or description"
+                className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-semibold text-gray-900 outline-none transition placeholder:font-medium placeholder:text-gray-400 focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+              />
+            </label>
+            <label className="relative">
+              <ListFilter size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <select
+                value={filter}
+                onChange={event => setFilter(event.target.value)}
+                className="h-11 w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+              >
+                <option value="all">All workspaces</option>
+                <option value="owned">Owned by me</option>
+                <option value="joined">Joined</option>
+              </select>
+            </label>
+            <label className="relative">
+              <SortAsc size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <select
+                value={sort}
+                onChange={event => setSort(event.target.value)}
+                className="h-11 w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+              >
+                <option value="recent">Newest</option>
+                <option value="name">Name</option>
+                <option value="members">Members</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-3 transition hover:border-cyan-200 hover:bg-cyan-50/60 dark:border-gray-800 dark:bg-gray-950/50 dark:hover:border-cyan-900/60 dark:hover:bg-cyan-950/20">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-cyan-400 to-pink-500 opacity-70" />
-          <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
-            <KeyRound size={14} className="text-cyan-500" />
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <label className="mb-2 flex items-center gap-2 text-xs font-black uppercase text-gray-500 dark:text-gray-400">
+            <KeyRound size={14} className="text-[#1877f2]" />
             Join with access code
           </label>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
             <input
               value={joinCode}
               onChange={event => setJoinCode(event.target.value.toUpperCase())}
@@ -316,184 +362,132 @@ export default function MyGroups() {
                 if (event.key === 'Enter') joinGroup();
               }}
               placeholder="Example: A1B2C3"
-              className="min-h-11 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold uppercase tracking-wide text-gray-900 outline-none transition placeholder:normal-case placeholder:font-normal placeholder:tracking-normal focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:ring-pink-950"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 text-sm font-black uppercase tracking-wide text-gray-900 outline-none transition placeholder:normal-case placeholder:font-medium placeholder:tracking-normal placeholder:text-gray-400 focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
             />
             <button
               type="button"
               onClick={joinGroup}
               disabled={joining}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:-translate-y-0.5 hover:bg-pink-700 hover:shadow-xl hover:shadow-pink-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 text-sm font-black text-white transition hover:bg-[#1877f2] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-950"
             >
               {joining ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
               Join
             </button>
           </div>
         </div>
-      </motion.section>
+      </section>
 
       <AnimatePresence>
         {invites.length > 0 && (
           <motion.section
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="rounded-2xl border border-pink-100 bg-white p-4 shadow-lg shadow-pink-500/10 dark:border-pink-900/50 dark:bg-gray-900"
+            className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/20"
           >
-            <div className="mb-3 flex items-center gap-2">
-              <Bell size={18} className="text-pink-500" />
-              <h2 className="font-bold text-gray-950 dark:text-white">Workspace invitations</h2>
-              <span className="rounded-full bg-pink-500 px-2 py-0.5 text-xs font-bold text-white">{invites.length}</span>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Bell size={18} className="text-[#1877f2]" />
+              <h2 className="font-black text-gray-950 dark:text-white">Workspace invitations</h2>
+              <span className="rounded-full bg-[#1877f2] px-2 py-0.5 text-xs font-black text-white">{invites.length}</span>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
-              {invites.map(invite => (
-                <div key={invite._id} className="flex flex-col gap-3 rounded-xl border border-gray-100 p-3 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-gray-950 dark:text-white">{invite.groupId?.name || 'Workspace invitation'}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Invited by {invite.invitedBy?.name || 'a workspace admin'}
-                    </p>
+              {invites.map(invite => {
+                const inviteId = getEntityId(invite);
+                return (
+                  <div key={inviteId} className="rounded-2xl border border-blue-100 bg-white p-3 dark:border-blue-900/40 dark:bg-gray-900">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate font-black text-gray-950 dark:text-white">{invite.groupId?.name || 'Workspace invitation'}</p>
+                        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+                          Invited by {invite.invitedBy?.name || 'a workspace admin'}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => respondToInvite(inviteId, 'decline')}
+                          disabled={respondingInviteIds[inviteId]}
+                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-gray-200 px-3 py-2 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          <X size={15} />
+                          Decline
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => respondToInvite(inviteId, 'accept')}
+                          disabled={respondingInviteIds[inviteId]}
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#1877f2] px-3 py-2 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-50"
+                        >
+                          <MailCheck size={15} />
+                          Accept
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => respondToInvite(invite._id, 'decline')}
-                      disabled={respondingInviteIds[invite._id]}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                    >
-                      <X size={15} />
-                      Decline
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => respondToInvite(invite._id, 'accept')}
-                      disabled={respondingInviteIds[invite._id]}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-pink-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-50"
-                    >
-                      <MailCheck size={15} />
-                      Accept
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </motion.section>
         )}
       </AnimatePresence>
 
-      <div className="mobile-metric-strip grid gap-4 md:grid-cols-3">
-        <StatCard icon={Grid3X3} label="Total Workspaces" value={groups.length} helper="All active project spaces" />
-        <StatCard icon={Crown} label="Owned by You" value={createdCount} helper="Workspaces you created" />
-        <StatCard icon={Users} label="Members Reached" value={totalMembers} helper={`${joinedCount} joined as member`} />
-      </div>
-
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12 }}
-        whileHover={{ y: -4 }}
-        className="mobile-control-panel group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-2xl hover:shadow-cyan-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-cyan-900/60"
-      >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
-        <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-cyan-300 opacity-0 shadow-[10px_-10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
-        <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-pink-300 opacity-0 shadow-[-10px_10px_34px_rgba(236,72,153,0.18)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
-        <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-cyan-100/35 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
-        <div className="relative grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
-          <label className="relative">
-            <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Search by name, access code, project..."
-              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition hover:border-cyan-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:border-cyan-900/60 dark:focus:ring-pink-950"
-            />
-          </label>
-          <label className="relative">
-            <ListFilter size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select value={filter} onChange={event => setFilter(event.target.value)} className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition hover:border-cyan-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:border-cyan-900/60 dark:focus:ring-pink-950">
-              <option value="all">All workspaces</option>
-              <option value="owned">Owned by me</option>
-              <option value="joined">Joined workspaces</option>
-            </select>
-          </label>
-          <label className="relative">
-            <SortAsc size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select value={sort} onChange={event => setSort(event.target.value)} className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition hover:border-cyan-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:border-cyan-900/60 dark:focus:ring-pink-950">
-              <option value="recent">Newest</option>
-              <option value="name">Name</option>
-              <option value="members">Members</option>
-            </select>
-          </label>
-        </div>
-      </motion.section>
-
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.16 }}
-        className="relative"
-      >
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-transparent p-1 transition hover:border-pink-200/40 dark:hover:border-pink-900/30">
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="text-xl font-bold text-gray-950 dark:text-white">Workspace directory</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{filteredGroups.length} visible of {groups.length}</p>
+            <h2 className="text-xl font-black text-gray-950 dark:text-white">Workspace directory</h2>
+            <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+              {filteredGroups.length} visible of {groups.length}
+            </p>
           </div>
         </div>
 
         {filteredGroups.length === 0 ? (
-          <EmptyState type="groups" action={() => setShowCreate(true)} />
+          <EmptyWorkspacePanel onCreate={() => setShowCreate(true)} />
         ) : (
-          <div className="mobile-card-list grid gap-4 lg:grid-cols-2">
+          <div className="workspace-directory-grid grid gap-4 lg:grid-cols-2">
             <AnimatePresence initial={false}>
               {filteredGroups.map((group, index) => {
+                const groupId = getEntityId(group);
                 const memberCount = group.members?.length || 0;
                 const accent = getGroupAccent(group.name);
-                const isCreator = getEntityId(group.creator) === getEntityId(user);
+                const isCreator = getEntityId(group.creator) === currentUserId;
                 const isCopied = copiedCode === group.joinCode;
+                const groupPhoto = resolveMediaUrl(group.photo);
 
                 return (
                   <motion.article
-                    key={group._id}
+                    key={groupId}
                     layout
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    transition={{ delay: index * 0.03 }}
-                    whileHover={{ y: -6, scale: 1.01 }}
-                    onClick={() => navigate(`/group/${group._id}`)}
-                    className="group relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.05)] transition hover:border-pink-200 hover:shadow-[0_22px_60px_rgba(236,72,153,0.2)] dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+                    transition={{ delay: index * 0.02 }}
+                    onClick={() => navigate(`/group/${groupId}`)}
+                    className="workspace-card cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-blue-900/60"
                   >
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400 opacity-80" />
-                    <div className="pointer-events-none absolute right-0 top-0 h-12 w-12 rounded-tr-xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[8px_-8px_24px_rgba(236,72,153,0.22)] transition group-hover:opacity-100 dark:border-pink-800" />
-                    <div className="pointer-events-none absolute bottom-0 left-0 h-12 w-12 rounded-bl-xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-8px_8px_24px_rgba(6,182,212,0.18)] transition group-hover:opacity-100 dark:border-cyan-800" />
-                    <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/35 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
-                    <div className="grid md:grid-cols-[120px_minmax(0,1fr)]">
-                      <div className="h-56 bg-gray-950 md:hidden">
-                        {group.photo ? (
-                          <img src={resolveMediaUrl(group.photo)} alt={group.name} className="h-full w-full object-contain" />
+                    <div className="grid h-full sm:grid-cols-[9.5rem_minmax(0,1fr)]">
+                      <div className="workspace-card-media relative h-36 overflow-hidden bg-gray-950 sm:h-full sm:min-h-[13rem]">
+                        {groupPhoto ? (
+                          <img src={groupPhoto} alt={group.name} className="h-full w-full object-cover" loading="lazy" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: accent }}>
                             <ImageIcon size={30} className="text-white/90" />
                           </div>
                         )}
+                        <div className="absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-black text-white backdrop-blur">
+                          {memberCount} {memberCount === 1 ? 'member' : 'members'}
+                        </div>
                       </div>
-                      <div className="relative hidden bg-gray-950 md:block">
-                        {group.photo ? (
-                          <img src={resolveMediaUrl(group.photo)} alt={group.name} className="h-full min-h-[210px] w-full object-cover opacity-90 transition duration-300 group-hover:scale-105" />
-                        ) : (
-                          <div className="flex h-full min-h-[210px] w-full items-center justify-center" style={{ backgroundColor: accent }}>
-                            <ImageIcon size={28} className="text-white/90" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
-                      </div>
-                      <div className="p-5">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+                      <div className="workspace-card-body flex min-w-0 flex-col p-4">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="truncate text-xl font-bold text-gray-950 dark:text-white">{group.name}</h3>
+                              <h3 className="workspace-title truncate text-lg font-black text-gray-950 dark:text-white">{group.name}</h3>
                               {isCreator && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                                  <Crown size={12} /> Owner
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                                  <Crown size={12} />
+                                  Owner
                                 </span>
                               )}
                             </div>
@@ -502,50 +496,55 @@ export default function MyGroups() {
                             </p>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-2 text-sm font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                              <Users size={16} /> {memberCount}
-                            </span>
-                            {!isCreator && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  leaveGroup(group._id, group.name);
-                                }}
-                                className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
-                                title="Leave workspace"
-                              >
-                                <LogOut size={18} />
-                              </button>
-                            )}
-                          </div>
+                          {!isCreator && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                leaveGroup(groupId, group.name);
+                              }}
+                              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                              title="Leave workspace"
+                            >
+                              <LogOut size={18} />
+                            </button>
+                          )}
                         </div>
 
-                        <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="mt-4 grid gap-3 text-xs font-semibold text-gray-500 dark:text-gray-400 sm:grid-cols-2">
+                          <span className="inline-flex min-w-0 items-center gap-2">
+                            <Calendar size={14} className="shrink-0" />
+                            <span className="truncate">{formatDate(group.createdAt)}</span>
+                          </span>
+                          <span className="truncate">Owner: {group.creator?.name || (isCreator ? 'You' : 'Member')}</span>
+                        </div>
+
+                        <div className="mt-auto flex flex-col gap-4 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-3">
                             <MemberStack members={group.members || []} />
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              <div className="flex items-center gap-1">
-                                <Calendar size={13} />
-                                {formatDate(group.createdAt)}
-                              </div>
-                              <div className="mt-1">Owner: {group.creator?.name || (isCreator ? 'You' : 'Member')}</div>
-                            </div>
+                            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Team members</span>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <div className="workspace-card-actions flex flex-wrap items-center gap-2 sm:justify-end">
                             <button
                               type="button"
                               onClick={event => copyJoinCode(group.joinCode, event)}
-                              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                              className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm font-black text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                             >
                               {isCopied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
-                              {group.joinCode}
+                              <span>{group.joinCode || 'No code'}</span>
                             </button>
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-pink-600 px-3 py-2 text-sm font-semibold text-white transition group-hover:bg-pink-700">
-                              Open <ArrowRight size={16} />
-                            </span>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                navigate(`/group/${groupId}`);
+                              }}
+                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1877f2] px-3 text-sm font-black text-white transition hover:bg-[#0f63d5]"
+                            >
+                              Open
+                              <ArrowRight size={16} />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -556,7 +555,7 @@ export default function MyGroups() {
             </AnimatePresence>
           </div>
         )}
-      </motion.section>
+      </section>
 
       <CreateGroupModal
         isOpen={showCreate}

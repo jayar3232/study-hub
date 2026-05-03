@@ -20,14 +20,16 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
-import { resolveMediaUrl } from '../utils/media';
+import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
 import LoadingSpinner from './LoadingSpinner';
 import MediaViewer from './MediaViewer';
+import VideoThumbnail from './VideoThumbnail';
 
 let socket;
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🔥', '👏', '✅'];
+const GROUP_MESSAGE_RENDER_BATCH = 140;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 const getUserInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?');
 const getFileName = (value = '') => {
@@ -42,6 +44,7 @@ const getFileName = (value = '') => {
 export default function GroupChat({ groupId, group, members = [], onUserClick }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(GROUP_MESSAGE_RENDER_BATCH);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -113,8 +116,9 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
     if (!file) return;
 
     setUploading(true);
+    const uploadFile = type === 'image' ? await optimizeImageFile(file) : file;
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', uploadFile);
     const replyTo = getEntityId(replyingTo);
 
     try {
@@ -246,6 +250,13 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
     });
   }, [messages, search]);
 
+  const groupSearchActive = Boolean(search.trim());
+  const renderedMessages = useMemo(() => {
+    if (groupSearchActive) return filteredMessages;
+    return filteredMessages.slice(-visibleMessageCount);
+  }, [filteredMessages, groupSearchActive, visibleMessageCount]);
+  const hiddenMessageCount = Math.max(0, filteredMessages.length - renderedMessages.length);
+
   const pinnedMessages = useMemo(
     () => messages.filter(message => message.pinned).sort((a, b) => new Date(b.pinnedAt || b.createdAt) - new Date(a.pinnedAt || a.createdAt)),
     [messages]
@@ -349,12 +360,13 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
             className="relative mt-1 block max-h-72 w-full overflow-hidden rounded-2xl bg-black"
             aria-label="View video"
           >
-            <video preload="metadata" playsInline muted className="max-h-72 w-full rounded-2xl object-contain opacity-90" src={mediaUrl} />
-            <span className="absolute inset-0 grid place-items-center bg-black/15">
-              <span className="grid h-12 w-12 place-items-center rounded-full bg-white/90 text-gray-950 shadow-xl">
-                <Video size={22} fill="currentColor" />
-              </span>
-            </span>
+            <VideoThumbnail
+              src={mediaUrl}
+              className="max-h-72 w-full"
+              videoClassName="max-h-72 object-contain opacity-95"
+              iconSize={23}
+              label={getFileName(message.fileUrl) || 'Video attachment'}
+            />
           </button>
         </div>
       );
@@ -383,6 +395,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
 
   useEffect(() => {
     socket = getSocket();
+    setVisibleMessageCount(GROUP_MESSAGE_RENDER_BATCH);
     socket.emit('join-group', groupId);
     fetchMessages();
 
@@ -547,7 +560,19 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredMessages.map((message) => {
+            {hiddenMessageCount > 0 && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleMessageCount(count => Math.min(filteredMessages.length, count + GROUP_MESSAGE_RENDER_BATCH))}
+                  className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-black text-gray-600 shadow-sm transition hover:border-pink-200 hover:text-pink-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-pink-900/60 dark:hover:text-pink-200"
+                >
+                  Show earlier messages ({hiddenMessageCount})
+                </button>
+              </div>
+            )}
+
+            {renderedMessages.map((message) => {
               const messageId = getEntityId(message);
               const isMe = getEntityId(message.userId) === currentUserId;
 
@@ -680,7 +705,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
           <div className="mb-2 flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">
             <div className="flex items-center gap-2">
               {mediaType === 'image' && <img src={mediaPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
-              {mediaType === 'video' && <video src={mediaPreview} className="h-12 w-12 rounded-xl object-cover" />}
+              {mediaType === 'video' && <VideoThumbnail src={mediaPreview} className="h-12 w-12" rounded="rounded-xl" iconSize={16} label="Selected video preview" />}
               <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{mediaType === 'image' ? 'Image ready' : 'Video ready'}</span>
             </div>
             <button onClick={cancelMedia} className="rounded-full p-1 text-gray-500 transition hover:bg-white dark:hover:bg-gray-900" aria-label="Cancel media">

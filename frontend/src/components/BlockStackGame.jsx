@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Grid3X3, MousePointerClick, RotateCcw, Save, Sparkles, Trophy, Zap } from 'lucide-react';
@@ -143,6 +143,8 @@ export function BlockGameLogo({ compact = false }) {
 
 export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
   const boardRef = useRef(null);
+  const dragFrameRef = useRef(null);
+  const pendingDragRef = useRef(null);
   const [board, setBoard] = useState(() => emptyBoard());
   const [pieces, setPieces] = useState(() => createTray());
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -164,6 +166,10 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
 
   const selectedPiece = pieces[selectedIndex];
   const fill = useMemo(() => filledPercent(board), [board]);
+
+  useEffect(() => () => {
+    if (dragFrameRef.current) cancelAnimationFrame(dragFrameRef.current);
+  }, []);
 
   const getPointerCell = (clientX, clientY) => {
     const rect = boardRef.current?.getBoundingClientRect();
@@ -316,16 +322,33 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
     commitPiecePlacement(selectedIndex, row, col);
   };
 
-  const updateDragState = (event, index, piece) => {
-    const cell = getPointerCell(event.clientX, event.clientY);
+  const buildDragState = (clientX, clientY, index, piece) => {
+    const cell = getPointerCell(clientX, clientY);
     const placement = cell ? findPlacement(board, piece, cell.row, cell.col) : null;
-    setDragState({
+    return {
       index,
       piece,
-      x: event.clientX,
-      y: event.clientY,
+      x: clientX,
+      y: clientY,
       cell,
       placement
+    };
+  };
+
+  const updateDragState = (event, index, piece) => {
+    setDragState(buildDragState(event.clientX, event.clientY, index, piece));
+  };
+
+  const scheduleDragState = (event, index, piece) => {
+    pendingDragRef.current = { clientX: event.clientX, clientY: event.clientY, index, piece };
+    if (dragFrameRef.current) return;
+
+    dragFrameRef.current = requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      const pending = pendingDragRef.current;
+      pendingDragRef.current = null;
+      if (!pending) return;
+      setDragState(buildDragState(pending.clientX, pending.clientY, pending.index, pending.piece));
     });
   };
 
@@ -340,13 +363,19 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
   const handlePiecePointerMove = (event) => {
     if (!dragState) return;
     event.preventDefault();
-    updateDragState(event, dragState.index, dragState.piece);
+    scheduleDragState(event, dragState.index, dragState.piece);
   };
 
   const handlePiecePointerEnd = (event) => {
     if (!dragState) return;
     event.preventDefault();
-    const placement = dragState.placement;
+    if (dragFrameRef.current) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+      pendingDragRef.current = null;
+    }
+    const liveDragState = buildDragState(event.clientX, event.clientY, dragState.index, dragState.piece);
+    const placement = liveDragState.placement;
     const placed = placement ? commitPiecePlacement(dragState.index, placement.row, placement.col) : false;
     if (!placed) setShakeKey(value => value + 1);
     setDragState(null);

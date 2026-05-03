@@ -26,12 +26,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-192.png', 'pwa-512.png', 'apple-touch-icon.png', 'syncrova-logo.png', 'syncrova-app-logo.png'],
+      includeAssets: ['pwa-192.png', 'pwa-512.png', 'apple-touch-icon.png', 'syncrova-app-logo.png'],
       manifest: {
         name: 'SYNCROVA',
         short_name: 'SYNCROVA',
         description: 'SYNCROVA workspace, messaging, reports, games, and team collaboration for NEMSU students.',
-        theme_color: '#ec4899',
+        theme_color: '#1877f2',
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'portrait',

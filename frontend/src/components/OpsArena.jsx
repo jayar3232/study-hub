@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   Bug,
   CheckCircle2,
   Clock,
@@ -104,16 +105,16 @@ const StatCard = ({ icon: Icon, label, value, helper, tone }) => (
   <motion.div
     initial={{ opacity: 0, y: 12 }}
     animate={{ opacity: 1, y: 0 }}
-    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+    className="fix-arena-stat-card rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-blue-900/60"
   >
     <div className="flex items-start justify-between gap-4">
-      <div>
+      <div className="min-w-0">
         <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</p>
         <p className="mt-2 text-3xl font-black text-gray-950 dark:text-white">{value}</p>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+        <p className="mt-1 truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{helper}</p>
       </div>
-      <div className={`rounded-2xl bg-gradient-to-br ${tone} p-3 text-white shadow-lg`}>
-        <Icon size={22} />
+      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${tone}`}>
+        <Icon size={21} />
       </div>
     </div>
   </motion.div>
@@ -550,10 +551,10 @@ export default function OpsArena() {
   }, [issues]);
 
   const statCards = [
-    { icon: AlertTriangle, label: 'Pending Reports', value: issueStats.open, helper: isDeveloper ? 'Developer-only queue' : 'Visible to developers only', tone: 'from-rose-500 to-pink-600' },
-    { icon: CheckCircle2, label: 'Approved', value: issueStats.resolved, helper: 'Accepted suggestions or fixes', tone: 'from-emerald-500 to-cyan-600' },
-    { icon: Trophy, label: 'Arena Rank Score', value: summary?.stats?.highScore || 0, helper: `${summary?.stats?.totalPlays || 0} saved game runs`, tone: 'from-yellow-400 to-orange-600' },
-    { icon: Zap, label: 'Jet Best', value: summary?.jetFighterStats?.highScore || 0, helper: summary?.jetFighterStats?.totalPlays ? `${summary.jetFighterStats.totalPlays} ranked missions` : 'No mission yet', tone: 'from-cyan-400 to-pink-600' }
+    { icon: AlertTriangle, label: 'Pending Reports', value: issueStats.open, helper: isDeveloper ? 'Developer-only queue' : 'Visible to developers only', tone: 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-200' },
+    { icon: CheckCircle2, label: 'Approved', value: issueStats.resolved, helper: 'Accepted suggestions or fixes', tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200' },
+    { icon: Trophy, label: 'Arena Rank Score', value: summary?.stats?.highScore || 0, helper: `${summary?.stats?.totalPlays || 0} saved game runs`, tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200' },
+    { icon: Zap, label: 'Jet Best', value: summary?.jetFighterStats?.highScore || 0, helper: summary?.jetFighterStats?.totalPlays ? `${summary.jetFighterStats.totalPlays} ranked missions` : 'No mission yet', tone: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-200' }
   ];
 
   const gameCards = [
@@ -688,34 +689,33 @@ export default function OpsArena() {
 
   return (
     <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      <section className="mobile-hero-panel mobile-arena-hero relative overflow-hidden rounded-3xl bg-gray-950 shadow-2xl shadow-cyan-500/10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.25),transparent_30%),radial-gradient(circle_at_82%_22%,rgba(236,72,153,0.25),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.9))]" />
-        <div className="relative grid gap-6 p-6 text-white md:p-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
+      <section className="fix-arena-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="grid gap-5 p-5 md:p-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-center">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <ArenaMark />
-            <div>
+            <div className="min-w-0">
               {arenaView !== 'home' && (
                 <button
                   type="button"
                   onClick={() => openArenaView('home')}
-                  className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-black uppercase text-white backdrop-blur transition hover:-translate-x-0.5 hover:bg-white/15"
+                  className="mb-3 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-black uppercase text-gray-700 transition hover:bg-blue-50 hover:text-[#1877f2] dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-blue-950/30"
                 >
                   <ArrowLeft size={15} />
                   Back to arena
                 </button>
               )}
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-black uppercase text-cyan-100 backdrop-blur">
+              <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase text-[#1877f2] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-blue-200 dark:ring-blue-900/60">
                 <Code2 size={14} />
                 {viewMeta.eyebrow}
               </div>
-              <h1 className="mt-4 text-4xl font-black tracking-normal md:text-5xl">{viewMeta.title}</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75 md:text-base">
+              <h1 className="mt-3 text-3xl font-black tracking-normal text-gray-950 dark:text-white md:text-4xl">{viewMeta.title}</h1>
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-gray-500 dark:text-gray-400">
                 {viewMeta.description}
               </p>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
             <GameRankBadge stats={summary?.stats} showProgress />
           </div>
         </div>
@@ -727,37 +727,43 @@ export default function OpsArena() {
             {statCards.map(card => <StatCard key={card.label} {...card} />)}
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-3">
-            {arenaActions.map(action => {
-              const Icon = action.icon;
-              return (
-                <motion.button
-                  key={action.key}
-                  type="button"
-                  onClick={() => openArenaView(action.key)}
-                  whileHover={{ y: -4 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/10 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
-                >
-                  <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${action.tone} opacity-80`} />
-                  <div className="flex min-h-[11rem] flex-col justify-between gap-5">
-                    <div>
-                      <div className={`mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${action.tone} text-white shadow-lg shadow-pink-500/10`}>
-                        <Icon size={25} />
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-gray-950 dark:text-white">Quick actions</h2>
+                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">Pick the task you need and keep the rest out of the way.</p>
+              </div>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {arenaActions.map(action => {
+                const Icon = action.icon;
+                return (
+                  <motion.button
+                    key={action.key}
+                    type="button"
+                    onClick={() => openArenaView(action.key)}
+                    whileTap={{ scale: 0.99 }}
+                    className="fix-arena-action-card group flex min-h-[9.5rem] flex-col justify-between rounded-2xl border border-gray-100 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50 dark:border-gray-800 dark:bg-gray-950/60 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${action.tone} text-white shadow-sm`}>
+                        <Icon size={22} />
                       </div>
-                      <h2 className="text-xl font-black text-gray-950 dark:text-white">{action.title}</h2>
-                      <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{action.description}</p>
+                      <div className="min-w-0">
+                        <h3 className="text-base font-black text-gray-950 dark:text-white">{action.title}</h3>
+                        <p className="mt-1 line-clamp-2 text-sm leading-5 text-gray-500 dark:text-gray-400">{action.description}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600 dark:bg-gray-950 dark:text-gray-300">{action.meta}</span>
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-950 text-white transition group-hover:translate-x-1 dark:bg-white dark:text-gray-950">
-                        <ArrowLeft size={18} className="rotate-180" />
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className="truncate rounded-full bg-white px-3 py-1 text-xs font-black text-gray-600 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:ring-gray-800">{action.meta}</span>
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#1877f2] ring-1 ring-blue-100 transition group-hover:translate-x-1 dark:bg-gray-900 dark:ring-blue-900/50">
+                        <ArrowRight size={17} />
                       </span>
                     </div>
-                  </div>
-                </motion.button>
-              );
-            })}
+                  </motion.button>
+                );
+              })}
+            </div>
           </section>
         </>
       )}

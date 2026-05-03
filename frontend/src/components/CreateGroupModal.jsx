@@ -1,25 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Sparkles, ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowRight, FolderKanban, Loader2, X } from 'lucide-react';
 
 export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
   const [groupName, setGroupName] = useState('');
   const [groupDesc, setGroupDesc] = useState('');
-  const [focused, setFocused] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
       setGroupName('');
       setGroupDesc('');
-      setFocused(null);
       setSubmitting(false);
     }
   }, [isOpen]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     if (!groupName.trim() || submitting) return;
 
     setSubmitting(true);
@@ -35,147 +32,99 @@ export default function CreateGroupModal({ isOpen, onClose, onCreate }) {
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-md z-50"
+            className="fixed inset-0 z-50 bg-gray-950/60 backdrop-blur-sm"
           />
-          {/* Modal */}
-          <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
-            >
-              {/* Gradient top bar */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500 via-indigo-500 to-indigo-500"></div>
 
-              {/* Header */}
-              <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-gradient-to-br from-pink-500 to-indigo-600">
-                    <Sparkles size={18} className="text-white" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 18 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 18 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+              className="mobile-bottom-sheet w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900"
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-gray-100 p-5 dark:border-gray-800">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-blue-200">
+                    <FolderKanban size={21} />
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create New Workspace</h2>
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-black text-gray-950 dark:text-white">Create workspace</h2>
+                    <p className="mt-0.5 text-sm font-semibold text-gray-500 dark:text-gray-400">Set up a focused room for your team.</p>
+                  </div>
                 </div>
                 <button
+                  type="button"
                   onClick={onClose}
-                  className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+                  aria-label="Close"
                 >
-                  <X size={20} className="text-gray-500" />
+                  <X size={20} />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                {/* Group Name Field with floating label effect */}
-                <div className="relative">
+              <form onSubmit={handleSubmit} className="space-y-5 p-5">
+                <label className="block">
+                  <span className="text-sm font-black text-gray-800 dark:text-gray-100">Workspace name</span>
                   <input
                     type="text"
-                    id="groupName"
                     value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
-                    onFocus={() => setFocused('name')}
-                    onBlur={() => setFocused(null)}
-                    className={`w-full px-4 pt-6 pb-2 rounded-xl border-2 transition-all bg-transparent text-gray-900 dark:text-white focus:outline-none peer ${
-                      focused === 'name' || groupName
-                        ? 'border-pink-500 dark:border-pink-400'
-                        : 'border-gray-300 dark:border-gray-600'
-                    }`}
-                    placeholder=" "
+                    onChange={(event) => setGroupName(event.target.value)}
+                    className="mt-2 h-12 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+                    placeholder="Example: Capstone Team"
                     required
                   />
-                  <label
-                    htmlFor="groupName"
-                    className={`absolute left-4 transition-all duration-200 pointer-events-none ${
-                      focused === 'name' || groupName
-                        ? 'text-xs text-pink-500 -translate-y-3'
-                        : 'text-gray-500 dark:text-gray-400 translate-y-4'
-                    }`}
-                  >
-                    Workspace name
-                  </label>
-                </div>
+                </label>
 
-                {/* Description Field */}
-                <div className="relative">
+                <label className="block">
+                  <span className="text-sm font-black text-gray-800 dark:text-gray-100">Description</span>
                   <textarea
-                    id="groupDesc"
                     value={groupDesc}
-                    onChange={(e) => setGroupDesc(e.target.value)}
-                    onFocus={() => setFocused('desc')}
-                    onBlur={() => setFocused(null)}
+                    onChange={(event) => setGroupDesc(event.target.value)}
                     rows="3"
-                    className={`w-full px-4 pt-6 pb-2 rounded-xl border-2 transition-all bg-transparent text-gray-900 dark:text-white focus:outline-none resize-none peer ${
-                      focused === 'desc' || groupDesc
-                        ? 'border-pink-500 dark:border-pink-400'
-                        : 'border-gray-300 dark:border-gray-600'
-                    }`}
-                    placeholder=" "
+                    className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#1877f2] focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950/50"
+                    placeholder="What will this workspace be used for?"
                   />
-                  <label
-                    htmlFor="groupDesc"
-                    className={`absolute left-4 transition-all duration-200 pointer-events-none ${
-                      focused === 'desc' || groupDesc
-                        ? 'text-xs text-pink-500 -translate-y-3'
-                        : 'text-gray-500 dark:text-gray-400 translate-y-4'
-                    }`}
-                  >
-                    Description (optional)
-                  </label>
-                </div>
+                </label>
 
-                {/* Live Preview Card */}
                 {(groupName || groupDesc) && (
                   <motion.div
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 border border-gray-200 dark:border-gray-600"
+                    className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60"
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users size={16} className="text-pink-500" />
-                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Preview
-                      </span>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                      {groupName || 'Workspace name preview'}
+                    <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Preview</p>
+                    <h3 className="mt-2 truncate text-lg font-black text-gray-950 dark:text-white">
+                      {groupName || 'Workspace name'}
                     </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      {groupDesc || 'Description preview - this is how your workspace card will look.'}
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                      {groupDesc || 'No description yet.'}
                     </p>
-                    <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                      <div className="text-xs text-gray-400 font-mono">ACCESS CODE</div>
-                      <div className="flex items-center gap-1 text-pink-500 text-sm font-medium">
-                        Enter <ArrowRight size={14} />
-                      </div>
-                    </div>
                   </motion.div>
                 )}
 
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-2">
+                <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
                   <button
                     type="button"
                     onClick={onClose}
                     disabled={submitting}
-                    className="px-5 py-2 rounded-xl font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                    className="inline-flex h-11 items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
-                  <motion.button
+                  <button
                     type="submit"
                     disabled={submitting}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="px-5 py-2 rounded-xl font-medium bg-gradient-to-r from-pink-500 to-indigo-600 text-white shadow-md hover:shadow-lg transition disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {submitting ? 'Creating...' : 'Create Workspace'}
-                  </motion.button>
+                    {submitting ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
+                    {submitting ? 'Creating' : 'Create workspace'}
+                  </button>
                 </div>
               </form>
             </motion.div>

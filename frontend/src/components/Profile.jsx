@@ -20,7 +20,6 @@ import {
   PlayCircle,
   Save,
   Shield,
-  Trash2,
   Trophy,
   TrendingUp,
   User,
@@ -30,38 +29,37 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
-import { resolveMediaUrl } from '../utils/media';
+import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
+import { getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import RankBadge, { RankEmblem } from './RankBadge';
 import GameRankBadge, { getProfileFrameClass } from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
 import LoadingSpinner from './LoadingSpinner';
+import StoryViewer from './StoryViewer';
+import VideoThumbnail from './VideoThumbnail';
+import { IconBadge, Panel } from './ui/Primitives';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
-const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
-
 const formatMonthYear = (value) => {
   if (!value) return 'Recently';
   return new Date(value).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };
 
 const StatCard = ({ icon: Icon, label, value, helper }) => (
-  <motion.div
+  <Panel
+    as={motion.div}
     whileHover={{ y: -6, scale: 1.015 }}
-    className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10 dark:hover:border-pink-900/60"
+    className="profile-stat-card p-4 transition hover:border-blue-200 hover:shadow-md dark:hover:border-blue-900/60"
   >
-    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-emerald-400 opacity-80" />
-    <div className="pointer-events-none absolute inset-0 -translate-x-full skew-x-12 bg-gradient-to-r from-transparent via-pink-100/40 to-transparent transition-transform duration-1000 group-hover:translate-x-full dark:via-white/10" />
     <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
-        <p className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{value}</p>
-        {helper && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>}
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="mt-2 text-3xl font-black text-gray-950 dark:text-white">{value}</p>
+        {helper && <p className="mt-1 truncate text-xs font-semibold text-gray-500 dark:text-gray-400">{helper}</p>}
       </div>
-      <div className="rounded-xl bg-gradient-to-br from-cyan-400 via-pink-500 to-indigo-500 p-3 text-white shadow-lg shadow-pink-500/20">
-        <Icon size={22} />
-      </div>
+      <IconBadge icon={Icon} tone="blue" />
     </div>
-  </motion.div>
+  </Panel>
 );
 
 export default function Profile() {
@@ -89,7 +87,6 @@ export default function Profile() {
   const [stories, setStories] = useState([]);
   const [storyUploading, setStoryUploading] = useState(false);
   const [activeStory, setActiveStory] = useState(null);
-  const [storyComment, setStoryComment] = useState('');
   const [storyCommenting, setStoryCommenting] = useState(false);
   const [activeProfileTab, setActiveProfileTab] = useState('posts');
   const storyInputRef = useRef(null);
@@ -143,8 +140,8 @@ export default function Profile() {
 
   const fetchStories = async () => {
     try {
-      const res = await api.get('/stories/active');
-      setStories(res.data || []);
+      const res = await api.get('/stories/active/grouped').catch(() => api.get('/stories/active'));
+      setStories(Array.isArray(res.data) ? res.data : res.data?.stories || []);
     } catch (err) {
       console.error('Error fetching My Day:', err);
     }
@@ -180,13 +177,15 @@ export default function Profile() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    const uploadFile = await optimizeImageFile(file, { maxDimension: 900, quality: 0.86, minBytes: 300 * 1024 });
+
+    if (uploadFile.size > 5 * 1024 * 1024) {
       toast.error('Avatar must be 5MB or smaller');
       return;
     }
 
     const formData = new FormData();
-    formData.append('avatar', file);
+    formData.append('avatar', uploadFile);
     setUploading(true);
     try {
       const res = await api.post('/users/avatar', formData);
@@ -210,7 +209,9 @@ export default function Profile() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    const uploadFile = await optimizeImageFile(file, { maxDimension: 1800, quality: 0.84, minBytes: 500 * 1024 });
+
+    if (uploadFile.size > 5 * 1024 * 1024) {
       toast.error('Cover photo must be 5MB or smaller');
       return;
     }
@@ -221,7 +222,7 @@ export default function Profile() {
     setCoverLoadFailed(false);
 
     const formData = new FormData();
-    formData.append('coverPhoto', file);
+    formData.append('coverPhoto', uploadFile);
     setUploadingCover(true);
     try {
       const res = await api.post('/users/cover-photo', formData);
@@ -248,13 +249,17 @@ export default function Profile() {
       return;
     }
 
-    if (file.size > 30 * 1024 * 1024) {
+    const uploadFile = file.type.startsWith('image/')
+      ? await optimizeImageFile(file, { maxDimension: 1600, quality: 0.84, minBytes: 700 * 1024 })
+      : file;
+
+    if (uploadFile.size > 30 * 1024 * 1024) {
       toast.error('My Day must be 30MB or smaller');
       return;
     }
 
     const formData = new FormData();
-    formData.append('media', file);
+    formData.append('media', uploadFile);
     setStoryUploading(true);
     try {
       const res = await api.post('/stories', formData);
@@ -288,7 +293,6 @@ export default function Profile() {
 
   const openStory = async (story) => {
     setActiveStory(story);
-    setStoryComment('');
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
       syncStory(res.data);
@@ -307,15 +311,13 @@ export default function Profile() {
     }
   };
 
-  const commentOnStory = async (event) => {
-    event?.preventDefault?.();
-    const text = storyComment.trim();
-    if (!activeStory || !text || storyCommenting) return;
+  const commentOnStory = async (story = activeStory, text = '') => {
+    const reply = String(text || '').trim();
+    if (!story || !reply || storyCommenting) return;
     setStoryCommenting(true);
     try {
-      const res = await api.post(`/stories/${getEntityId(activeStory)}/comment`, { text });
+      const res = await api.post(`/stories/${getEntityId(story)}/comment`, { text: reply });
       syncStory(res.data?.story || res.data);
-      setStoryComment('');
       toast.success('Sent to messages');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Comment failed');
@@ -382,26 +384,21 @@ export default function Profile() {
   const gameStats = gameData?.stats || gameData?.typingStats;
   const leaderboard = rankData?.leaderboard || [];
   const currentPosition = rankData?.currentUserRank?.position;
-  const storyItems = stories.filter(story => new Date(story.expiresAt || 0) > new Date());
+  const storyGroups = groupActiveStoriesByOwner(stories);
+  const storyItems = storyGroups.flatMap(group => group.stories);
+  const activeStoryList = getStoryListForActiveStory(storyGroups, activeStory);
   const myStoryCount = storyItems.filter(story => getEntityId(story.userId) === getEntityId(user)).length;
-  const activeStoryReactionSummary = Object.entries(
-    (activeStory?.reactions || []).reduce((summary, reaction) => {
-      if (!reaction?.emoji) return summary;
-      summary[reaction.emoji] = (summary[reaction.emoji] || 0) + 1;
-      return summary;
-    }, {})
-  );
   const profileTabs = [
     { id: 'posts', label: 'Posts', icon: Activity, count: storyItems.length },
     { id: 'about', label: 'About', icon: User, count: completion },
-    { id: 'groups', label: 'Groups', icon: Users, count: groups.length },
+    { id: 'groups', label: 'Workspaces', icon: Users, count: groups.length },
     { id: 'ranks', label: 'Ranks', icon: Trophy, count: rankStats?.completedTasks || 0 },
     { id: 'myday', label: 'My Day', icon: PlayCircle, count: myStoryCount }
   ];
 
   return (
-    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      <section className="mobile-profile-hero overflow-hidden rounded-2xl border border-white/70 bg-white shadow-xl shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
+    <div className="mobile-page profile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+      <section className="mobile-profile-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
           {coverSrc && !coverLoadFailed ? (
             <img
@@ -415,8 +412,7 @@ export default function Profile() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.32),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_52%,#172554)]" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/60 to-black/24" />
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-pink-500 to-emerald-300" />
-          <label className="absolute right-4 top-4 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs font-black uppercase text-white shadow-xl backdrop-blur transition hover:-translate-y-0.5 hover:border-pink-200 hover:bg-pink-500/80">
+          <label className="absolute right-4 top-4 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs font-black uppercase text-white shadow-xl backdrop-blur transition hover:border-blue-200 hover:bg-[#1877f2]/85">
             <Camera size={15} />
             {coverSrc ? 'Change cover' : 'Set cover'}
             <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} disabled={uploadingCover} />
@@ -439,7 +435,7 @@ export default function Profile() {
                     </div>
                   )}
                 </div>
-                <label className="absolute -bottom-2 -right-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-pink-600 text-white shadow-lg transition hover:bg-pink-700">
+                <label className="absolute -bottom-2 -right-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-[#1877f2] text-white shadow-lg transition hover:bg-[#0f63d5]">
                   <Camera size={18} />
                   <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploading} />
                 </label>
@@ -451,7 +447,7 @@ export default function Profile() {
               </div>
 
               <div className="min-w-0 pb-1">
-                <p className="text-sm font-semibold uppercase text-pink-200">Account profile</p>
+                <p className="text-sm font-semibold uppercase text-blue-100">Profile</p>
                 <h1 className="mt-1 break-words text-3xl font-bold md:text-4xl">{user.name}</h1>
                 <div className="mt-2 flex flex-wrap gap-3 text-sm text-white/75">
                   <span className="inline-flex items-center gap-1"><Mail size={14} /> {user.email}</span>
@@ -492,7 +488,7 @@ export default function Profile() {
             <p className="mt-1 font-semibold text-gray-950 dark:text-white">{memberSince}</p>
           </div>
           <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Groups joined</p>
+            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Workspaces joined</p>
             <p className="mt-1 font-semibold text-gray-950 dark:text-white">{groups.length}</p>
           </div>
           <div className="bg-white p-4 dark:bg-gray-900">
@@ -502,7 +498,7 @@ export default function Profile() {
         </div>
       </section>
 
-      <nav className="profile-tab-bar rounded-2xl border border-white/70 bg-white px-2 py-2 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10" aria-label="Profile sections">
+      <nav className="profile-tab-bar rounded-2xl border border-gray-200 bg-white px-2 py-2 shadow-sm dark:border-gray-800 dark:bg-gray-900" aria-label="Profile sections">
         <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {profileTabs.map(tab => {
             const Icon = tab.icon;
@@ -561,12 +557,13 @@ export default function Profile() {
             </div>
           </button>
 
-          {storyItems.map(story => {
+          {storyGroups.map(group => {
+            const story = group.preview;
             const storyUrl = resolveMediaUrl(story.fileUrl);
-            const owner = story.userId || {};
+            const owner = group.owner || story.userId || {};
             return (
               <button
-                key={getEntityId(story)}
+                key={group.ownerId}
                 type="button"
                 onClick={() => openStory(story)}
                 className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-950 text-left shadow-lg ring-1 ring-gray-200 dark:ring-gray-800"
@@ -574,7 +571,7 @@ export default function Profile() {
                 {story.fileType === 'image' ? (
                   <img src={storyUrl} alt={story.caption || 'My Day'} className="h-full w-full object-cover" />
                 ) : (
-                  <video src={storyUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                  <VideoThumbnail src={storyUrl} className="h-full w-full" iconSize={22} label={`${owner.name || 'Member'} story video`} />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/20" />
                 <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-[#1877f2] bg-[#1877f2] shadow-lg shadow-blue-500/35">
@@ -584,7 +581,12 @@ export default function Profile() {
                     <span className="grid h-full w-full place-items-center text-xs font-black text-white">{owner.name?.charAt(0)?.toUpperCase() || 'U'}</span>
                   )}
                 </div>
-                {story.fileType === 'video' && <PlayCircle className="absolute right-2 top-3 text-white" size={22} />}
+                {group.count > 1 && (
+                  <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
+                    {group.count}
+                  </span>
+                )}
+                {story.fileType === 'video' && <PlayCircle className={`absolute right-2 text-white ${group.count > 1 ? 'top-9' : 'top-3'}`} size={22} />}
                 <p className="absolute inset-x-2 bottom-2 line-clamp-2 text-xs font-black text-white">{owner.name || 'Member'}</p>
               </button>
             );
@@ -610,7 +612,7 @@ export default function Profile() {
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
               <button type="button" onClick={() => storyInputRef.current?.click()} className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-black text-[#1877f2] transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-sky-200">My Day</button>
-              <Link to="/groups" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Groups</Link>
+              <Link to="/groups" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Workspaces</Link>
               <Link to="/messages" className="rounded-xl bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800">Messages</Link>
             </div>
           </div>
@@ -623,7 +625,7 @@ export default function Profile() {
                 <p className="mt-1 text-xs font-semibold text-blue-700/75 dark:text-blue-200/75">Stories, reactions, replies, and viewers stay connected to Messenger.</p>
               </div>
               <div className="rounded-2xl bg-gray-50 p-3 dark:bg-gray-950">
-                <p className="text-sm font-black text-gray-950 dark:text-white">{groups.length} joined groups</p>
+                <p className="text-sm font-black text-gray-950 dark:text-white">{groups.length} joined workspaces</p>
                 <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{createdGroups.length} owned by you.</p>
               </div>
               <div className="rounded-2xl bg-gray-50 p-3 dark:bg-gray-950">
@@ -638,9 +640,9 @@ export default function Profile() {
       {(activeProfileTab === 'posts' || activeProfileTab === 'ranks') && (
       <>
       <div className="mobile-metric-strip grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard icon={Users} label="Groups Joined" value={groups.length} helper="Workspaces you can access" />
-        <StatCard icon={TrendingUp} label="Total Members" value={totalMembers} helper="Across your joined groups" />
-        <StatCard icon={Award} label="Created by You" value={createdGroups.length} helper="Groups you own" />
+        <StatCard icon={Users} label="Workspaces" value={groups.length} helper="Spaces you can access" />
+        <StatCard icon={TrendingUp} label="Total Members" value={totalMembers} helper="Across your joined workspaces" />
+        <StatCard icon={Award} label="Created by You" value={createdGroups.length} helper="Workspaces you own" />
         <StatCard icon={Trophy} label="Completed Tasks" value={rankStats?.completedTasks || 0} helper={`${rankStats?.xp || 0} career XP`} />
         <StatCard icon={Trophy} label="Arena High Score" value={gameStats?.highScore || 0} helper={`${gameStats?.totalPlays || 0} ranked runs`} />
       </div>
@@ -691,7 +693,7 @@ export default function Profile() {
         <section className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-black text-gray-950 dark:text-white">Groups</h2>
+              <h2 className="text-lg font-black text-gray-950 dark:text-white">Workspaces</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">Your joined workspaces, styled like a profile community tab.</p>
             </div>
             <Link
@@ -732,8 +734,8 @@ export default function Profile() {
           ) : (
             <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-950/50">
               <Users className="mx-auto text-[#1877f2]" size={34} />
-              <p className="mt-3 font-black text-gray-950 dark:text-white">No groups yet</p>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Joined groups will appear here.</p>
+              <p className="mt-3 font-black text-gray-950 dark:text-white">No workspaces yet</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Joined workspaces will appear here.</p>
             </div>
           )}
         </section>
@@ -905,110 +907,16 @@ export default function Profile() {
       </div>
       )}
 
-      {activeStory && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm">
-          <div className="relative h-[min(86svh,760px)] w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
-            {activeStory.fileType === 'image' ? (
-              <img src={resolveMediaUrl(activeStory.fileUrl)} alt={activeStory.caption || 'My Day'} className="h-full w-full object-contain" />
-            ) : (
-              <video src={resolveMediaUrl(activeStory.fileUrl)} controls autoPlay playsInline className="h-full w-full object-contain" />
-            )}
-            <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/75 to-transparent p-4">
-              <div className="flex items-center justify-between gap-3 text-white">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black">{activeStory.userId?.name || 'Member'}</p>
-                  <p className="text-xs text-white/65">My Day</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {getEntityId(activeStory.userId) === getEntityId(user) && (
-                    <button
-                      type="button"
-                      onClick={() => deleteStory(getEntityId(activeStory))}
-                      className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-rose-500"
-                      aria-label="Delete My Day"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setActiveStory(null)}
-                    className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
-                    aria-label="Close My Day"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 space-y-3 bg-gradient-to-t from-black/86 via-black/55 to-transparent p-4 text-white">
-              {activeStory.caption && (
-                <p className="text-sm font-bold">{activeStory.caption}</p>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex gap-2">
-                  {STORY_REACTIONS.map(emoji => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => reactToStory(activeStory, emoji)}
-                      className="grid h-10 w-10 place-items-center rounded-full bg-white/12 text-lg backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/22"
-                      aria-label={`React ${emoji}`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-                {activeStoryReactionSummary.length > 0 && (
-                  <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 py-2 text-xs font-black backdrop-blur">
-                    {activeStoryReactionSummary.slice(0, 3).map(([emoji, count]) => (
-                      <span key={emoji}>{emoji} {count}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2 text-[11px] font-black text-white/75">
-                <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
-                  {(activeStory.viewers || []).length} viewers
-                </span>
-                <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
-                  {(activeStory.reactions || []).length} reactions
-                </span>
-              </div>
-              {getEntityId(activeStory.userId) === getEntityId(user) ? (
-                <div className="max-h-24 overflow-y-auto rounded-2xl bg-white/10 p-2 text-xs text-white/80">
-                  {(activeStory.viewers || []).length ? (activeStory.viewers || []).slice(0, 8).map(viewer => (
-                    <p key={getEntityId(viewer.userId || viewer)} className="truncate">
-                      Viewed by {(viewer.userId || viewer)?.name || 'Member'}
-                    </p>
-                  )) : <p>No viewers yet</p>}
-                  {(activeStory.reactions || []).slice(0, 8).map(reaction => (
-                    <p key={`${getEntityId(reaction.userId)}-${reaction.emoji}`} className="truncate">
-                      {reaction.emoji} {(reaction.userId)?.name || 'Member'}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <form onSubmit={commentOnStory} className="flex gap-2">
-                  <input
-                    value={storyComment}
-                    onChange={event => setStoryComment(event.target.value)}
-                    placeholder="Reply to My Day..."
-                    className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/45 focus:border-white/35"
-                  />
-                  <button
-                    type="submit"
-                    disabled={storyCommenting || !storyComment.trim()}
-                    className="rounded-full bg-pink-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-pink-500 disabled:opacity-50"
-                  >
-                    Send
-                  </button>
-                </form>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <StoryViewer
+        story={activeStory}
+        stories={activeStoryList}
+        currentUser={user}
+        onClose={() => setActiveStory(null)}
+        onNavigate={openStory}
+        onReact={reactToStory}
+        onComment={commentOnStory}
+        onDelete={deleteStory}
+      />
     </div>
   );
 }

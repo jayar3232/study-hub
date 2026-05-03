@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { useAuth } from './AuthContext';
+import { groupActiveStoriesByOwner } from '../utils/stories';
 
 const PresenceContext = createContext(null);
 
@@ -12,13 +13,16 @@ export function PresenceProvider({ children }) {
   const [onlineUserIds, setOnlineUserIds] = useState([]);
   const [people, setPeople] = useState([]);
   const [stories, setStories] = useState([]);
+  const [storyGroups, setStoryGroups] = useState([]);
 
   const loadPresence = async () => {
     if (!isAuthenticated) return;
     const [onlineRes, friendsRes, storiesRes] = await Promise.all([
       api.get('/presence/online').catch(() => ({ data: { userIds: [] } })),
       api.get('/friends/summary').catch(() => ({ data: { people: [], friends: [] } })),
-      api.get('/stories/active').catch(() => ({ data: [] }))
+      api.get('/stories/active/grouped').catch(() => (
+        api.get('/stories/active').catch(() => ({ data: [] }))
+      ))
     ]);
 
     const friendUsers = (friendsRes.data?.friends || []).map(item => item.user).filter(Boolean);
@@ -31,7 +35,9 @@ export function PresenceProvider({ children }) {
 
     setOnlineUserIds(onlineRes.data?.userIds || []);
     setPeople([...unique.values()]);
-    setStories(storiesRes.data || []);
+    const loadedStories = Array.isArray(storiesRes.data) ? storiesRes.data : storiesRes.data?.stories || [];
+    setStories(loadedStories);
+    setStoryGroups(Array.isArray(storiesRes.data?.groups) ? storiesRes.data.groups : groupActiveStoriesByOwner(loadedStories));
   };
 
   useEffect(() => {
@@ -39,6 +45,7 @@ export function PresenceProvider({ children }) {
       setOnlineUserIds([]);
       setPeople([]);
       setStories([]);
+      setStoryGroups([]);
       return undefined;
     }
 
@@ -105,13 +112,14 @@ export function PresenceProvider({ children }) {
       onlineSet,
       people,
       stories,
+      storyGroups,
       storiesByUser,
       onlinePeople,
       isUserOnline: (personOrId) => onlineSet.has(getEntityId(personOrId)),
       hasStory: (personOrId) => storiesByUser.has(getEntityId(personOrId)),
       refreshPresence: loadPresence
     };
-  }, [onlineUserIds, people, stories]);
+  }, [onlineUserIds, people, stories, storyGroups]);
 
   return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>;
 }
@@ -121,6 +129,7 @@ export const usePresence = () => useContext(PresenceContext) || {
   onlineSet: new Set(),
   people: [],
   stories: [],
+  storyGroups: [],
   storiesByUser: new Map(),
   onlinePeople: [],
   isUserOnline: () => false,

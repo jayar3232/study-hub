@@ -13,7 +13,7 @@ const BULLET_W = 5;
 const BULLET_H = 16;
 const ENEMY_BULLET_W = 6;
 const ENEMY_BULLET_H = 14;
-const FRAME_INTERVAL = 1000 / 45;
+const FRAME_INTERVAL = 1000 / 60;
 
 const enemyTypes = [
   { key: 'scout', label: 'Scout Jet', size: 30, hp: 1, speed: 0.084, drift: 0.034, points: 22, tone: 'from-rose-400 to-orange-500' },
@@ -70,7 +70,9 @@ export function JetFighterLogo({ compact = false }) {
 
 export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
   const frameRef = useRef(null);
+  const canvasRef = useRef(null);
   const lastFrameRef = useRef(null);
+  const lastStatsSyncRef = useRef(0);
   const playerXRef = useRef(WIDTH / 2);
   const bulletsRef = useRef([]);
   const enemyBulletsRef = useRef([]);
@@ -105,17 +107,133 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
   const [hitFlash, setHitFlash] = useState(0);
 
   const syncState = () => {
-    setPlayerX(playerXRef.current);
-    setBullets(bulletsRef.current);
-    setEnemyBullets(enemyBulletsRef.current);
-    setEnemies(enemiesRef.current);
-    setPowerUps(powerUpsRef.current);
     setWeapon(weaponRef.current);
     setScore(scoreRef.current);
     setKills(killsRef.current);
     setLives(livesRef.current);
     setLevel(levelRef.current);
   };
+
+  const drawArena = useCallback((time = 0) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!context) return;
+
+    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    if (canvas.width !== WIDTH * pixelRatio || canvas.height !== HEIGHT * pixelRatio) {
+      canvas.width = WIDTH * pixelRatio;
+      canvas.height = HEIGHT * pixelRatio;
+    }
+
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, WIDTH, HEIGHT);
+
+    const bg = context.createLinearGradient(0, 0, 0, HEIGHT);
+    bg.addColorStop(0, '#020617');
+    bg.addColorStop(0.58, '#0f172a');
+    bg.addColorStop(1, '#111827');
+    context.fillStyle = bg;
+    context.fillRect(0, 0, WIDTH, HEIGHT);
+
+    context.save();
+    context.globalAlpha = 0.22;
+    context.strokeStyle = 'rgba(148, 163, 184, 0.34)';
+    context.lineWidth = 1;
+    const gridOffset = (time * 0.035) % 38;
+    for (let y = -38 + gridOffset; y < HEIGHT; y += 38) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(WIDTH, y);
+      context.stroke();
+    }
+    for (let x = 0; x < WIDTH; x += 38) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, HEIGHT);
+      context.stroke();
+    }
+    context.restore();
+
+    context.save();
+    context.globalAlpha = 0.36;
+    context.fillStyle = '#bae6fd';
+    for (let index = 0; index < 34; index += 1) {
+      const x = (index * 83) % WIDTH;
+      const y = ((index * 149) + time * 0.08) % HEIGHT;
+      const size = index % 5 === 0 ? 1.8 : 1.1;
+      context.beginPath();
+      context.arc(x, y, size, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+
+    const drawGlowRect = (x, y, width, height, color) => {
+      context.save();
+      context.shadowColor = color;
+      context.shadowBlur = 12;
+      context.fillStyle = color;
+      context.fillRect(x, y, width, height);
+      context.restore();
+    };
+
+    bulletsRef.current.forEach(bullet => {
+      drawGlowRect(bullet.x - BULLET_W / 2, bullet.y, BULLET_W, BULLET_H, '#a5f3fc');
+    });
+
+    enemyBulletsRef.current.forEach(bullet => {
+      drawGlowRect(bullet.x - ENEMY_BULLET_W / 2, bullet.y, ENEMY_BULLET_W, ENEMY_BULLET_H, '#fda4af');
+    });
+
+    powerUpsRef.current.forEach(powerUp => {
+      context.save();
+      context.shadowColor = '#67e8f9';
+      context.shadowBlur = 16;
+      context.fillStyle = powerUp.key === 'machine' ? '#86efac' : powerUp.key === 'spread' ? '#f0abfc' : '#67e8f9';
+      context.beginPath();
+      context.arc(powerUp.x, powerUp.y, 14, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#020617';
+      context.font = 'bold 10px sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(powerUp.key === 'machine' ? 'MG' : powerUp.key === 'spread' ? 'S' : '2X', powerUp.x, powerUp.y + 0.5);
+      context.restore();
+    });
+
+    const drawPlane = (x, y, size, fill, rotation = 0) => {
+      context.save();
+      context.translate(x, y);
+      context.rotate(rotation);
+      context.shadowColor = fill;
+      context.shadowBlur = 18;
+      context.fillStyle = fill;
+      context.beginPath();
+      context.moveTo(0, -size * 0.55);
+      context.lineTo(size * 0.18, -size * 0.15);
+      context.lineTo(size * 0.5, 0);
+      context.lineTo(size * 0.2, size * 0.14);
+      context.lineTo(size * 0.1, size * 0.52);
+      context.lineTo(0, size * 0.32);
+      context.lineTo(-size * 0.1, size * 0.52);
+      context.lineTo(-size * 0.2, size * 0.14);
+      context.lineTo(-size * 0.5, 0);
+      context.lineTo(-size * 0.18, -size * 0.15);
+      context.closePath();
+      context.fill();
+      context.fillStyle = 'rgba(255,255,255,0.85)';
+      context.beginPath();
+      context.arc(0, -size * 0.19, size * 0.08, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    };
+
+    enemiesRef.current.forEach(enemy => {
+      const color = enemy.type === 'twin' ? '#fb923c' : enemy.type === 'fighter' ? '#c084fc' : '#fb7185';
+      drawPlane(enemy.x, enemy.y, enemy.size || ENEMY_SIZE, color, Math.PI);
+    });
+
+    drawPlane(playerXRef.current, PLAYER_Y, PLAYER_SIZE, '#38bdf8', 0);
+  }, []);
 
   const saveScore = useCallback(async () => {
     const finalScore = scoreRef.current;
@@ -168,13 +286,15 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
     setSaved(false);
     setRunning(true);
     syncState();
-  }, []);
+    requestAnimationFrame(time => drawArena(time));
+  }, [drawArena]);
 
   const movePlayerToClientX = (clientX, target) => {
     const rect = target.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * WIDTH;
     playerXRef.current = clamp(x, 28, WIDTH - 28);
-    setPlayerX(playerXRef.current);
+    if (!runningRef.current) setPlayerX(playerXRef.current);
+    if (!runningRef.current) drawArena(performance.now());
     if (!runningRef.current && !gameOver) resetGame();
   };
 
@@ -186,10 +306,11 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
       if (event.code === 'ArrowLeft') playerXRef.current = clamp(playerXRef.current - 24, 28, WIDTH - 28);
       if (event.code === 'ArrowRight') playerXRef.current = clamp(playerXRef.current + 24, 28, WIDTH - 28);
       setPlayerX(playerXRef.current);
+      drawArena(performance.now());
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [gameOver, resetGame]);
+  }, [drawArena, gameOver, resetGame]);
 
   useEffect(() => {
     const tick = (time) => {
@@ -225,13 +346,13 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
           bulletsRef.current = [
             ...bulletsRef.current,
             ...patterns.map(pattern => ({ id: uid(), x: playerXRef.current + pattern.x, y: PLAYER_Y - 18, vx: pattern.vx }))
-          ];
+          ].slice(-64);
           fireClockRef.current = 0;
         }
 
         const spawnDelay = Math.max(420, 950 - levelRef.current * 55);
         if (spawnClockRef.current > spawnDelay) {
-          enemiesRef.current = [...enemiesRef.current, makeEnemy(levelRef.current)];
+          enemiesRef.current = [...enemiesRef.current, makeEnemy(levelRef.current)].slice(-16);
           spawnClockRef.current = 0;
         }
 
@@ -305,7 +426,7 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
             killsRef.current += 1;
             scoreRef.current += (enemiesNext[hitIndex].points || 24) + levelRef.current * 2;
             if (Math.random() < 0.18) {
-              powerUpsRef.current = [...powerUpsRef.current, makePowerUp(enemiesNext[hitIndex].x, enemiesNext[hitIndex].y)];
+              powerUpsRef.current = [...powerUpsRef.current, makePowerUp(enemiesNext[hitIndex].x, enemiesNext[hitIndex].y)].slice(-5);
             }
           }
         });
@@ -355,10 +476,14 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
           setHitFlash(value => value + 1);
         }
 
-        syncState();
+        if (time - lastStatsSyncRef.current > 80) {
+          lastStatsSyncRef.current = time;
+          syncState();
+        }
         if (livesRef.current <= 0) endGame();
       }
 
+      drawArena(time);
       frameRef.current = requestAnimationFrame(tick);
     };
 
@@ -408,81 +533,8 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
           className="jet-arena-stage relative mx-auto aspect-[39/56] w-full max-w-[370px] touch-none overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900 text-left shadow-2xl shadow-cyan-500/20"
           aria-label="Jet Fighter arena"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.18),transparent_32%),linear-gradient(#020617,#0f172a_58%,#111827)]" />
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:38px_38px]" />
-          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-cyan-500/12 to-transparent" />
+          <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
           {hitFlash > 0 && <div key={hitFlash} className="absolute inset-0 animate-pulse bg-rose-500/15" />}
-
-          {bullets.map(bullet => (
-            <span
-              key={bullet.id}
-              className="absolute z-10 rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.95)]"
-              style={{
-                left: `${((bullet.x - BULLET_W / 2) / WIDTH) * 100}%`,
-                top: `${(bullet.y / HEIGHT) * 100}%`,
-                width: `${(BULLET_W / WIDTH) * 100}%`,
-                height: `${(BULLET_H / HEIGHT) * 100}%`
-              }}
-            />
-          ))}
-
-          {enemyBullets.map(bullet => (
-            <span
-              key={bullet.id}
-              className="absolute z-10 rounded-full bg-rose-300 shadow-[0_0_14px_rgba(251,113,133,0.9)]"
-              style={{
-                left: `${((bullet.x - ENEMY_BULLET_W / 2) / WIDTH) * 100}%`,
-                top: `${(bullet.y / HEIGHT) * 100}%`,
-                width: `${(ENEMY_BULLET_W / WIDTH) * 100}%`,
-                height: `${(ENEMY_BULLET_H / HEIGHT) * 100}%`
-              }}
-            />
-          ))}
-
-          {powerUps.map(powerUp => (
-            <span
-              key={powerUp.id}
-              className={`absolute z-20 grid place-items-center rounded-full bg-gradient-to-br ${powerUp.tone} text-[10px] font-black text-slate-950 shadow-xl shadow-cyan-400/30 ring-2 ring-white/40`}
-              style={{
-                left: `${((powerUp.x - 14) / WIDTH) * 100}%`,
-                top: `${((powerUp.y - 14) / HEIGHT) * 100}%`,
-                width: `${(28 / WIDTH) * 100}%`,
-                height: `${(28 / HEIGHT) * 100}%`
-              }}
-              title={powerUp.label}
-            >
-              {powerUp.key === 'machine' ? 'MG' : powerUp.key === 'spread' ? 'S' : '2X'}
-            </span>
-          ))}
-
-          {enemies.map(enemy => (
-            <span
-              key={enemy.id}
-              className={`absolute z-10 grid place-items-center bg-gradient-to-br ${enemy.tone} text-white shadow-xl shadow-rose-500/30`}
-              style={{
-                left: `${((enemy.x - (enemy.size || ENEMY_SIZE) / 2) / WIDTH) * 100}%`,
-                top: `${((enemy.y - (enemy.size || ENEMY_SIZE) / 2) / HEIGHT) * 100}%`,
-                width: `${((enemy.size || ENEMY_SIZE) / WIDTH) * 100}%`,
-                height: `${((enemy.size || ENEMY_SIZE) / HEIGHT) * 100}%`,
-                clipPath: 'polygon(50% 0%, 70% 28%, 100% 42%, 74% 56%, 66% 100%, 50% 78%, 34% 100%, 26% 56%, 0% 42%, 30% 28%)'
-              }}
-            >
-              <Plane size={enemy.type === 'twin' ? 18 : 16} className="rotate-180 drop-shadow" />
-            </span>
-          ))}
-
-          <span
-            className="absolute z-20 grid place-items-center bg-gradient-to-br from-cyan-200 via-sky-500 to-indigo-700 text-white shadow-2xl shadow-cyan-300/50"
-            style={{
-              left: `${((playerX - PLAYER_SIZE / 2) / WIDTH) * 100}%`,
-              top: `${((PLAYER_Y - PLAYER_SIZE / 2) / HEIGHT) * 100}%`,
-              width: `${(PLAYER_SIZE / WIDTH) * 100}%`,
-              height: `${(PLAYER_SIZE / HEIGHT) * 100}%`,
-              clipPath: 'polygon(50% 0%, 63% 30%, 96% 45%, 63% 57%, 56% 100%, 50% 82%, 44% 100%, 37% 57%, 4% 45%, 37% 30%)'
-            }}
-          >
-            <span className="absolute top-[18%] h-[16%] w-[18%] rounded-full bg-white/90 shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
-          </span>
 
           {!running && !gameOver && (
             <div className="absolute inset-0 z-30 grid place-items-center bg-slate-950/38 p-6 text-center backdrop-blur-[1px]">

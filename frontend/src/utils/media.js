@@ -42,3 +42,52 @@ export const resolveMediaUrl = (value) => {
 
   return path;
 };
+
+export const optimizeImageFile = async (
+  file,
+  { maxDimension = 1600, quality = 0.82, minBytes = 900 * 1024 } = {}
+) => {
+  if (
+    typeof window === 'undefined' ||
+    !file?.type?.startsWith('image/') ||
+    file.size < minBytes ||
+    file.type === 'image/gif' ||
+    file.type === 'image/svg+xml'
+  ) {
+    return file;
+  }
+
+  const imageUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = imageUrl;
+    });
+
+    const ratio = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    if (ratio >= 1 && file.size < minBytes * 1.5) return file;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * ratio));
+    canvas.height = Math.max(1, Math.round(image.height * ratio));
+    const context = canvas.getContext('2d', { alpha: file.type === 'image/png' });
+    if (!context) return file;
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, quality));
+    if (!blob || blob.size >= file.size * 0.96) return file;
+
+    return new File([blob], file.name, {
+      type: outputType,
+      lastModified: Date.now()
+    });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+};

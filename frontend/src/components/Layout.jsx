@@ -52,6 +52,8 @@ export default function Layout({ children }) {
   const avatarSrc = resolveMediaUrl(user?.avatar);
   const pageContent = children || <Outlet />;
   const isCompactRoute = location.pathname.startsWith('/messages') || location.pathname.startsWith('/arena') || location.pathname.startsWith('/group/');
+  const isDashboardRoute = location.pathname === '/dashboard';
+  const shouldShowSocialRail = !isCompactRoute && !isDashboardRoute;
 
   const pageMeta = (() => {
     if (location.pathname.startsWith('/groups')) return { title: 'Workspaces', helper: 'Projects, teams, invites', action: () => navigate('/groups') };
@@ -347,15 +349,20 @@ export default function Layout({ children }) {
     );
   };
 
-  const navItems = [
+  const mainNavItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard', mobileLabel: 'Home' },
     { path: '/groups', icon: Users, label: 'Workspaces', mobileLabel: 'Spaces' },
     { path: '/messages', icon: MessageCircle, label: 'Messages', mobileLabel: 'Chats' },
     { path: '/friends', icon: UserPlus, label: 'Friends', mobileLabel: 'Friends' },
-    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena', mobileLabel: 'Arena' },
-    { path: '/profile', icon: User, label: 'Profile', mobileLabel: 'Me' },
+    { path: '/profile', icon: User, label: 'Profile', mobileLabel: 'Me' }
   ];
-  const mobileBottomItems = navItems;
+  const toolNavItems = [
+    { path: '/arena', icon: Target, label: developerAccess ? 'Developer Console' : 'Fix Arena', mobileLabel: developerAccess ? 'Console' : 'Arena' }
+  ];
+  const mobileBottomItems = mainNavItems;
+  const isNavItemActive = (path) => location.pathname === path
+    || (path === '/groups' && location.pathname.startsWith('/group/'))
+    || (path !== '/dashboard' && location.pathname.startsWith(`${path}/`));
 
   const handleLogout = () => {
     logout();
@@ -369,7 +376,7 @@ export default function Layout({ children }) {
   };
 
   const renderNavLink = (item, isMobile = false) => {
-    const isActive = location.pathname === item.path;
+    const isActive = isNavItemActive(item.path);
     const isMessages = item.path === '/messages';
     const isGroups = item.path === '/groups';
     const isFriends = item.path === '/friends';
@@ -420,19 +427,34 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen text-gray-900 dark:text-gray-100">
-      <aside className="group/sidebar fixed z-30 hidden h-full w-64 min-h-0 flex-col overflow-hidden border-r border-white/45 bg-white/45 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/45 dark:shadow-black/20 md:flex">
-        <div className="shrink-0 border-b border-white/40 p-2.5 dark:border-white/10">
+      <aside className="group/sidebar fixed z-30 hidden h-full w-64 min-h-0 flex-col overflow-hidden border-r border-white/45 bg-white/68 shadow-2xl shadow-gray-200/40 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/20 md:flex">
+        <div className="shrink-0 border-b border-white/40 p-3 dark:border-white/10">
           <BrandLogo compact />
         </div>
-        <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2.5">
-          {navItems.map(item => renderNavLink(item, false))}
-          <OnlineRoster compact limit={5} title="Active users" />
+        <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
+          <section>
+            <p className="mb-2 px-3 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Main</p>
+            <div className="space-y-1.5">
+              {mainNavItems.map(item => renderNavLink(item, false))}
+            </div>
+          </section>
+
+          <section>
+            <p className="mb-2 px-3 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Tools</p>
+            <div className="space-y-1.5">
+              {toolNavItems.map(item => renderNavLink(item, false))}
+            </div>
+          </section>
         </nav>
-        <div className="shrink-0 space-y-1.5 border-t border-white/40 p-2.5 dark:border-white/10">
+
+        <div className="shrink-0 space-y-2 border-t border-white/40 p-3 dark:border-white/10">
           <InstallButton />
           <NotificationButton />
-          <DndToggle />
-          <ThemeToggle />
+          <div className="rounded-2xl border border-white/45 bg-white/30 p-1.5 dark:border-white/10 dark:bg-white/5">
+            <p className="mb-1 px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Preferences</p>
+            <DndToggle />
+            <ThemeToggle />
+          </div>
           {user && (
             <div className="mb-3 flex items-center gap-3 rounded-2xl border border-white/45 bg-white/35 p-2 shadow-sm backdrop-blur transition-[gap] duration-300 ease-out dark:border-white/10 dark:bg-white/5" title={user.email}>
               <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
@@ -447,7 +469,7 @@ export default function Layout({ children }) {
           <button
             onClick={handleLogout}
             data-sound="close"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-red-600 transition hover:-translate-y-0.5 hover:bg-red-50 dark:hover:bg-red-900/30"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-red-600 transition hover:bg-red-50 dark:hover:bg-red-900/30"
             title="Logout"
           >
             <LogOut size={20} />
@@ -461,7 +483,6 @@ export default function Layout({ children }) {
           <BrandLogo mobile />
           <div className="flex items-center gap-2">
             <NotificationButton compact />
-            <DndToggle compact />
             {user && (
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] text-sm font-bold text-white">
                 {avatarSrc ? <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" /> : user.name?.charAt(0)?.toUpperCase()}
@@ -503,17 +524,44 @@ export default function Layout({ children }) {
           )}
         </div>
 
-        <main className={`app-main flex-1 overflow-x-hidden ${isCompactRoute ? 'app-main--compact' : ''}`}>
-          {location.pathname.startsWith('/arena') ? (
-            <div className="min-h-full">{pageContent}</div>
-          ) : (
-            <div className="min-h-full">{pageContent}</div>
+        <div className="flex min-h-0 flex-1">
+          <main className={`app-main min-w-0 flex-1 overflow-x-hidden ${isCompactRoute ? 'app-main--compact' : ''}`}>
+            {location.pathname.startsWith('/arena') ? (
+              <div className="min-h-full">{pageContent}</div>
+            ) : (
+              <div className="min-h-full">{pageContent}</div>
+            )}
+          </main>
+
+          {shouldShowSocialRail && (
+            <aside className="desktop-social-rail hidden w-72 shrink-0 border-l border-white/45 bg-white/35 p-4 backdrop-blur-2xl dark:border-white/10 dark:bg-gray-950/35 xl:block">
+              <div className="sticky top-4 space-y-4">
+                <OnlineRoster limit={10} title="Active users" />
+                <section className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-950/45">
+                  <p className="text-sm font-black text-gray-950 dark:text-white">Quick actions</p>
+                  <div className="mt-3 space-y-2">
+                    <Link to="/messages" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
+                      <MessageCircle size={17} />
+                      Messages
+                    </Link>
+                    <Link to="/groups" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
+                      <Users size={17} />
+                      Workspaces
+                    </Link>
+                    <Link to="/profile" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-white/70 dark:text-gray-200 dark:hover:bg-white/10">
+                      <User size={17} />
+                      Profile
+                    </Link>
+                  </div>
+                </section>
+              </div>
+            </aside>
           )}
-        </main>
+        </div>
 
         <nav className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-20 border-t border-white/45 bg-white/72 shadow-2xl shadow-gray-300/35 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/72 dark:shadow-black/20 md:hidden">
           {mobileBottomItems.map(item => {
-            const isActive = location.pathname === item.path;
+            const isActive = isNavItemActive(item.path);
             const isMessages = item.path === '/messages';
             const isGroups = item.path === '/groups';
             const isFriends = item.path === '/friends';
@@ -561,7 +609,7 @@ export default function Layout({ children }) {
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">New</span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{popup.body}</p>
-                    <p className="mt-2 text-xs font-semibold text-blue-600 dark:text-blue-300">Open Messages</p>
+                    <p className="mt-2 text-xs font-semibold text-blue-600 dark:text-blue-300">Open chat</p>
                   </div>
                 </div>
               </button>
@@ -584,15 +632,30 @@ export default function Layout({ children }) {
                   <X size={24} />
                 </button>
               </div>
-              <nav className="p-4 space-y-2">
-                {navItems.map(item => renderNavLink(item, true))}
+              <nav className="flex h-[calc(100%-4.5rem)] flex-col gap-4 overflow-y-auto p-4">
+                <section className="space-y-2">
+                  <p className="px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Main</p>
+                  {mainNavItems.map(item => renderNavLink(item, true))}
+                </section>
+
+                <section className="space-y-2">
+                  <p className="px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Tools</p>
+                  {toolNavItems.map(item => renderNavLink(item, true))}
+                </section>
+
                 <OnlineRoster compact limit={8} title="Online now" />
-                <InstallButton />
-                <DndToggle />
-                <ThemeToggle />
+
+                <section className="space-y-2">
+                  <p className="px-2 text-[11px] font-black uppercase tracking-wide text-gray-400 dark:text-gray-500">Preferences</p>
+                  <InstallButton />
+                  <NotificationButton />
+                  <DndToggle />
+                  <ThemeToggle />
+                </section>
+
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 mt-4 dark:hover:bg-red-900/30"
+                  className="mt-auto flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-red-600 transition hover:bg-red-50 dark:hover:bg-red-900/30"
                 >
                   <LogOut size={20} />
                   <span>Logout</span>

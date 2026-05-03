@@ -57,7 +57,8 @@ import EmptyState from './EmptyState';
 import UserProfileModal from './UserProfileModal';
 import { PostSkeleton } from './SkeletonLoader';
 import MediaViewer from './MediaViewer';
-import { resolveMediaUrl } from '../utils/media';
+import VideoThumbnail from './VideoThumbnail';
+import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { getSocket } from '../services/socket';
 import { playUiSound } from '../utils/sound';
 
@@ -1121,7 +1122,7 @@ const MemoryCard = ({ memory, currentUserId, canModerate, onDelete, onOpen, onUs
         {memory.fileType === 'image' ? (
           <img src={mediaUrl} alt={memory.caption || 'Memory'} className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
         ) : (
-          <video src={mediaUrl} className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+          <VideoThumbnail src={mediaUrl} className="aspect-[4/3] w-full transition duration-300 group-hover:scale-[1.03]" iconSize={24} label={memory.caption || 'Video memory'} />
         )}
       </button>
       <div className="p-4">
@@ -1372,8 +1373,11 @@ export default function GroupPage() {
       let fileUrl = null;
 
       if (newPostMedia) {
+        const uploadFile = newPostMedia.type?.startsWith('image/')
+          ? await optimizeImageFile(newPostMedia, { maxDimension: 1600, quality: 0.84, minBytes: 700 * 1024 })
+          : newPostMedia;
         const formData = new FormData();
-        formData.append('file', newPostMedia);
+        formData.append('file', uploadFile);
         const uploadRes = await api.post(`/files/upload/${id}`, formData, {
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) return;
@@ -1599,8 +1603,11 @@ export default function GroupPage() {
       return;
     }
 
+    const uploadFile = selectedFile.type?.startsWith('image/')
+      ? await optimizeImageFile(selectedFile, { maxDimension: 1600, quality: 0.84, minBytes: 700 * 1024 })
+      : selectedFile;
     const formData = new FormData();
-    formData.append('file', selectedFile);
+    formData.append('file', uploadFile);
     setUploading(true);
     setFileUploadProgress(0);
 
@@ -1641,13 +1648,14 @@ export default function GroupPage() {
       toast.error('Please choose an image for the group photo');
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
+    const uploadFile = await optimizeImageFile(file, { maxDimension: 1200, quality: 0.86, minBytes: 400 * 1024 });
+    if (uploadFile.size > 8 * 1024 * 1024) {
       toast.error('Group photo must be 8MB or smaller');
       return;
     }
 
     const formData = new FormData();
-    formData.append('photo', file);
+    formData.append('photo', uploadFile);
     setUploadingGroupPhoto(true);
 
     try {
@@ -1696,8 +1704,11 @@ export default function GroupPage() {
       return;
     }
 
+    const uploadFile = memoryFile.type?.startsWith('image/')
+      ? await optimizeImageFile(memoryFile, { maxDimension: 1600, quality: 0.84, minBytes: 700 * 1024 })
+      : memoryFile;
     const formData = new FormData();
-    formData.append('file', memoryFile);
+    formData.append('file', uploadFile);
     formData.append('caption', memoryCaption.trim());
     setUploadingMemory(true);
     setMemoryUploadProgress(0);
@@ -2826,7 +2837,7 @@ export default function GroupPage() {
                     getFileKind(memoryFile) === 'image' ? (
                       <img src={memoryPreview} alt="Memory preview" className="max-h-52 w-full rounded-lg object-contain" />
                     ) : (
-                      <video src={memoryPreview} controls className="max-h-52 w-full rounded-lg" />
+                      <VideoThumbnail src={memoryPreview} className="max-h-52 w-full" videoClassName="max-h-52 object-contain" rounded="rounded-lg" iconSize={24} label="Memory video preview" />
                     )
                   ) : (
                     <>
@@ -3196,9 +3207,7 @@ export default function GroupPage() {
                         {newPostMedia.type.startsWith('image/') ? (
                           <img src={newPostPreview} alt="Preview" className="max-h-72 w-full object-contain" />
                         ) : (
-                          <video controls className="max-h-72 w-full">
-                            <source src={newPostPreview} type={newPostMedia.type} />
-                          </video>
+                          <VideoThumbnail src={newPostPreview} className="max-h-72 w-full" videoClassName="max-h-72 object-contain" rounded="rounded-lg" iconSize={26} label="Post video preview" />
                         )}
                       </div>
                     )}

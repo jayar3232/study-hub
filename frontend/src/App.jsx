@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { PresenceProvider } from './context/PresenceContext';
 import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
+import AppUpdatePrompt from './components/AppUpdatePrompt';
 
 const Landing = lazy(() => import('./components/Landing'));
 const Login = lazy(() => import('./components/Login'));
@@ -49,6 +50,7 @@ function App() {
       <AuthProvider>
         <PresenceProvider>
           <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+          <AppUpdatePrompt />
           <BrowserRouter>
             <div className="relative min-h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
               <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />

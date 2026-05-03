@@ -81,12 +81,54 @@ const populateMessage = (id) => Message.findById(id)
     populate: { path: 'from', select: 'name email avatar lastSeen' }
   });
 
+const getId = (value) => String(value?._id || value?.id || value || '');
+
+const getStoryTime = (story) => {
+  const value = new Date(story?.createdAt || story?.updatedAt || 0).getTime();
+  return Number.isNaN(value) ? 0 : value;
+};
+
+const toPlainStory = (story) => (typeof story?.toObject === 'function' ? story.toObject() : story);
+
+const groupStoriesByOwner = (stories = []) => {
+  const groups = new Map();
+
+  stories
+    .map(toPlainStory)
+    .sort((a, b) => getStoryTime(b) - getStoryTime(a))
+    .forEach(story => {
+      const owner = story.userId || {};
+      const ownerId = getId(owner) || getId(story.user);
+      if (!ownerId) return;
+      if (!groups.has(ownerId)) groups.set(ownerId, { ownerId, owner, stories: [] });
+      groups.get(ownerId).stories.push(story);
+    });
+
+  return Array.from(groups.values()).map(group => ({
+    ...group,
+    preview: group.stories[0],
+    count: group.stories.length
+  }));
+};
+
 router.get('/active', auth, async (req, res) => {
   try {
     const stories = await populateStory(Story.find(activeStoryQuery()))
       .sort({ createdAt: -1 })
       .limit(150);
     res.json(stories);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/active/grouped', auth, async (req, res) => {
+  try {
+    const stories = await populateStory(Story.find(activeStoryQuery()))
+      .sort({ createdAt: -1 })
+      .limit(150);
+    const plainStories = stories.map(toPlainStory);
+    res.json({ stories: plainStories, groups: groupStoriesByOwner(plainStories) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -101,6 +143,21 @@ router.get('/user/:userId', auth, async (req, res) => {
     const stories = await populateStory(Story.find({ ...activeStoryQuery(), userId: req.params.userId }))
       .sort({ createdAt: -1 });
     res.json(stories);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/user/:userId/grouped', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.userId)) {
+      return res.status(400).json({ msg: 'Invalid user' });
+    }
+
+    const stories = await populateStory(Story.find({ ...activeStoryQuery(), userId: req.params.userId }))
+      .sort({ createdAt: -1 });
+    const plainStories = stories.map(toPlainStory);
+    res.json({ stories: plainStories, groups: groupStoriesByOwner(plainStories) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }

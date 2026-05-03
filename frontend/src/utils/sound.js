@@ -3,6 +3,8 @@ import messageSendUrl from './message send.mp3';
 import clickSoundUrl from './clicksounds.mp3';
 
 const soundCache = new Map();
+let pendingPlayback = null;
+let removePlaybackUnlock = null;
 
 const soundSources = {
   click: clickSoundUrl,
@@ -25,6 +27,28 @@ const getSoundUrl = (name) => {
   return soundSources[normalized] || soundSources[normalized.replace(/-/g, ' ')] || null;
 };
 
+const installPlaybackUnlock = () => {
+  if (typeof window === 'undefined' || removePlaybackUnlock) return;
+
+  const replayPendingSound = () => {
+    const queued = pendingPlayback;
+    pendingPlayback = null;
+    if (removePlaybackUnlock) removePlaybackUnlock();
+    if (queued) playUiSound(queued.name, queued.volume);
+  };
+
+  window.addEventListener('pointerdown', replayPendingSound, true);
+  window.addEventListener('keydown', replayPendingSound, true);
+  window.addEventListener('touchstart', replayPendingSound, true);
+
+  removePlaybackUnlock = () => {
+    window.removeEventListener('pointerdown', replayPendingSound, true);
+    window.removeEventListener('keydown', replayPendingSound, true);
+    window.removeEventListener('touchstart', replayPendingSound, true);
+    removePlaybackUnlock = null;
+  };
+};
+
 export const playUiSound = (name, volume = 0.35) => {
   if (typeof window === 'undefined' || !name) return;
 
@@ -37,7 +61,10 @@ export const playUiSound = (name, volume = 0.35) => {
     audio.volume = volume;
     audio.currentTime = 0;
     soundCache.set(key, audio);
-    audio.play().catch(() => {});
+    audio.play().catch(() => {
+      pendingPlayback = { name, volume };
+      installPlaybackUnlock();
+    });
   } catch {
     // Missing sound files should never break the app.
   }

@@ -43,15 +43,22 @@ import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import NewChatModal from './NewChatModal';
 import UserProfileModal from './UserProfileModal';
-import { resolveMediaUrl } from '../utils/media';
+import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { playUiSound } from '../utils/sound';
 import LoadingSpinner from './LoadingSpinner';
 import MediaViewer from './MediaViewer';
+import VideoThumbnail from './VideoThumbnail';
 
 let socket;
 
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
+const MESSAGE_RENDER_BATCH = 120;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+
+const shouldAutoFocusComposer = () => (
+  typeof window !== 'undefined'
+  && window.matchMedia?.('(pointer: fine) and (min-width: 768px)').matches
+);
 
 const getDisplayName = (entity, fallback = 'User') => entity?.name || fallback;
 
@@ -170,6 +177,7 @@ export default function Messages() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_RENDER_BATCH);
   const [newMessage, setNewMessage] = useState('');
   const [editingMessage, setEditingMessage] = useState(null);
   const [messageSearch, setMessageSearch] = useState('');
@@ -221,6 +229,10 @@ export default function Messages() {
 
   const currentUserId = getEntityId(user);
   const targetUserId = searchParams.get('user');
+
+  const focusComposerInput = useCallback(() => {
+    if (shouldAutoFocusComposer()) inputRef.current?.focus();
+  }, []);
 
   const toggleStoredId = useCallback((storageKey, setter, rawId) => {
     const id = getEntityId(rawId);
@@ -692,7 +704,7 @@ export default function Messages() {
   useEffect(() => {
     if (selectedUser) {
       fetchMessages(selectedUser._id || selectedUser.id);
-      inputRef.current?.focus();
+      focusComposerInput();
     } else {
       setMessages([]);
     }
@@ -708,7 +720,7 @@ export default function Messages() {
     setFocusedMessageId(null);
     clearAttachment();
     setOtherUserTyping(false);
-  }, [clearAttachment, fetchMessages, selectedUser]);
+  }, [clearAttachment, fetchMessages, focusComposerInput, selectedUser]);
 
   useEffect(() => {
     scrollToBottom();
@@ -731,9 +743,10 @@ export default function Messages() {
     return () => clearInterval(interval);
   }, []);
 
-  const uploadMessageAttachment = async (file) => {
+  const uploadMessageAttachment = async (file, fileType = '') => {
+    const uploadFile = fileType === 'image' ? await optimizeImageFile(file) : file;
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', uploadFile);
 
     const res = await api.post('/messages/upload', formData, {
       onUploadProgress: (progressEvent) => {
@@ -760,7 +773,7 @@ export default function Messages() {
       if (replyingTo) payload.replyTo = getEntityId(replyingTo);
 
       if (attachment?.file) {
-        const upload = await uploadMessageAttachment(attachment.file);
+        const upload = await uploadMessageAttachment(attachment.file, attachment.fileType);
         Object.assign(payload, upload);
       }
 
@@ -818,7 +831,7 @@ export default function Messages() {
     clearAttachment();
     setNewMessage(message.text || '');
     setActionMenuMessageId(null);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    requestAnimationFrame(focusComposerInput);
   };
 
   const handleSaveNote = async (event) => {
@@ -1050,11 +1063,15 @@ export default function Messages() {
   const jumpToMessage = (messageId) => {
     const id = getEntityId(messageId);
     if (!id) return;
+    const targetIndex = messages.findIndex(message => getEntityId(message) === id);
+    if (targetIndex >= 0) {
+      setVisibleMessageCount(count => Math.max(count, messages.length - targetIndex));
+    }
     setFocusedMessageId(id);
     setShowPinnedPanel(false);
-    requestAnimationFrame(() => {
+    window.setTimeout(() => {
       messageRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    }, 50);
     setTimeout(() => setFocusedMessageId(null), 1800);
   };
 
@@ -1088,12 +1105,7 @@ export default function Messages() {
   const pinnedMessages = useMemo(() => messages.filter(message => message.pinned), [messages]);
 
   const scrollToPinnedMessage = (messageId) => {
-    setShowPinnedPanel(false);
-    setFocusedMessageId(messageId);
-    requestAnimationFrame(() => {
-      messageRefs.current[messageId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-    setTimeout(() => setFocusedMessageId(null), 1800);
+    jumpToMessage(messageId);
   };
 
   const unreadTotal = useMemo(
@@ -1169,6 +1181,7 @@ export default function Messages() {
 
   useEffect(() => {
     setShowChatDetails(false);
+    setVisibleMessageCount(MESSAGE_RENDER_BATCH);
   }, [selectedUserId]);
 
   const goToSearchMatch = (direction = 0) => {
@@ -1180,12 +1193,81 @@ export default function Messages() {
     jumpToMessage(messageSearchMatches[nextIndex]);
   };
 
+  const mediaGalleryItems = useMemo(() => (
+    messages
+      .filter(message => !message.unsent && message.fileUrl && ['image', 'video'].includes(message.fileType))
+      .map(message => {
+        const messageId = getEntityId(message);
+        const senderName = getEntityId(message.from) === currentUserId
+          ? 'You'
+          : getDisplayName(message.from, selectedDisplayName);
+        const mediaTypeLabel = message.fileType === 'image' ? 'Photo' : 'Video';
+        const sentTime = message.createdAt ? formatMessageTime(message.createdAt) : '';
+
+        return {
+          id: messageId,
+          messageId,
+          type: message.fileType,
+          url: resolveMediaUrl(message.fileUrl),
+          name: message.fileName || mediaTypeLabel,
+          details: [senderName, sentTime].filter(Boolean).join(' - ')
+        };
+      })
+  ), [currentUserId, messages, selectedDisplayName]);
+
+  const mediaPreviewIndex = mediaPreview
+    ? mediaGalleryItems.findIndex(item => item.id === mediaPreview.id)
+    : -1;
+  const currentMediaPreview = mediaPreviewIndex >= 0 ? mediaGalleryItems[mediaPreviewIndex] : mediaPreview;
+  const hasMediaNavigation = mediaPreviewIndex >= 0 && mediaGalleryItems.length > 1;
+  const mediaPositionLabel = currentMediaPreview
+    ? [
+        mediaPreviewIndex >= 0 ? `${mediaPreviewIndex + 1} of ${mediaGalleryItems.length}` : '',
+        currentMediaPreview.details
+      ].filter(Boolean).join(' - ')
+    : '';
+
+  const openMediaPreview = (message) => {
+    const messageId = getEntityId(message);
+    const galleryItem = mediaGalleryItems.find(item => item.id === messageId);
+    if (galleryItem) {
+      setMediaPreview(galleryItem);
+      return;
+    }
+
+    const mediaTypeLabel = message.fileType === 'image' ? 'Photo' : 'Video';
+    setMediaPreview({
+      id: messageId,
+      type: message.fileType,
+      url: resolveMediaUrl(message.fileUrl),
+      name: message.fileName || mediaTypeLabel,
+      details: mediaTypeLabel
+    });
+  };
+
+  const moveMediaPreview = (direction) => {
+    if (!hasMediaNavigation) return;
+    const nextIndex = (mediaPreviewIndex + direction + mediaGalleryItems.length) % mediaGalleryItems.length;
+    setMediaPreview(mediaGalleryItems[nextIndex]);
+  };
+
   const sharedMediaItems = useMemo(() => (
     messages
       .filter(message => message.fileUrl && ['image', 'video'].includes(message.fileType))
-      .slice(-8)
       .reverse()
   ), [messages]);
+
+  useEffect(() => {
+    if (!hasMediaNavigation || typeof window === 'undefined') return;
+
+    [-1, 1].forEach(direction => {
+      const item = mediaGalleryItems[(mediaPreviewIndex + direction + mediaGalleryItems.length) % mediaGalleryItems.length];
+      if (item?.type === 'image') {
+        const image = new window.Image();
+        image.src = item.url;
+      }
+    });
+  }, [hasMediaNavigation, mediaGalleryItems, mediaPreviewIndex]);
 
   const sharedFileItems = useMemo(() => (
     messages
@@ -1193,6 +1275,13 @@ export default function Messages() {
       .slice(-5)
       .reverse()
   ), [messages]);
+
+  const messageSearchActive = Boolean(messageSearch.trim());
+  const renderedMessages = useMemo(() => {
+    if (messageSearchActive) return messages;
+    return messages.slice(-visibleMessageCount);
+  }, [messageSearchActive, messages, visibleMessageCount]);
+  const hiddenMessageCount = Math.max(0, messages.length - renderedMessages.length);
 
   useEffect(() => {
     if (!selectedUserId || !socket) return undefined;
@@ -1288,7 +1377,7 @@ export default function Messages() {
       return (
         <button
           type="button"
-          onClick={() => setMediaPreview({ type: 'image', url: mediaUrl, name: message.fileName || 'Photo' })}
+          onClick={() => openMediaPreview(message)}
           className="block overflow-hidden rounded-2xl"
           aria-label="View photo"
         >
@@ -1301,17 +1390,18 @@ export default function Messages() {
       return (
         <button
           type="button"
-          onClick={() => setMediaPreview({ type: 'video', url: mediaUrl, name: message.fileName || 'Video' })}
+          onClick={() => openMediaPreview(message)}
           className="block w-full overflow-hidden rounded-2xl"
           aria-label="View video"
         >
           <span className="relative block overflow-hidden rounded-2xl bg-black">
-            <video src={mediaUrl} preload="metadata" playsInline muted className="max-h-80 w-full rounded-2xl object-contain opacity-90" />
-            <span className="absolute inset-0 grid place-items-center bg-black/15">
-              <span className="grid h-14 w-14 place-items-center rounded-full bg-white/90 text-gray-950 shadow-2xl">
-                <Video size={24} fill="currentColor" />
-              </span>
-            </span>
+            <VideoThumbnail
+              src={mediaUrl}
+              className="max-h-80 w-full"
+              videoClassName="max-h-80 object-contain opacity-95"
+              iconSize={25}
+              label={message.fileName || 'Video attachment'}
+            />
           </span>
         </button>
       );
@@ -1449,18 +1539,16 @@ export default function Messages() {
                     type="button"
                     onClick={() => {
                       setShowChatDetails(false);
-                      setMediaPreview({ type: message.fileType, url: mediaUrl, name: message.fileName || 'Media' });
+                      openMediaPreview(message);
                     }}
                     className="aspect-square overflow-hidden rounded-2xl bg-slate-100 dark:bg-gray-900"
                     aria-label="Open shared media"
                   >
                     {message.fileType === 'image' ? (
-                      <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="grid h-full w-full place-items-center text-pink-500">
-                        <Video size={22} />
-                      </span>
-                    )}
+              <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
+            ) : (
+              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} />
+            )}
                   </button>
                 );
               })}
@@ -1511,7 +1599,7 @@ export default function Messages() {
         <aside className="messages-tools-rail hidden w-60 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
           <div className="flex items-center gap-3 px-1 py-2">
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-gray-900 dark:ring-gray-800">
-              <img src="/syncrova-logo.png" alt="SYNCROVA" className="h-full w-full object-contain" />
+              <img src="/syncrova-app-logo.png" alt="SYNCROVA" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0">
               <p className="truncate text-lg font-black text-slate-950 dark:text-white">SYNCROVA</p>
@@ -1905,7 +1993,19 @@ export default function Messages() {
                 ) : (
                   <>
                     <>
-                      {messages.map((message) => {
+                      {hiddenMessageCount > 0 && (
+                        <div className="mb-4 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleMessageCount(count => Math.min(messages.length, count + MESSAGE_RENDER_BATCH))}
+                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-[#1877f2] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:text-sky-200"
+                          >
+                            Show earlier messages ({hiddenMessageCount})
+                          </button>
+                        </div>
+                      )}
+
+                      {renderedMessages.map((message) => {
                         const messageId = getEntityId(message);
                         const isMe = getEntityId(message.from) === currentUserId;
                         const sender = isMe ? user : selectedUser;
@@ -2000,7 +2100,7 @@ export default function Messages() {
                                     <button
                                       onClick={() => {
                                         setReplyingTo(message);
-                                        inputRef.current?.focus();
+                                        focusComposerInput();
                                       }}
                                       className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-[#1877f2] group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-sky-300"
                                       aria-label="Reply"
@@ -2162,7 +2262,15 @@ export default function Messages() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           {selectedAttachment.fileType === 'image' && attachmentPreview && <img src={attachmentPreview} alt="preview" className="h-12 w-12 rounded-xl object-cover" />}
-                          {selectedAttachment.fileType === 'video' && attachmentPreview && <video src={attachmentPreview} className="h-12 w-12 rounded-xl object-cover" />}
+                          {selectedAttachment.fileType === 'video' && attachmentPreview && (
+                            <VideoThumbnail
+                              src={attachmentPreview}
+                              className="h-12 w-12"
+                              iconSize={16}
+                              rounded="rounded-xl"
+                              label="Selected video preview"
+                            />
+                          )}
                                 {selectedAttachment.fileType === 'audio' && <Mic size={22} className="text-[#1877f2] dark:text-sky-300" />}
                           {selectedAttachment.fileType === 'file' && <FileText size={22} className="text-[#1877f2] dark:text-sky-300" />}
                           <div className="min-w-0">
@@ -2382,16 +2490,14 @@ export default function Messages() {
                           <button
                             key={getEntityId(message)}
                             type="button"
-                            onClick={() => setMediaPreview({ type: message.fileType, url: mediaUrl, name: message.fileName || 'Media' })}
+                            onClick={() => openMediaPreview(message)}
                             className="aspect-square overflow-hidden rounded-2xl bg-slate-100 dark:bg-gray-900"
                             aria-label="Open shared media"
                           >
                             {message.fileType === 'image' ? (
                               <img src={mediaUrl} alt={message.fileName || 'Shared media'} loading="lazy" className="h-full w-full object-cover" />
                             ) : (
-                              <span className="grid h-full w-full place-items-center text-pink-500">
-                                <Video size={22} />
-                              </span>
+                              <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={21} label={message.fileName || 'Shared video'} />
                             )}
                           </button>
                         );
@@ -2536,7 +2642,13 @@ export default function Messages() {
         </div>
       )}
 
-      <MediaViewer media={mediaPreview} onClose={() => setMediaPreview(null)} />
+      <MediaViewer
+        media={currentMediaPreview}
+        onClose={() => setMediaPreview(null)}
+        onPrevious={hasMediaNavigation ? () => moveMediaPreview(-1) : undefined}
+        onNext={hasMediaNavigation ? () => moveMediaPreview(1) : undefined}
+        positionLabel={mediaPositionLabel}
+      />
     </div>
   );
 }

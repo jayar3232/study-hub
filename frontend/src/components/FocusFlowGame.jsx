@@ -7,7 +7,7 @@ import GameOverModal from './GameOverModal';
 
 const MAX_MISSES = 5;
 const TARGET_WIDTH = 18;
-const FRAME_INTERVAL = 1000 / 45;
+const FRAME_INTERVAL = 1000 / 60;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -36,7 +36,6 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
   const [locks, setLocks] = useState(0);
   const [misses, setMisses] = useState(0);
   const [position, setPosition] = useState(0);
-  const [direction, setDirection] = useState(1);
   const [targetCenter, setTargetCenter] = useState(50);
   const [score, setScore] = useState(0);
   const [hits, setHits] = useState(0);
@@ -51,6 +50,8 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
   const lastFrameRef = useRef(null);
   const positionRef = useRef(0);
   const targetCenterRef = useRef(50);
+  const directionRef = useRef(1);
+  const paceRef = useRef(0);
 
   const attemptsLeft = Math.max(0, MAX_MISSES - misses);
   const speedLevel = Math.max(1, Math.floor((hits + misses) / 5) + 1);
@@ -67,7 +68,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
     setMisses(0);
     setPosition(0);
     positionRef.current = 0;
-    setDirection(1);
+    directionRef.current = 1;
     setScore(0);
     setHits(0);
     setPerfects(0);
@@ -123,6 +124,10 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
   };
 
   useEffect(() => {
+    paceRef.current = hits + misses;
+  }, [hits, misses]);
+
+  useEffect(() => {
     if (!running) return undefined;
 
     const tick = (time) => {
@@ -139,19 +144,17 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
       const delta = Math.min(42, time - last);
       lastFrameRef.current = time;
 
-      setPosition(current => {
-        const speed = 0.045 + (Math.min(36, hits + misses) * 0.0036);
-        let next = current + (direction * delta * speed);
-        if (next >= 100) {
-          next = 100;
-          setDirection(-1);
-        } else if (next <= 0) {
-          next = 0;
-          setDirection(1);
-        }
-        positionRef.current = next;
-        return next;
-      });
+      const speed = 0.045 + (Math.min(36, paceRef.current) * 0.0036);
+      let next = positionRef.current + (directionRef.current * delta * speed);
+      if (next >= 100) {
+        next = 100;
+        directionRef.current = -1;
+      } else if (next <= 0) {
+        next = 0;
+        directionRef.current = 1;
+      }
+      positionRef.current = next;
+      setPosition(next);
 
       animationRef.current = requestAnimationFrame(tick);
     };
@@ -160,7 +163,7 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [direction, hits, misses, running]);
+  }, [running]);
 
   const lockFocus = () => {
     if (!running) return;
@@ -261,13 +264,12 @@ export default function FocusFlowGame({ stats, onScoreSaved, onExit }) {
                       className="absolute top-1/2 h-12 -translate-y-1/2 rounded-2xl border border-emerald-200/40 bg-emerald-300/20 shadow-[0_0_28px_rgba(52,211,153,0.35)]"
                       style={{ left: `${targetCenter - TARGET_WIDTH / 2}%`, width: `${TARGET_WIDTH}%` }}
                     />
-                    <motion.div
-                      animate={{ left: `${position}%` }}
-                      transition={{ duration: 0.05, ease: 'linear' }}
-                      className="absolute top-1/2 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-2xl bg-white text-gray-950 shadow-2xl shadow-cyan-400/30"
+                    <div
+                      className="focus-flow-marker absolute top-1/2 grid h-12 w-12 place-items-center rounded-2xl bg-white text-gray-950 shadow-2xl shadow-cyan-400/30"
+                      style={{ left: `${position}%`, transform: 'translate3d(-50%, -50%, 0)' }}
                     >
                       <Target size={21} />
-                    </motion.div>
+                    </div>
                   </div>
                 </div>
               </div>

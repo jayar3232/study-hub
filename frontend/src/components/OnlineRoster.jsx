@@ -28,7 +28,7 @@ export default function OnlineRoster({ compact = false, limit = 10, title = 'Onl
 
       {visiblePeople.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-200 bg-white/60 px-3 py-4 text-center text-xs font-semibold text-gray-500 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
-          No users online right now.
+          No one is active right now.
         </div>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

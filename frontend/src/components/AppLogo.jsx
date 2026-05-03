@@ -19,7 +19,7 @@ export function AppLogoMark({ size = 'md', animated = false, className = '' }) {
       className={`${markSizes[size] || markSizes.md} app-logo-mark relative inline-flex shrink-0 items-center justify-center overflow-hidden bg-white p-1 font-black text-white shadow-xl shadow-violet-500/20 ring-1 ring-violet-100 dark:bg-white dark:ring-white/10 ${animated ? 'app-logo-mark--float' : ''} ${className}`}
       aria-hidden="true"
     >
-      <img src="/syncrova-logo.png" alt="" className="h-full w-full object-contain" />
+      <img src="/syncrova-app-logo.png" alt="" className="h-full w-full object-contain" />
     </span>
   );
 }

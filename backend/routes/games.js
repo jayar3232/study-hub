@@ -18,7 +18,7 @@ const ROUND_SIZE = 8;
 const DURATION_SECONDS = 75;
 const QUIZ_QUESTION_COUNT = 10;
 const QUIZ_SECONDS_PER_QUESTION = 10;
-const DEVELOPER_PASSWORD = process.env.DEVELOPER_ACCESS_PASSWORD || '123!@#';
+const DEVELOPER_PASSWORD = process.env.DEVELOPER_ACCESS_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : '123!@#');
 
 const clampNumber = (value, min, max, fallback = 0) => {
   const number = Number(value);
@@ -318,6 +318,13 @@ const createTypingSentences = (count = 18) => {
 };
 
 const sanitizeText = (value, maxLength) => String(value || '').trim().slice(0, maxLength);
+
+const isValidDeveloperPassword = (value) => {
+  if (!DEVELOPER_PASSWORD) return false;
+  const provided = Buffer.from(String(value || ''));
+  const expected = Buffer.from(String(DEVELOPER_PASSWORD));
+  return provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
+};
 
 const getDeveloperStatus = async (userId) => {
   const user = await User.findById(userId).select('name email avatar isDeveloper');
@@ -777,7 +784,11 @@ router.get('/developers/me', auth, async (req, res) => {
 
 router.post('/developers/access', auth, async (req, res) => {
   try {
-    if (req.body.password !== DEVELOPER_PASSWORD) {
+    if (!DEVELOPER_PASSWORD) {
+      return res.status(503).json({ msg: 'Developer access is not configured' });
+    }
+
+    if (!isValidDeveloperPassword(req.body.password)) {
       return res.status(403).json({ msg: 'Invalid developer password' });
     }
 

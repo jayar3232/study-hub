@@ -5,13 +5,15 @@ import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, Messag
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
+import { getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import { useNavigate } from 'react-router-dom';
 import RankBadge, { RankEmblem } from './RankBadge';
 import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
 import { useAuth } from '../context/AuthContext';
+import StoryViewer from './StoryViewer';
+import VideoThumbnail from './VideoThumbnail';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
-const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
 
 const formatMemberSince = (value) => {
   if (!value) return 'Recently joined';
@@ -25,7 +27,6 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   const [friendAction, setFriendAction] = useState('');
   const [stories, setStories] = useState([]);
   const [activeStory, setActiveStory] = useState(null);
-  const [storyComment, setStoryComment] = useState('');
   const [storyCommenting, setStoryCommenting] = useState(false);
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
@@ -47,12 +48,14 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
       try {
         const [res, storiesRes] = await Promise.all([
           api.get(`/users/${profileId}/public`),
-          api.get(`/stories/user/${profileId}`).catch(() => ({ data: [] }))
+          api.get(`/stories/user/${profileId}/grouped`).catch(() => (
+            api.get(`/stories/user/${profileId}`).catch(() => ({ data: [] }))
+          ))
         ]);
         if (!cancelled) {
           setProfile(res.data);
           setFriendship(res.data?.friendship || { status: 'none' });
-          setStories(storiesRes.data || []);
+          setStories(Array.isArray(storiesRes.data) ? storiesRes.data : storiesRes.data?.stories || []);
         }
       } catch (err) {
         if (!cancelled && user) {
@@ -73,6 +76,8 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
 
   const avatar = resolveMediaUrl(profile?.avatar);
   const coverPhoto = resolveMediaUrl(profile?.coverPhoto);
+  const storyGroups = groupActiveStoriesByOwner(stories);
+  const activeStoryList = getStoryListForActiveStory(storyGroups, activeStory);
   const initials = useMemo(() => {
     const name = profile?.name || 'User';
     return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
@@ -100,7 +105,6 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
 
   const openStory = async (story) => {
     setActiveStory(story);
-    setStoryComment('');
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
       syncStory(res.data);
@@ -119,15 +123,13 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     }
   };
 
-  const commentOnStory = async (event) => {
-    event?.preventDefault?.();
-    const text = storyComment.trim();
-    if (!activeStory || !text || storyCommenting) return;
+  const commentOnStory = async (story = activeStory, text = '') => {
+    const reply = String(text || '').trim();
+    if (!story || !reply || storyCommenting) return;
     setStoryCommenting(true);
     try {
-      const res = await api.post(`/stories/${getEntityId(activeStory)}/comment`, { text });
+      const res = await api.post(`/stories/${getEntityId(story)}/comment`, { text: reply });
       syncStory(res.data?.story || res.data);
-      setStoryComment('');
       toast.success('Sent to messages');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Comment failed');
@@ -265,7 +267,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
           onMouseDown={closeModal}
         >
           <div
-            className="mobile-stalk-modal h-auto max-h-[88svh] w-full max-w-[520px] overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            className="mobile-profile-modal h-auto max-h-[88svh] w-full max-w-[520px] overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
             onMouseDown={event => event.stopPropagation()}
           >
             <div className="max-h-[88svh] overflow-y-auto">
@@ -285,11 +287,11 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 <ArrowLeft size={24} strokeWidth={2.8} />
               </button>
               <div className="relative z-10 flex items-end gap-3 pt-12">
-                <div className={`flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white sm:h-20 sm:w-20 ${getProfileFrameClass(profile?.gameStats)} ${stories.length ? 'ring-blue-400 shadow-blue-500/35' : ''}`}>
+                <div className={`flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white/15 bg-gradient-to-br from-pink-500 to-indigo-500 text-xl font-black text-white sm:h-20 sm:w-20 ${getProfileFrameClass(profile?.gameStats)} ${storyGroups.length ? 'ring-blue-400 shadow-blue-500/35' : ''}`}>
                   {avatar ? <img src={avatar} alt={profile?.name || 'User'} className="h-full w-full object-cover" /> : initials}
                 </div>
                 <div className="min-w-0 pb-1">
-                  <p className="text-xs font-bold uppercase text-pink-200">Member profile</p>
+                  <p className="text-xs font-bold uppercase text-blue-100">Profile</p>
                   <h2 className="mt-1 break-words text-xl font-black">{profile?.name || (loading ? 'Loading...' : 'User')}</h2>
                   <p className="mt-1 truncate text-sm text-white/70">{profile?.course || 'No course added'}</p>
                   <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-white/55">
@@ -318,18 +320,19 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 </div>
               </div>
 
-              {stories.length > 0 && (
+              {storyGroups.length > 0 && (
                 <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <p className="text-sm font-black text-gray-950 dark:text-white">My Day</p>
                     <span className="rounded-full bg-pink-50 px-2 py-1 text-xs font-black text-pink-600 dark:bg-pink-950/30 dark:text-pink-200">{stories.length}</span>
                   </div>
                   <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {stories.map(story => {
+                    {storyGroups.map(group => {
+                      const story = group.preview;
                       const storyUrl = resolveMediaUrl(story.fileUrl);
                       return (
                         <button
-                          key={getEntityId(story)}
+                          key={group.ownerId}
                           type="button"
                           onClick={() => openStory(story)}
                           className="relative h-36 w-24 shrink-0 overflow-hidden rounded-2xl bg-gray-950"
@@ -337,10 +340,15 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                           {story.fileType === 'image' ? (
                             <img src={storyUrl} alt={story.caption || 'My Day'} className="h-full w-full object-cover" />
                           ) : (
-                            <video src={storyUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                            <VideoThumbnail src={storyUrl} className="h-full w-full" iconSize={20} label={`${profile?.name || 'Member'} story video`} />
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                          {story.fileType === 'video' && <PlayCircle className="absolute right-2 top-2 text-white" size={20} />}
+                          {group.count > 1 && (
+                            <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
+                              {group.count}
+                            </span>
+                          )}
+                          {story.fileType === 'video' && <PlayCircle className={`absolute right-2 text-white ${group.count > 1 ? 'top-9' : 'top-2'}`} size={20} />}
                           <p className="absolute inset-x-2 bottom-2 line-clamp-2 text-left text-xs font-black text-white">{story.caption || 'View story'}</p>
                         </button>
                       );
@@ -396,110 +404,26 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 <button
                   type="button"
                   onClick={openMessages}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-pink-700"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1877f2] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#0f63d5]"
                 >
                   <MessageCircle size={18} />
-                  Open Messages
+                  Message
                 </button>
               </div>
               </div>
             </div>
           </div>
 
-          {activeStory && (
-            <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-3" onMouseDown={event => event.stopPropagation()}>
-              <div className="relative h-[min(86svh,720px)] w-full max-w-sm overflow-hidden rounded-3xl bg-black shadow-2xl">
-                {activeStory.fileType === 'image' ? (
-                  <img src={resolveMediaUrl(activeStory.fileUrl)} alt={activeStory.caption || 'My Day'} className="h-full w-full object-contain" />
-                ) : (
-                  <video src={resolveMediaUrl(activeStory.fileUrl)} controls autoPlay playsInline className="h-full w-full object-contain" />
-                )}
-                <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-3 bg-gradient-to-b from-black/75 to-transparent p-4 text-white">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black">{profile?.name || 'Member'}</p>
-                    <p className="text-xs text-white/65">My Day</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveStory(null)}
-                    className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
-                    aria-label="Close My Day"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="absolute inset-x-0 bottom-0 space-y-3 bg-gradient-to-t from-black/86 via-black/55 to-transparent p-4 text-white">
-                  {activeStory.caption && (
-                    <p className="text-sm font-bold">{activeStory.caption}</p>
-                  )}
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex gap-2">
-                      {STORY_REACTIONS.map(emoji => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => reactToStory(activeStory, emoji)}
-                          className="grid h-10 w-10 place-items-center rounded-full bg-white/12 text-lg backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/22"
-                          aria-label={`React ${emoji}`}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                    {(activeStory.reactions || []).length > 0 && (
-                      <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 py-2 text-xs font-black backdrop-blur">
-                        {Object.entries((activeStory.reactions || []).reduce((summary, reaction) => {
-                          if (!reaction?.emoji) return summary;
-                          summary[reaction.emoji] = (summary[reaction.emoji] || 0) + 1;
-                          return summary;
-                        }, {})).slice(0, 3).map(([emoji, count]) => (
-                          <span key={emoji}>{emoji} {count}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-[11px] font-black text-white/75">
-                    <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
-                      {(activeStory.viewers || []).length} viewers
-                    </span>
-                    <span className="rounded-full bg-white/12 px-2.5 py-1 backdrop-blur">
-                      {(activeStory.reactions || []).length} reactions
-                    </span>
-                  </div>
-                  {getEntityId(activeStory.userId) === getEntityId(currentUser) ? (
-                    <div className="max-h-24 overflow-y-auto rounded-2xl bg-white/10 p-2 text-xs text-white/80">
-                      {(activeStory.viewers || []).length ? (activeStory.viewers || []).slice(0, 8).map(viewer => (
-                        <p key={getEntityId(viewer.userId || viewer)} className="truncate">
-                          Viewed by {(viewer.userId || viewer)?.name || 'Member'}
-                        </p>
-                      )) : <p>No viewers yet</p>}
-                      {(activeStory.reactions || []).slice(0, 8).map(reaction => (
-                        <p key={`${getEntityId(reaction.userId)}-${reaction.emoji}`} className="truncate">
-                          {reaction.emoji} {(reaction.userId)?.name || 'Member'}
-                        </p>
-                      ))}
-                    </div>
-                  ) : (
-                    <form onSubmit={commentOnStory} className="flex gap-2">
-                      <input
-                        value={storyComment}
-                        onChange={event => setStoryComment(event.target.value)}
-                        placeholder="Reply to My Day..."
-                        className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/45 focus:border-white/35"
-                      />
-                      <button
-                        type="submit"
-                        disabled={storyCommenting || !storyComment.trim()}
-                        className="rounded-full bg-pink-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-pink-500 disabled:opacity-50"
-                      >
-                        Send
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          <StoryViewer
+            story={activeStory}
+            stories={activeStoryList}
+            currentUser={currentUser}
+            onClose={() => setActiveStory(null)}
+            onNavigate={openStory}
+            onReact={reactToStory}
+            onComment={commentOnStory}
+            zIndexClass="z-[130]"
+          />
         </div>
   , document.body);
 }
