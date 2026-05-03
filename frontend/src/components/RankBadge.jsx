@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { MotionConfig, motion } from 'framer-motion';
 import { Award, Crown, Flame, Sparkles, Star } from 'lucide-react';
 
 const rankPalettes = {
@@ -121,37 +121,39 @@ export function RankEmblem({ rank = fallbackRank, size = 'md', animated = false 
   const isLowestRank = rank?.key === 'rookie';
 
   return (
-    <MotionTag
-      {...(animated ? {
-        animate: { y: [0, -4, 0], rotate: [0, -1, 1, 0] },
-        transition: { duration: 3.4, repeat: Infinity, ease: 'easeInOut' }
-      } : {})}
-      className={`relative ${classes.wrap} shrink-0`}
-      title={rank?.name || fallbackRank.name}
-    >
-      {!isLowestRank && <div className={`absolute inset-0 rounded-[1.35rem] bg-gradient-to-br ${palette.gradient} ${isCycloneRank ? 'opacity-40 blur-xl' : 'opacity-16 blur-md'}`} />}
-      {isCycloneRank && (
-        <motion.div
-          animate={animated ? { rotate: 360 } : undefined}
-          transition={animated ? { duration: 9, repeat: Infinity, ease: 'linear' } : undefined}
-          className="absolute inset-[-22%] rounded-full bg-[conic-gradient(from_90deg,transparent,rgba(250,204,21,0.8),transparent,rgba(249,115,22,0.72),transparent)] opacity-80"
-        />
-      )}
-      <div
-        className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br ${palette.gradient} text-white ${isLowestRank ? 'shadow-md shadow-black/10 dark:shadow-black/40' : isCycloneRank ? `shadow-xl ${palette.glow}` : 'shadow-lg shadow-black/10 dark:shadow-black/40'} ring-2 ${palette.ring}`}
-        style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }}
+    <MotionConfig reducedMotion="never">
+      <MotionTag
+        {...(animated ? {
+          animate: { y: [0, -4, 0], rotate: [0, -1, 1, 0] },
+          transition: { duration: 3.4, repeat: Infinity, ease: 'easeInOut' }
+        } : {})}
+        className={`rank-motion-zone relative ${classes.wrap} shrink-0`}
+        title={rank?.name || fallbackRank.name}
       >
-        <div className="absolute inset-[6px] border border-white/25" style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }} />
-        <div className="absolute -left-5 top-1/2 h-16 w-28 -translate-y-1/2 rotate-[-25deg] bg-white/18 blur-sm" />
-        {isEliteRank
-          ? <Flame size={classes.icon + 3} className="relative z-10 drop-shadow" strokeWidth={2.4} fill="currentColor" />
-          : <Award size={classes.icon} className="relative z-10 drop-shadow" strokeWidth={2.4} />}
-        <span className={`absolute bottom-[18%] z-10 font-black ${classes.letter}`}>{rankInitial}</span>
-      </div>
-      <span className={`absolute -right-1 top-1 flex ${classes.star} items-center justify-center rounded-full bg-white text-yellow-500 shadow-md ring-1 ring-yellow-100 dark:bg-gray-950 dark:ring-yellow-700/40`}>
-        <Star size={size === 'lg' ? 12 : 9} fill="currentColor" />
-      </span>
-    </MotionTag>
+        {!isLowestRank && <div className={`absolute inset-0 rounded-[1.35rem] bg-gradient-to-br ${palette.gradient} ${isCycloneRank ? 'opacity-40 blur-xl' : 'opacity-16 blur-md'}`} />}
+        {isCycloneRank && (
+          <motion.div
+            animate={animated ? { rotate: 360 } : undefined}
+            transition={animated ? { duration: 9, repeat: Infinity, ease: 'linear' } : undefined}
+            className="absolute inset-[-22%] rounded-full bg-[conic-gradient(from_90deg,transparent,rgba(250,204,21,0.8),transparent,rgba(249,115,22,0.72),transparent)] opacity-80"
+          />
+        )}
+        <div
+          className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br ${palette.gradient} text-white ${isLowestRank ? 'shadow-md shadow-black/10 dark:shadow-black/40' : isCycloneRank ? `shadow-xl ${palette.glow}` : 'shadow-lg shadow-black/10 dark:shadow-black/40'} ring-2 ${palette.ring}`}
+          style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }}
+        >
+          <div className="absolute inset-[6px] border border-white/25" style={{ clipPath: 'polygon(50% 0%, 88% 17%, 100% 58%, 73% 100%, 27% 100%, 0% 58%, 12% 17%)' }} />
+          <div className="absolute -left-5 top-1/2 h-16 w-28 -translate-y-1/2 rotate-[-25deg] bg-white/18 blur-sm" />
+          {isEliteRank
+            ? <Flame size={classes.icon + 3} className="relative z-10 drop-shadow" strokeWidth={2.4} fill="currentColor" />
+            : <Award size={classes.icon} className="relative z-10 drop-shadow" strokeWidth={2.4} />}
+          <span className={`absolute bottom-[18%] z-10 font-black ${classes.letter}`}>{rankInitial}</span>
+        </div>
+        <span className={`absolute -right-1 top-1 flex ${classes.star} items-center justify-center rounded-full bg-white text-yellow-500 shadow-md ring-1 ring-yellow-100 dark:bg-gray-950 dark:ring-yellow-700/40`}>
+          <Star size={size === 'lg' ? 12 : 9} fill="currentColor" />
+        </span>
+      </MotionTag>
+    </MotionConfig>
   );
 }
 
@@ -162,7 +164,7 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
 
   if (compact) {
     return (
-      <div className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${palette.soft} ${palette.text} ${palette.ring}`}>
+      <div className={`rank-motion-zone inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${palette.soft} ${palette.text} ${palette.ring}`}>
         <Crown size={13} />
         {rank.shortName || rank.name}
       </div>
@@ -170,10 +172,11 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
   }
 
   return (
-    <motion.div
-      whileHover={{ y: -5, scale: 1.01 }}
-      className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
-    >
+    <MotionConfig reducedMotion="never">
+      <motion.div
+        whileHover={{ y: -5, scale: 1.01 }}
+        className="rank-motion-zone group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-pink-200 hover:shadow-2xl hover:shadow-pink-500/15 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-pink-900/60"
+      >
       <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${palette.gradient} opacity-80`} />
       <div className="pointer-events-none absolute right-0 top-0 h-16 w-16 rounded-tr-2xl border-r-2 border-t-2 border-pink-300 opacity-0 shadow-[10px_-10px_34px_rgba(236,72,153,0.24)] transition duration-300 group-hover:opacity-100 dark:border-pink-800" />
       <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-16 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300 opacity-0 shadow-[-10px_10px_34px_rgba(34,211,238,0.2)] transition duration-300 group-hover:opacity-100 dark:border-cyan-800" />
@@ -208,6 +211,7 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
           </div>
         </div>
       )}
-    </motion.div>
+      </motion.div>
+    </MotionConfig>
   );
 }

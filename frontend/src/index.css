@@ -43,7 +43,7 @@
 /* ---------- Base ---------- */
 @layer base {
   * {
-    scroll-behavior: smooth;
+    scroll-behavior: auto;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -51,7 +51,6 @@
     font-family: 'Inter', sans-serif;
     background: var(--app-bg);
     @apply text-slate-900 dark:text-slate-100;
-    transition: background 0.3s;
     overflow-x: hidden;
     overscroll-behavior-y: none;
     -webkit-text-size-adjust: 100%;
@@ -485,6 +484,7 @@
 
   .mobile-message-thread {
     overscroll-behavior: contain;
+    overflow-anchor: none;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -1306,7 +1306,6 @@
 
 .media-viewer-stage {
   min-height: 0;
-  contain: layout paint size;
   isolation: isolate;
   overscroll-behavior: none;
 }
@@ -1323,18 +1322,15 @@
 
 .media-viewer-image,
 .media-viewer-video {
-  backface-visibility: hidden;
   transform-origin: center;
-  will-change: transform;
 }
 
 .message-media-attachment {
-  contain: layout paint style;
+  overflow: hidden;
 }
 
 .message-row {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 5.5rem;
+  isolation: auto;
 }
 
 .dashboard-welcome-title {
@@ -1368,17 +1364,17 @@
 .fix-arena-stat-card,
 .feed-card,
 .message-row {
-  content-visibility: auto;
+  content-visibility: visible;
 }
 
 .workspace-card,
 .fix-arena-action-card,
 .feed-card {
-  contain-intrinsic-size: auto 10rem;
+  contain-intrinsic-size: auto;
 }
 
 .fix-arena-stat-card {
-  contain-intrinsic-size: auto 7rem;
+  contain-intrinsic-size: auto;
 }
 
 .jet-arena-stage,
@@ -1390,8 +1386,7 @@
 .block-drag-ghost,
 .block-tray-piece,
 .block-piece-preview {
-  contain: layout paint style;
-  transform: translateZ(0);
+  contain: none;
 }
 
 .jet-sprite,
@@ -1402,9 +1397,7 @@
 .block-drag-ghost,
 .block-piece-cell,
 .block-tray-piece {
-  backface-visibility: hidden;
-  transform: translateZ(0);
-  will-change: transform;
+  will-change: auto;
 }
 
 .jet-arena-stage {
@@ -1429,6 +1422,7 @@
 
 .jet-arena-stage::before {
   content: "";
+  display: none;
   position: absolute;
   inset: -3rem 0 0;
   pointer-events: none;
@@ -1438,12 +1432,12 @@
   background-position: 0 0, 18px 22px;
   background-size: 42px 42px, 58px 58px;
   opacity: 0.22;
-  animation: jetFieldScroll 4.8s linear infinite;
-  will-change: transform;
+  animation: none;
+  will-change: auto;
 }
 
 .focus-flow-marker {
-  animation: focusMarkerGlow 1.45s ease-in-out infinite;
+  animation: none;
 }
 
 @media (min-width: 768px) {
@@ -1768,7 +1762,7 @@
   animation: float 5s ease-in-out infinite;
 }
 
-/* Keep the app calm: only loading spinners and rank emblems should keep motion. */
+/* Keep the app calm: rank emblems are the only intentional motion surface. */
 .float,
 .float-slow,
 .pulse-ring,
@@ -1781,4 +1775,46 @@
 .animate-float,
 .animate-float-slow {
   animation: none !important;
+}
+
+/* Global no-motion / stable-render mode. Rank components opt out with .rank-motion-zone. */
+.app-decorative-effect {
+  display: none !important;
+}
+
+.app-no-motion,
+.app-no-motion * {
+  scroll-behavior: auto !important;
+}
+
+.app-no-motion :where(*, *::before, *::after):not(.rank-motion-zone):not(.rank-motion-zone *),
+.app-no-motion :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.rank-motion-zone):not(.rank-motion-zone *) {
+  animation: none !important;
+  transition-property: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+.app-no-motion :where([class*="backdrop-blur"], [class*="blur-"], [class*="drop-shadow"], .glass-card):not(.rank-motion-zone):not(.rank-motion-zone *) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+}
+
+.app-stable-render :where(
+  .message-row,
+  .message-media-attachment,
+  .media-viewer-stage,
+  .workspace-card,
+  .workspace-stat-card,
+  .workspace-toolbar,
+  .fix-arena-hero,
+  .fix-arena-action-card,
+  .fix-arena-stat-card,
+  .feed-card
+) {
+  contain: none !important;
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  will-change: auto !important;
 }

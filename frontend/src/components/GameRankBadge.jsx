@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { MotionConfig, motion } from 'framer-motion';
 import { Crown, Star, Target, Trophy, Zap } from 'lucide-react';
 
 const fallbackRank = {
@@ -275,19 +275,20 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
   );
 
   return (
-    <MotionTag
-      {...(animated ? {
-        animate: shouldAnimate
-          ? { y: [0, -3, 0], scale: [scale, scale + 0.025, scale] }
-          : { scale },
-        transition: shouldAnimate
-          ? { duration: 3, repeat: Infinity, ease: 'easeInOut' }
-          : { duration: 0.2 }
-      } : { style: { transform: `scale(${scale})` } })}
-      className={`relative isolate ${sizes.shell} shrink-0 overflow-visible`}
-      style={{ willChange: shouldAnimate ? 'transform' : 'auto' }}
-      title={rank?.name || fallbackRank.name}
-    >
+    <MotionConfig reducedMotion="never">
+      <MotionTag
+        {...(animated ? {
+          animate: shouldAnimate
+            ? { y: [0, -3, 0], scale: [scale, scale + 0.025, scale] }
+            : { scale },
+          transition: shouldAnimate
+            ? { duration: 3, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 0.2 }
+        } : { style: { transform: `scale(${scale})` } })}
+        className={`rank-motion-zone relative isolate ${sizes.shell} shrink-0 overflow-visible`}
+        style={{ willChange: shouldAnimate ? 'transform' : 'auto' }}
+        title={rank?.name || fallbackRank.name}
+      >
       {hasGlow && (
         <div
           className="absolute inset-[-30%] rounded-full"
@@ -390,7 +391,8 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
           }}
         />
       ))}
-    </MotionTag>
+      </MotionTag>
+    </MotionConfig>
   );
 }
 
@@ -431,7 +433,7 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
 
   if (compact) {
     return (
-      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black ring-1 ${palette.soft} ${palette.ring}`}>
+      <span className={`rank-motion-zone inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black ring-1 ${palette.soft} ${palette.ring}`}>
         <Trophy size={13} />
         {rank.shortName || rank.name}
         {isApex && apexStars > 0 && (
@@ -445,7 +447,7 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
   }
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+    <div className="rank-motion-zone relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
       {rankUpMilestone && (
         <div className="fixed inset-0 z-[95] grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-[2rem] border border-white/15 bg-gray-950 p-6 text-center text-white shadow-2xl shadow-pink-500/25">

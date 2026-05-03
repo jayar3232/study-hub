@@ -35,12 +35,12 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 7),
-    versionName: process.env.APP_VERSION_NAME || '1.0.6',
+    versionCode: Number(process.env.APP_VERSION_CODE || 9),
+    versionName: process.env.APP_VERSION_NAME || '1.0.8',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Fixes the Messages blank screen, keeps Messenger typing smooth, and opens conversations at the latest chat instantly.'
+    notes: process.env.APP_UPDATE_NOTES || 'Disables app-wide motion/effects outside ranks and removes render tricks that can cause missing pixels.'
   });
 });
 

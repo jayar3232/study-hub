@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft,
@@ -321,10 +321,25 @@ export default function Messages() {
 
   useEffect(() => () => clearReactionPressTimer(), []);
 
+  const scrollThreadToBottomNow = useCallback(() => {
+    const thread = messageThreadRef.current;
+    if (thread) {
+      thread.scrollTop = thread.scrollHeight;
+      return;
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+  }, []);
+
   const scrollToBottom = useCallback((behavior = 'smooth') => {
     requestAnimationFrame(() => {
       const thread = messageThreadRef.current;
       if (thread) {
+        if (behavior === 'auto') {
+          thread.scrollTop = thread.scrollHeight;
+          return;
+        }
+
         thread.scrollTo({ top: thread.scrollHeight, behavior });
         return;
       }
@@ -452,14 +467,6 @@ export default function Messages() {
       setUnreadDividerMessageId(getEntityId(firstUnreadIncoming));
       rememberLastSeen(loadedMessages.flatMap(message => [message.from, message.to]));
       await markChatAsRead(id);
-      scrollToBottom('auto');
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (latestFetchIdRef.current !== fetchId) return;
-          scrollToBottom('auto');
-          openingConversationRef.current = false;
-        });
-      });
     } catch (err) {
       toast.error('Failed to load messages');
     } finally {
@@ -776,18 +783,36 @@ export default function Messages() {
     setOtherUserTyping(false);
   }, [clearAttachment, clearComposerText, fetchMessages, focusComposerInput, selectedUser]);
 
+  useLayoutEffect(() => {
+    if (loading || !messages.length || !selectedUserId || !openingConversationRef.current) return;
+    scrollThreadToBottomNow();
+  }, [loading, messages.length, scrollThreadToBottomNow, selectedUserId]);
+
   useEffect(() => {
-    if (!messages.length) return undefined;
+    if (!messages.length || loading) return undefined;
 
-    scrollToBottom(openingConversationRef.current ? 'auto' : 'smooth');
-    if (!openingConversationRef.current) return undefined;
+    if (openingConversationRef.current) {
+      let firstFrame = 0;
+      let secondFrame = 0;
 
-    const timer = window.setTimeout(() => {
-      openingConversationRef.current = false;
-    }, 180);
+      firstFrame = requestAnimationFrame(() => {
+        scrollThreadToBottomNow();
+        secondFrame = requestAnimationFrame(() => {
+          scrollThreadToBottomNow();
+          openingConversationRef.current = false;
+        });
+      });
 
-    return () => window.clearTimeout(timer);
-  }, [messages.length, selectedUserId, scrollToBottom]);
+      return () => {
+        cancelAnimationFrame(firstFrame);
+        cancelAnimationFrame(secondFrame);
+      };
+    }
+
+    scrollToBottom('smooth');
+
+    return undefined;
+  }, [loading, messages.length, scrollThreadToBottomNow, scrollToBottom, selectedUserId]);
 
   useEffect(() => {
     return () => {
