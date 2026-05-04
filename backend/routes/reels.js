@@ -14,10 +14,44 @@ fs.mkdirSync(galleryUploadDir, { recursive: true });
 
 const getId = (value) => String(value?._id || value?.id || value || '');
 
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.avi', '.mkv', '.3gp', '.3gpp']);
+const MIME_FALLBACKS = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.avi': 'video/x-msvideo',
+  '.mkv': 'video/x-matroska',
+  '.3gp': 'video/3gpp',
+  '.3gpp': 'video/3gpp'
+};
+
+const getFileExtension = (file) => path.extname(file?.originalname || '').toLowerCase();
+
 const getGalleryType = (file) => {
-  if (file?.mimetype?.startsWith('image/')) return 'image';
-  if (file?.mimetype?.startsWith('video/')) return 'video';
+  const mimeType = String(file?.mimetype || '').toLowerCase();
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+
+  const extension = getFileExtension(file);
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image';
+  if (VIDEO_EXTENSIONS.has(extension)) return 'video';
   return null;
+};
+
+const getGalleryMimeType = (file) => {
+  const mimeType = String(file?.mimetype || '').toLowerCase();
+  if (mimeType && mimeType !== 'application/octet-stream') return file.mimetype;
+  return MIME_FALLBACKS[getFileExtension(file)] || file?.mimetype || 'application/octet-stream';
 };
 
 const localStorage = multer.diskStorage({
@@ -29,7 +63,7 @@ const localStorage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage: isCloudStorageEnabled ? multer.memoryStorage() : localStorage,
+  storage: localStorage,
   // Gallery intentionally has no app-level fileSize cap; storage/platform limits still apply.
   fileFilter: (req, file, cb) => {
     if (!getGalleryType(file)) {
@@ -140,6 +174,7 @@ router.get('/', auth, async (req, res) => {
 
 router.post('/', auth, uploadGallery, async (req, res) => {
   let uploadedFile = null;
+  let stagedFilePath = '';
 
   try {
     const title = String(req.body?.title || '').trim().slice(0, 120);
@@ -148,11 +183,13 @@ router.post('/', auth, uploadGallery, async (req, res) => {
     if (!req.file) return res.status(400).json({ msg: 'Please choose a photo or video' });
 
     const fileType = getGalleryType(req.file);
+    const mimeType = getGalleryMimeType(req.file);
+    stagedFilePath = req.file.path || '';
     uploadedFile = isCloudStorageEnabled
       ? await uploadBuffer({
-          buffer: req.file.buffer,
+          buffer: await fs.promises.readFile(stagedFilePath),
           originalName: req.file.originalname,
-          mimeType: req.file.mimetype,
+          mimeType,
           folder: 'gallery'
         })
       : {
@@ -167,7 +204,7 @@ router.post('/', auth, uploadGallery, async (req, res) => {
       fileUrl: uploadedFile.url,
       fileType,
       fileName: req.file.originalname,
-      mimeType: req.file.mimetype,
+      mimeType,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
       storageProvider: isCloudStorageEnabled ? 'supabase' : 'local',
@@ -182,6 +219,10 @@ router.post('/', auth, uploadGallery, async (req, res) => {
       await deleteObject(uploadedFile.path).catch(() => {});
     }
     res.status(err.status || 500).json({ msg: err.message || 'Gallery upload failed' });
+  } finally {
+    if (isCloudStorageEnabled && stagedFilePath) {
+      await fs.promises.unlink(stagedFilePath).catch(() => {});
+    }
   }
 });
 

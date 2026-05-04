@@ -123,8 +123,21 @@ const getAttachmentTypeLabel = (items = []) => {
   const mediaCount = items.filter(item => ['image', 'video'].includes(item.fileType)).length;
   return mediaCount === items.length ? `${items.length} photos/videos` : `${items.length} attachments`;
 };
+const parseIceUrls = (value = '') => String(value || '')
+  .split(',')
+  .map(url => url.trim())
+  .filter(Boolean);
+
+const configuredTurnUrls = parseIceUrls(import.meta.env.VITE_TURN_URLS);
 const CALL_ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+  ...(configuredTurnUrls.length
+    ? [{
+        urls: configuredTurnUrls,
+        username: import.meta.env.VITE_TURN_USERNAME || undefined,
+        credential: import.meta.env.VITE_TURN_CREDENTIAL || undefined
+      }]
+    : [])
 ];
 
 const createCallId = () => `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -734,6 +747,7 @@ export default function Messages() {
       peer.onicecandidate = null;
       peer.ontrack = null;
       peer.onconnectionstatechange = null;
+      peer.oniceconnectionstatechange = null;
       peer.close();
       peerConnectionRef.current = null;
     }
@@ -771,12 +785,22 @@ export default function Messages() {
     setCallStartedAt(null);
   }, [cleanupCallMedia]);
 
-  const flushPendingIceCandidates = useCallback(async (peer = peerConnectionRef.current) => {
+  const flushPendingIceCandidates = useCallback(async (peer = peerConnectionRef.current, callId = activeCallRef.current.callId) => {
     if (!peer || !peer.remoteDescription) return;
 
-    const queuedCandidates = pendingIceCandidatesRef.current.splice(0);
-    for (const candidate of queuedCandidates) {
+    const matchingCandidates = [];
+    const remainingCandidates = [];
+
+    pendingIceCandidatesRef.current.forEach(item => {
+      const itemCallId = item?.callId || '';
+      if (!itemCallId || !callId || itemCallId === callId) matchingCandidates.push(item);
+      else remainingCandidates.push(item);
+    });
+    pendingIceCandidatesRef.current = remainingCandidates;
+
+    for (const item of matchingCandidates) {
       try {
+        const candidate = item?.candidate || item;
         await peer.addIceCandidate(toIceCandidate(candidate));
       } catch (err) {
         console.warn('Failed to apply queued call candidate', err);
@@ -798,8 +822,9 @@ export default function Messages() {
       audio: true,
       video: mode === 'video'
         ? {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 24, max: 30 },
             facingMode: 'user'
           }
         : false
@@ -811,7 +836,10 @@ export default function Messages() {
       throw new Error('Calls are not supported in this browser.');
     }
 
-    const peer = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+    const peer = new RTCPeerConnection({
+      iceServers: CALL_ICE_SERVERS,
+      iceCandidatePoolSize: 4
+    });
 
     peer.onicecandidate = (event) => {
       if (!event.candidate || !partnerId || !currentUserId) return;
@@ -845,12 +873,33 @@ export default function Messages() {
       }
     };
 
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === 'connected' || peer.iceConnectionState === 'completed') {
+        markCallConnected();
+        return;
+      }
+
+      if (peer.iceConnectionState === 'disconnected') {
+        setCallError('Reconnecting call...');
+      }
+
+      if (peer.iceConnectionState === 'failed') {
+        peer.restartIce?.();
+        setCallError('Call connection is unstable. Try again if it does not recover.');
+      }
+    };
+
     peerConnectionRef.current = peer;
     return peer;
   }, [currentUserId, emitCallSignal, markCallConnected]);
 
   const prepareLocalCall = useCallback(async (mode, partnerId, nextCallId) => {
+    const preservedCandidates = pendingIceCandidatesRef.current.filter(item => {
+      const itemCallId = item?.callId || '';
+      return !itemCallId || itemCallId === nextCallId;
+    });
     cleanupCallMedia();
+    pendingIceCandidatesRef.current = preservedCandidates;
     const stream = await getLocalCallStream(mode);
     localStreamRef.current = stream;
     remoteStreamRef.current = new MediaStream();
@@ -991,7 +1040,6 @@ export default function Messages() {
         answer
       });
       setIncomingCall(null);
-      markCallConnected();
     } catch (err) {
       console.error('Accept call failed', err);
       emitCallSignal('call:reject', {
@@ -1004,7 +1052,7 @@ export default function Messages() {
       resetCall(err.message || 'Could not join the call.');
       toast.error(err.message || 'Could not join the call.');
     }
-  }, [currentUserId, emitCallSignal, flushPendingIceCandidates, incomingCall, markCallConnected, prepareLocalCall, resetCall]);
+  }, [currentUserId, emitCallSignal, flushPendingIceCandidates, incomingCall, prepareLocalCall, resetCall]);
 
   const endCall = useCallback((reason = 'ended', notify = true) => {
     const activeCall = activeCallRef.current;
@@ -1038,6 +1086,20 @@ export default function Messages() {
 
     resetCall();
   }, [callMode, currentUserId, emitCallSignal, incomingCall, resetCall]);
+
+  useEffect(() => {
+    if (!activeCallId || !['calling', 'connecting'].includes(callState)) return undefined;
+    const expectedCallId = activeCallId;
+    const timer = window.setTimeout(() => {
+      const activeCall = activeCallRef.current;
+      if (activeCall.callId !== expectedCallId || !['calling', 'connecting'].includes(activeCall.state)) return;
+      endCall('timeout');
+      setCallError('Call timed out. Please try again.');
+      toast.error('Call timed out. Please try again.');
+    }, 35000);
+
+    return () => window.clearTimeout(timer);
+  }, [activeCallId, callState, endCall]);
 
   const toggleCallMic = useCallback(() => {
     const audioTracks = localStreamRef.current?.getAudioTracks?.() || [];
@@ -1148,20 +1210,25 @@ export default function Messages() {
     try {
       await peer.setRemoteDescription(toSessionDescription(payload.answer));
       await flushPendingIceCandidates(peer);
-      markCallConnected();
     } catch (err) {
       console.error('Call answer failed', err);
       resetCall('Call failed while connecting.');
     }
-  }, [flushPendingIceCandidates, markCallConnected, resetCall]);
+  }, [flushPendingIceCandidates, resetCall]);
 
   const handleCallIceCandidate = useCallback(async (payload = {}) => {
     const activeCall = activeCallRef.current;
-    if (!payload.candidate || payload.callId !== activeCall.callId) return;
+    if (!payload.candidate) return;
+    if (payload.callId && activeCall.callId && payload.callId !== activeCall.callId) return;
+
+    const candidateEntry = {
+      callId: payload.callId || activeCall.callId || '',
+      candidate: payload.candidate
+    };
 
     const peer = peerConnectionRef.current;
     if (!peer || !peer.remoteDescription) {
-      pendingIceCandidatesRef.current.push(payload.candidate);
+      pendingIceCandidatesRef.current.push(candidateEntry);
       return;
     }
 
@@ -2669,9 +2736,9 @@ export default function Messages() {
   }
 
   return (
-    <div className="messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20">
+    <div className="messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20">
       <div className="flex h-full min-h-0">
-        <aside className="messages-tools-rail hidden w-60 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
+        <aside className="messages-tools-rail hidden w-56 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
           <div className="flex items-center gap-3 px-1 py-2">
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-gray-900 dark:ring-gray-800">
               <img src="/syncrova-app-logo.png" alt="SYNCROVA" className="h-full w-full object-contain" />
@@ -2723,7 +2790,7 @@ export default function Messages() {
           </div>
         </aside>
 
-        <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[23rem] md:max-w-none md:flex xl:w-[24rem]`}>
+        <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[22rem] md:max-w-none md:flex xl:w-[23rem]`}>
           <div className="border-b border-gray-200/80 p-4 dark:border-gray-800">
             <div className="mb-4 flex items-center justify-between">
               <div>

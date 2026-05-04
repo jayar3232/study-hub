@@ -689,7 +689,7 @@ export default function Layout({ children }) {
   );
 
   return (
-    <div className="portal-shell min-h-screen text-slate-900 dark:text-slate-100">
+    <div className="portal-shell text-slate-900 dark:text-slate-100">
       <header className="fixed inset-x-0 top-0 z-40 hidden h-16 items-center justify-between bg-[#07036f] px-5 text-white shadow-lg shadow-[#07036f]/20 md:flex">
         <div className="flex min-w-0 items-center gap-3">
           <AppLogoMark size="xs" className="rounded-full bg-white p-1 shadow-none ring-1 ring-white/25" />
@@ -753,7 +753,7 @@ export default function Layout({ children }) {
 
       </aside>
 
-      <div className="flex min-h-screen flex-col md:ml-72 md:pt-16">
+      <div className="layout-content-frame flex min-h-0 flex-col md:ml-72 md:pt-16">
         <header className="mobile-topbar sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#07036f] text-white shadow-lg shadow-[#07036f]/20 md:hidden">
           <BrandLogo mobile inverse />
           <div className="flex items-center gap-2">
@@ -801,7 +801,7 @@ export default function Layout({ children }) {
         )}
 
         <div className="flex min-h-0 flex-1">
-          <main className={`app-main min-w-0 flex-1 overflow-x-hidden ${isCompactRoute ? 'app-main--compact' : ''}`}>
+          <main className={`app-main min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${isCompactRoute ? 'app-main--compact' : ''}`}>
             {location.pathname.startsWith('/arena') ? (
               <div className="min-h-full">{pageContent}</div>
             ) : (
@@ -810,7 +810,7 @@ export default function Layout({ children }) {
           </main>
 
           {shouldShowSocialRail && (
-            <aside className="desktop-social-rail hidden w-72 shrink-0 border-l border-slate-200 bg-white/55 p-4 backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-950/55 xl:block">
+            <aside className="desktop-social-rail hidden w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-white/55 p-4 backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-950/55 xl:block">
               <div className="sticky top-20 space-y-4">
                 <OnlineRoster limit={10} title="Active users" />
                 <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">

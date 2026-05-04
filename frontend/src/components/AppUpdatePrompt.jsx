@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { registerPlugin } from '@capacitor/core';
 import { Download, RefreshCw, X } from 'lucide-react';
 import { getBackendOrigin } from '../utils/media';
 
-const CURRENT_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSION_CODE || 12);
+const CURRENT_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSION_CODE || 18);
 const CHECK_AFTER_MS = 1200;
+const SyncrovaUpdater = registerPlugin('SyncrovaUpdater');
 
 const isNativeAndroid = () => {
   if (typeof window === 'undefined') return false;
@@ -24,6 +26,7 @@ export default function AppUpdatePrompt() {
   const [update, setUpdate] = useState(null);
   const [hidden, setHidden] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [downloadMessage, setDownloadMessage] = useState('');
 
   const dismissKey = useMemo(() => (
     update?.versionCode ? `syncrova-update-dismissed-${update.versionCode}` : ''
@@ -78,8 +81,35 @@ export default function AppUpdatePrompt() {
     setHidden(true);
   };
 
-  const downloadUpdate = () => {
-    window.open(update.apkUrl, '_blank', 'noopener,noreferrer');
+  const downloadUpdate = async () => {
+    setChecking(true);
+    setDownloadMessage('');
+
+    try {
+      const nativeUpdater = SyncrovaUpdater || window.Capacitor?.Plugins?.SyncrovaUpdater;
+      if (isNativeAndroid() && nativeUpdater?.downloadAndInstall) {
+        const result = await nativeUpdater.downloadAndInstall({
+          url: update.apkUrl,
+          versionName: update.versionName,
+          fileName: 'syncrova-latest.apk'
+        });
+
+        if (result?.needsInstallPermission) {
+          setDownloadMessage('Allow installs for SYNCROVA, then tap Download again.');
+          return;
+        }
+
+        setDownloadMessage('Downloading inside SYNCROVA. The Android installer will open when ready.');
+        return;
+      }
+
+      window.open(update.apkUrl, '_blank', 'noopener,noreferrer');
+      setDownloadMessage('Opening the APK download.');
+    } catch (err) {
+      setDownloadMessage(err?.message || 'Could not start the in-app update download.');
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -92,11 +122,16 @@ export default function AppUpdatePrompt() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black">New SYNCROVA update available</p>
             <p className="mt-1 text-xs font-semibold text-white/70">
-              Version {update.versionName} is ready. Download the APK, then approve the Android installer.
+              Version {update.versionName} is ready. Download inside the app, then approve the Android installer.
             </p>
             {update.notes && (
               <p className="mt-2 rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">
                 {update.notes}
+              </p>
+            )}
+            {downloadMessage && (
+              <p className="mt-2 rounded-2xl bg-blue-500/15 px-3 py-2 text-xs font-semibold text-blue-100">
+                {downloadMessage}
               </p>
             )}
           </div>
@@ -129,7 +164,7 @@ export default function AppUpdatePrompt() {
           >
             <span className="inline-flex items-center justify-center gap-2">
               <Download size={17} />
-              Download update
+              {checking ? 'Preparing...' : 'Download in app'}
             </span>
           </button>
         </div>

@@ -35,12 +35,12 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 16),
-    versionName: process.env.APP_VERSION_NAME || '3.0.6',
+    versionCode: Number(process.env.APP_VERSION_CODE || 18),
+    versionName: process.env.APP_VERSION_NAME || '3.0.8',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Major performance update: smoother scrolling, faster chat/feed loading, lighter rendering, and improved mobile FPS.'
+    notes: process.env.APP_UPDATE_NOTES || 'Professional layout refresh for Dashboard, Profile, Gallery, and Messages.'
   });
 });
 

@@ -154,7 +154,7 @@ function HeaderMetric({ icon: Icon, label, value, helper, accent = 'blue' }) {
   };
 
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/85 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/65">
+    <div className="dashboard-header-metric min-w-0 rounded-2xl border border-slate-200 bg-slate-50/85 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/65">
       <div className="flex items-start gap-3">
         <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ring-1 ${accentClasses[accent] || accentClasses.blue}`}>
           <Icon size={19} />
@@ -175,21 +175,21 @@ function DashboardWelcomeHeader({ user, now, weather, weatherLoading }) {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone?.replace(/_/g, ' ') || 'Local time';
   const hasTemperature = Number.isFinite(weather?.temperature);
   const weatherValue = hasTemperature
-    ? `${Math.round(weather.temperature)}°C`
+    ? `${Math.round(weather.temperature)} deg C`
     : weatherLoading ? 'Updating' : 'Unavailable';
   const weatherHelper = weather && hasTemperature
     ? `${weather.label} - ${weather.locationLabel}`
     : weatherLoading ? 'Checking live weather' : 'Weather will retry on refresh';
 
   return (
-    <section className="overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white/88 p-5 shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900/92 dark:shadow-black/25">
+    <section className="dashboard-welcome-card overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white/88 p-5 shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900/92 dark:shadow-black/25">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-stretch xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             Dashboard overview
           </div>
-          <h1 className="mt-4 text-2xl font-black tracking-normal text-slate-950 dark:text-white sm:text-3xl">
+          <h1 className="dashboard-welcome-title mt-4 text-2xl font-black tracking-normal text-slate-950 dark:text-white sm:text-3xl">
             Welcome back, {firstName}
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500 dark:text-slate-400">
@@ -197,7 +197,7 @@ function DashboardWelcomeHeader({ user, now, weather, weatherLoading }) {
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3 xl:w-[38rem]">
+        <div className="dashboard-welcome-metrics grid gap-3 sm:grid-cols-3 xl:w-[38rem]">
           <HeaderMetric
             icon={Clock3}
             label="Local time"
@@ -235,6 +235,33 @@ function DashboardWelcomeHeader({ user, now, weather, weatherLoading }) {
         </div>
       )}
     </section>
+  );
+}
+
+function DashboardCommandCard({ icon: Icon, label, value, helper, onClick, accent = 'blue' }) {
+  const accents = {
+    blue: 'bg-blue-50 text-[#0b57d0] ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50',
+    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/50',
+    amber: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/50',
+    slate: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700'
+  };
+  const Element = onClick ? 'button' : 'div';
+
+  return (
+    <Element
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className="dashboard-command-card flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm shadow-slate-200/55 transition hover:border-blue-200 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/15"
+    >
+      <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ring-1 ${accents[accent] || accents.blue}`}>
+        <Icon size={20} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</span>
+        <span className="mt-1 block truncate text-2xl font-black text-slate-950 dark:text-white">{value}</span>
+        {helper && <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{helper}</span>}
+      </span>
+    </Element>
   );
 }
 
@@ -461,12 +488,47 @@ export default function Dashboard() {
         weatherLoading={weatherLoading}
       />
 
+      <section className="dashboard-command-strip grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <DashboardCommandCard
+          icon={Users}
+          label="Workspaces"
+          value={groups.length}
+          helper={`${completedTasks} completed tasks`}
+          onClick={() => navigate('/groups')}
+          accent="blue"
+        />
+        <DashboardCommandCard
+          icon={MessageCircle}
+          label="Unread chats"
+          value={unreadMessages}
+          helper={`${onlinePeople.length} active now`}
+          onClick={() => navigate('/messages')}
+          accent="emerald"
+        />
+        <DashboardCommandCard
+          icon={Trophy}
+          label="Network XP"
+          value={compactNumber(rankStats?.xp)}
+          helper={rankStats?.rank?.name || 'Rank progress'}
+          onClick={() => navigate('/profile')}
+          accent="amber"
+        />
+        <DashboardCommandCard
+          icon={PlayCircle}
+          label="My Day"
+          value={storyRail.length}
+          helper="Active story groups"
+          onClick={() => navigate('/profile')}
+          accent="slate"
+        />
+      </section>
+
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <main className="min-w-0 space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+          <section className="dashboard-story-panel rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h1 className="text-xl font-black text-slate-950 dark:text-white">Home</h1>
+                <h1 className="text-xl font-black text-slate-950 dark:text-white">Today at SYNCROVA</h1>
                 <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Stories, posts, active friends, and ranks.</p>
               </div>
               <button

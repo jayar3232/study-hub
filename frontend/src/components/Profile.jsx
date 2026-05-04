@@ -558,8 +558,8 @@ export default function Profile() {
     <div className="mobile-page profile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
       {renderProfileTabs('profile-tab-bar--mobile mobile-fixed-tabbar md:hidden')}
 
-      <section className="mobile-profile-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
+      <section className="mobile-profile-hero profile-hero-card overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="profile-hero-cover relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">
           {coverSrc && !coverLoadFailed ? (
             <img
               src={coverSrc}
@@ -571,7 +571,7 @@ export default function Profile() {
           ) : (
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.32),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_52%,#172554)]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/60 to-black/24" />
+          <div className="profile-hero-overlay absolute inset-0 bg-gradient-to-t from-black/88 via-black/50 to-black/18" />
           <label className="absolute right-4 top-4 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs font-black uppercase text-white shadow-xl backdrop-blur transition hover:border-blue-200 hover:bg-[#1877f2]/85">
             <Camera size={15} />
             {coverSrc ? 'Change cover' : 'Set cover'}
@@ -618,17 +618,17 @@ export default function Profile() {
             </div>
 
             <div className="grid w-full gap-3 md:w-80">
-              <div className="rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
+              <div className="profile-hero-glass-card rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
                 <div className="flex items-center gap-3">
                   <RankEmblem rank={rankStats?.rank} size="sm" animated />
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase text-pink-100/80">Current rank</p>
                     <p className="truncate text-lg font-black">{rankStats?.rank?.name || 'Rookie Operator'}</p>
-                    <p className="text-xs text-white/65">{rankStats?.xp || 0} XP · #{currentPosition || '-'} network rank</p>
+                    <p className="text-xs text-white/65">{rankStats?.xp || 0} XP - #{currentPosition || '-'} network rank</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
+              <div className="profile-hero-glass-card rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-semibold">Profile completeness</span>
                   <span>{completion}%</span>
@@ -642,7 +642,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 md:grid-cols-3">
+        <div className="profile-hero-stat-grid grid gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 md:grid-cols-3">
           <div className="bg-white p-4 dark:bg-gray-900">
             <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Member since</p>
             <p className="mt-1 font-semibold text-gray-950 dark:text-white">{memberSince}</p>
@@ -1208,7 +1208,7 @@ export default function Profile() {
               <h3 className="font-black text-gray-950 dark:text-white">Mobile app</h3>
               <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">SYNCROVA checks for Android updates automatically after the app opens.</p>
               <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm font-bold text-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
-                Current build target: 2.0.1
+                Current build target: 3.0.8
               </div>
             </div>
             <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">

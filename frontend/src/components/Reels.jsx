@@ -42,6 +42,25 @@ const formatBytes = (bytes = 0) => {
   return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'heic', 'heif']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'mov', 'webm', 'avi', 'mkv', '3gp', '3gpp']);
+
+const getFileExtension = (file = {}) => String(file.name || '')
+  .split('.')
+  .pop()
+  .toLowerCase();
+
+const getGalleryFileType = (file = {}) => {
+  const mimeType = String(file.type || '').toLowerCase();
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+
+  const extension = getFileExtension(file);
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image';
+  if (VIDEO_EXTENSIONS.has(extension)) return 'video';
+  return '';
+};
+
 function MemoryPlayer({ memory, active }) {
   const videoRef = useRef(null);
   const mediaSrc = resolveMediaUrl(memory?.embedUrl || memory?.sourceUrl);
@@ -361,7 +380,7 @@ export default function Reels() {
 
   const handleGalleryFile = (file) => {
     if (!file) return;
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+    if (!getGalleryFileType(file)) {
       toast.error('Gallery supports photos and videos only');
       return;
     }
@@ -395,7 +414,7 @@ export default function Reels() {
     setUploading(true);
     try {
       const res = await api.post('/reels', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 0,
         onUploadProgress: (progressEvent) => {
           if (!progressEvent.total) return;
           setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
@@ -411,7 +430,7 @@ export default function Reels() {
       setMobileUploadOpen(false);
       toast.success('Added to Gallery');
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Gallery upload failed');
+      toast.error(err.response?.data?.msg || 'Gallery upload failed. Please check the video file and connection.');
     } finally {
       setUploading(false);
       window.setTimeout(() => setUploadProgress(0), 500);
@@ -502,7 +521,7 @@ export default function Reels() {
       )}
       {galleryPreview && (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-950 dark:border-gray-800">
-          {galleryFile?.type?.startsWith('image/') ? (
+          {getGalleryFileType(galleryFile) === 'image' ? (
             <img src={galleryPreview} alt="Gallery preview" className="max-h-36 w-full object-contain" />
           ) : (
             <video src={galleryPreview} className="max-h-36 w-full object-contain" muted playsInline controls />
@@ -512,7 +531,7 @@ export default function Reels() {
       {galleryFile && (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900">
           <p className="truncate text-sm font-black text-gray-950 dark:text-white">{galleryFile.name}</p>
-          <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{formatBytes(galleryFile.size)} - {galleryFile.type.startsWith('video/') ? 'Video upload' : 'Photo upload'}</p>
+          <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{formatBytes(galleryFile.size)} - {getGalleryFileType(galleryFile) === 'video' ? 'Video upload' : 'Photo upload'}</p>
           {(uploading || uploadProgress > 0) && (
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white dark:bg-gray-950">
               <div className="h-full rounded-full bg-[#0b57d0] transition-all" style={{ width: `${Math.max(4, uploadProgress)}%` }} />
@@ -542,14 +561,14 @@ export default function Reels() {
   );
 
   return (
-    <main className="mobile-tab-dock-page reels-page mx-auto grid w-full max-w-[82rem] gap-3 lg:grid-cols-[18rem_minmax(20rem,34rem)_20rem]">
+    <main className="mobile-tab-dock-page reels-page reels-page--pro mx-auto grid w-full max-w-[84rem] gap-3 lg:grid-cols-[18rem_minmax(22rem,38rem)_20rem]">
       <aside className="hidden min-h-0 flex-col gap-3 lg:flex">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
           <p className="flex items-center gap-2 text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">
             <Clapperboard size={15} />
             Gallery
           </p>
-          <h1 className="mt-2 text-2xl font-black text-gray-950 dark:text-white">Gallery Studio</h1>
+          <h1 className="mt-2 text-2xl font-black text-gray-950 dark:text-white">Gallery Library</h1>
           <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">Upload, preview, comment, save, and manage your own photos and videos.</p>
         </section>
 
