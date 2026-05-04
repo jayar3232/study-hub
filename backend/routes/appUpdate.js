@@ -71,12 +71,12 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 21),
-    versionName: process.env.APP_VERSION_NAME || '3.1.2',
+    versionCode: Number(process.env.APP_VERSION_CODE || 22),
+    versionName: process.env.APP_VERSION_NAME || '3.1.3',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, false),
     apkUrl: toAbsoluteUrl(req, apkUrl),
-    notes: process.env.APP_UPDATE_NOTES || 'Android login fix: app now points to the live SYNCROVA backend.'
+    notes: process.env.APP_UPDATE_NOTES || 'Android rebuild with the live SYNCROVA backend configuration.'
   });
 });
 
