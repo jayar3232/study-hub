@@ -875,9 +875,13 @@ export default function Messages() {
       throw new Error('Calls are not supported in this browser.');
     }
 
+    const relayReady = hasTurnServer(iceServers);
+    setCallRelayReady(relayReady);
+
     const peer = new RTCPeerConnection({
       iceServers,
       iceCandidatePoolSize: hasTurnServer(iceServers) ? 8 : 4,
+      iceTransportPolicy: relayReady ? 'relay' : 'all',
       bundlePolicy: 'max-bundle',
       rtcpMuxPolicy: 'require'
     });
@@ -2196,6 +2200,8 @@ export default function Messages() {
           : callError || '';
   const callNetworkHint = !callRelayReady && ['calling', 'connecting'].includes(callState)
     ? 'TURN relay is not configured yet. Calls may only connect on some networks.'
+    : callRelayReady && ['calling', 'connecting'].includes(callState)
+      ? 'Using TURN relay for cross-network call.'
     : '';
   const offlineText = selectedLastSeen
     ? `Offline ${formatDistanceToNow(new Date(selectedLastSeen), { addSuffix: true })}`
