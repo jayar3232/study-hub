@@ -3,7 +3,7 @@ import { registerPlugin } from '@capacitor/core';
 import { Download, RefreshCw, X } from 'lucide-react';
 import { getBackendOrigin } from '../utils/media';
 
-const CURRENT_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSION_CODE || 20);
+const CURRENT_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSION_CODE || 21);
 const CHECK_AFTER_MS = 1200;
 const SyncrovaUpdater = registerPlugin('SyncrovaUpdater');
 
