@@ -128,9 +128,15 @@ const parseIceUrls = (value = '') => String(value || '')
   .map(url => url.trim())
   .filter(Boolean);
 
+const DEFAULT_STUN_URLS = [
+  'stun:stun.l.google.com:19302',
+  'stun:stun1.l.google.com:19302',
+  'stun:stun2.l.google.com:19302',
+  'stun:stun.cloudflare.com:3478'
+];
 const configuredTurnUrls = parseIceUrls(import.meta.env.VITE_TURN_URLS);
-const CALL_ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+const STATIC_CALL_ICE_SERVERS = [
+  { urls: DEFAULT_STUN_URLS },
   ...(configuredTurnUrls.length
     ? [{
         urls: configuredTurnUrls,
@@ -139,6 +145,19 @@ const CALL_ICE_SERVERS = [
       }]
     : [])
 ];
+
+const normalizeIceServers = (servers = []) => servers
+  .map(server => ({
+    ...server,
+    urls: Array.isArray(server?.urls) ? server.urls.filter(Boolean) : parseIceUrls(server?.urls)
+  }))
+  .filter(server => server.urls.length);
+
+const hasTurnServer = (servers = []) => servers.some(server => (
+  (Array.isArray(server?.urls) ? server.urls : [server?.urls])
+    .filter(Boolean)
+    .some(url => /^turns?:/i.test(String(url)))
+));
 
 const createCallId = () => `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -352,6 +371,7 @@ export default function Messages() {
   const [cameraOff, setCameraOff] = useState(false);
   const [callStartedAt, setCallStartedAt] = useState(null);
   const [callClock, setCallClock] = useState(Date.now());
+  const [callRelayReady, setCallRelayReady] = useState(() => hasTurnServer(STATIC_CALL_ICE_SERVERS));
   const [chatStreak, setChatStreak] = useState(null);
 
   const conversationListRef = useRef(null);
@@ -381,6 +401,7 @@ export default function Messages() {
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const pendingIceCandidatesRef = useRef([]);
+  const iceServersRef = useRef(null);
   const activeCallRef = useRef({
     state: 'idle',
     callId: '',
@@ -831,14 +852,34 @@ export default function Messages() {
     });
   }, []);
 
-  const createPeerConnection = useCallback((partnerId, nextCallId) => {
+  const loadCallIceServers = useCallback(async () => {
+    if (iceServersRef.current) return iceServersRef.current;
+
+    let nextIceServers = normalizeIceServers(STATIC_CALL_ICE_SERVERS);
+    try {
+      const res = await api.get('/app/ice-servers');
+      const remoteIceServers = normalizeIceServers(res.data?.iceServers || []);
+      if (remoteIceServers.length) nextIceServers = remoteIceServers;
+      setCallRelayReady(Boolean(res.data?.relayConfigured) || hasTurnServer(nextIceServers));
+    } catch (err) {
+      setCallRelayReady(hasTurnServer(nextIceServers));
+      console.warn('Call ICE server config fallback is active', err);
+    }
+
+    iceServersRef.current = nextIceServers;
+    return nextIceServers;
+  }, []);
+
+  const createPeerConnection = useCallback((partnerId, nextCallId, iceServers = STATIC_CALL_ICE_SERVERS) => {
     if (typeof RTCPeerConnection === 'undefined') {
       throw new Error('Calls are not supported in this browser.');
     }
 
     const peer = new RTCPeerConnection({
-      iceServers: CALL_ICE_SERVERS,
-      iceCandidatePoolSize: 4
+      iceServers,
+      iceCandidatePoolSize: hasTurnServer(iceServers) ? 8 : 4,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
     });
 
     peer.onicecandidate = (event) => {
@@ -876,6 +917,7 @@ export default function Messages() {
     peer.oniceconnectionstatechange = () => {
       if (peer.iceConnectionState === 'connected' || peer.iceConnectionState === 'completed') {
         markCallConnected();
+        setCallError('');
         return;
       }
 
@@ -908,10 +950,11 @@ export default function Messages() {
     setMicMuted(false);
     setCameraOff(mode !== 'video');
 
-    const peer = createPeerConnection(partnerId, nextCallId);
+    const iceServers = await loadCallIceServers();
+    const peer = createPeerConnection(partnerId, nextCallId, iceServers);
     stream.getTracks().forEach(track => peer.addTrack(track, stream));
     return peer;
-  }, [cleanupCallMedia, createPeerConnection, getLocalCallStream]);
+  }, [cleanupCallMedia, createPeerConnection, getLocalCallStream, loadCallIceServers]);
 
   useEffect(() => {
     activeCallRef.current = {
@@ -2151,6 +2194,9 @@ export default function Messages() {
         : callState === 'connected'
           ? callDurationText || 'Connected'
           : callError || '';
+  const callNetworkHint = !callRelayReady && ['calling', 'connecting'].includes(callState)
+    ? 'TURN relay is not configured yet. Calls may only connect on some networks.'
+    : '';
   const offlineText = selectedLastSeen
     ? `Offline ${formatDistanceToNow(new Date(selectedLastSeen), { addSuffix: true })}`
     : 'Offline';
@@ -3733,8 +3779,8 @@ export default function Messages() {
         </div>
 
       {callIsActive && (
-        <div className="fixed inset-0 z-[105] flex items-end justify-center bg-slate-950/80 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="mobile-bottom-sheet w-full max-w-2xl overflow-hidden rounded-t-[1.75rem] border border-white/10 bg-slate-950 text-white shadow-2xl shadow-black/40 sm:rounded-[1.75rem]">
+        <div className="call-overlay fixed inset-0 z-[105] flex items-center justify-center bg-slate-950/88 p-3 backdrop-blur-sm sm:p-4">
+          <div className="call-shell w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950 text-white shadow-2xl shadow-black/40">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-wide text-sky-300">
@@ -3753,9 +3799,9 @@ export default function Messages() {
               </button>
             </div>
 
-            <div className="p-5">
+            <div className="call-body p-5">
               {callMode === 'video' ? (
-                <div className="relative aspect-video overflow-hidden rounded-3xl bg-slate-900 ring-1 ring-white/10">
+                <div className="call-video-stage relative aspect-video overflow-hidden rounded-3xl bg-slate-900 ring-1 ring-white/10">
                   <video
                     ref={remoteVideoRef}
                     autoPlay
@@ -3770,7 +3816,7 @@ export default function Messages() {
                     </div>
                   )}
                   {localStreamReady && (
-                    <div className="absolute bottom-4 right-4 h-28 w-20 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-xl sm:h-36 sm:w-28">
+                    <div className="call-self-preview absolute bottom-4 right-4 h-28 w-20 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-xl sm:h-36 sm:w-28">
                       <video ref={localVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
                       {cameraOff && (
                         <div className="absolute inset-0 grid place-items-center bg-slate-900/95">
@@ -3781,7 +3827,7 @@ export default function Messages() {
                   )}
                 </div>
               ) : (
-                <div className="flex min-h-[18rem] flex-col items-center justify-center rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-center ring-1 ring-white/10">
+                <div className="call-audio-stage flex min-h-[18rem] flex-col items-center justify-center rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-center ring-1 ring-white/10">
                   {renderAvatar(callPartner || selectedUser, 'h-28 w-28', 46)}
                   <h3 className="mt-5 max-w-full truncate text-2xl font-black">{callPartnerName}</h3>
                   <p className="mt-2 text-sm font-semibold text-slate-300">{callStatusText}</p>
@@ -3794,8 +3840,13 @@ export default function Messages() {
                   {callError}
                 </p>
               )}
+              {callNetworkHint && (
+                <p className="mt-4 rounded-2xl bg-sky-500/10 px-4 py-3 text-sm font-semibold text-sky-100 ring-1 ring-sky-400/20">
+                  {callNetworkHint}
+                </p>
+              )}
 
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <div className="call-actions mt-5 flex flex-wrap items-center justify-center gap-3">
                 {callState === 'incoming' ? (
                   <>
                     <button

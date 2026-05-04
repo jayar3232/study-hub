@@ -60,6 +60,23 @@ const getFriendshipState = (friendship, currentUserId) => {
   return { status: 'none' };
 };
 
+const friendshipStatusPriority = { accepted: 2, pending: 1 };
+const getActiveFriendshipBetween = async (currentUserId, profileUserId) => {
+  const relationships = await Friendship.find({
+    $or: [
+      { requester: currentUserId, recipient: profileUserId },
+      { requester: profileUserId, recipient: currentUserId }
+    ],
+    status: { $in: ['pending', 'accepted'] }
+  }).select('requester recipient status updatedAt createdAt').lean();
+
+  return relationships.sort((a, b) => {
+    const statusDelta = (friendshipStatusPriority[b.status] || 0) - (friendshipStatusPriority[a.status] || 0);
+    if (statusDelta !== 0) return statusDelta;
+    return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+  })[0] || null;
+};
+
 const localStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, file.fieldname === 'coverPhoto' ? coverUploadDir : avatarUploadDir);
@@ -297,13 +314,7 @@ router.get('/:id/public', auth, async (req, res) => {
         .lean(),
       isSelf
         ? Promise.resolve(null)
-        : Friendship.findOne({
-            $or: [
-              { requester: req.user, recipient: profile._id },
-              { requester: profile._id, recipient: req.user }
-            ],
-            status: { $in: ['pending', 'accepted'] }
-          }).select('requester recipient status').lean()
+        : getActiveFriendshipBetween(req.user, profile._id)
     ]);
 
     const profileObject = profile.toObject();

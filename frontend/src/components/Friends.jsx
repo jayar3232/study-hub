@@ -38,7 +38,7 @@ const emptySummary = {
 const statusCopy = {
   none: { label: 'Not connected', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
   friends: { label: 'Friends', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/60' },
-  outgoing: { label: 'Pending', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60' },
+  outgoing: { label: 'Request sent', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60' },
   incoming: { label: 'Needs reply', className: 'bg-blue-50 text-[#0b57d0] ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/60' }
 };
 
@@ -59,6 +59,40 @@ const matchesCampus = (person, campus) => !campus || person?.campus === campus;
 
 const announceFriendUpdate = () => {
   window.dispatchEvent(new CustomEvent('friendsUpdated'));
+};
+
+const uniqueBy = (items = [], getKey) => {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = String(getKey(item) || getEntityId(item) || '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const normalizeSummary = (data = {}) => {
+  const friends = uniqueBy(data.friends || [], item => getEntityId(item.user) || getEntityId(item));
+  const incoming = uniqueBy(data.incoming || [], item => getEntityId(item.requester) || getEntityId(item));
+  const outgoing = uniqueBy(data.outgoing || [], item => getEntityId(item.recipient) || getEntityId(item));
+  const people = uniqueBy(data.people || [], getEntityId);
+
+  return {
+    ...emptySummary,
+    ...data,
+    friends,
+    incoming,
+    outgoing,
+    people,
+    counts: {
+      ...emptySummary.counts,
+      ...(data.counts || {}),
+      friends: friends.length,
+      incoming: incoming.length,
+      outgoing: outgoing.length,
+      people: people.length
+    }
+  };
 };
 
 function Avatar({ person, size = 'md' }) {
@@ -111,11 +145,7 @@ export default function Friends() {
     if (showLoader) setLoading(true);
     try {
       const res = await api.get('/friends/summary');
-      setSummary({
-        ...emptySummary,
-        ...res.data,
-        counts: { ...emptySummary.counts, ...(res.data?.counts || {}) }
-      });
+      setSummary(normalizeSummary(res.data));
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to load friends');
     } finally {
@@ -166,8 +196,8 @@ export default function Friends() {
     const personId = getEntityId(person);
     setActionKey(`send-${personId}`);
     try {
-      await api.post(`/friends/request/${personId}`);
-      toast.success('Friend request sent');
+      const res = await api.post(`/friends/request/${personId}`);
+      toast.success(res.data?.msg || 'Friend request sent');
       await loadFriends(false);
       announceFriendUpdate();
     } catch (err) {
@@ -200,6 +230,20 @@ export default function Friends() {
       announceFriendUpdate();
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Decline failed');
+    } finally {
+      setActionKey('');
+    }
+  };
+
+  const cancelRequest = async (requestId) => {
+    setActionKey(`cancel-${requestId}`);
+    try {
+      await api.delete(`/friends/requests/${requestId}`);
+      toast.success('Friend request canceled');
+      await loadFriends(false);
+      announceFriendUpdate();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Cancel failed');
     } finally {
       setActionKey('');
     }
@@ -271,11 +315,12 @@ export default function Friends() {
       return (
         <button
           type="button"
-          disabled
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60"
+          onClick={() => cancelRequest(requestId)}
+          disabled={!requestId || actionKey === `cancel-${requestId}`}
+          className="inline-flex min-w-[8.6rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
         >
-          <Clock size={14} />
-          Pending
+          {actionKey === `cancel-${requestId}` ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+          Cancel request
         </button>
       );
     }
@@ -568,6 +613,15 @@ export default function Friends() {
                         </div>
                         <RelationshipPill status="outgoing" />
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => cancelRequest(item._id)}
+                        disabled={actionKey === `cancel-${item._id}`}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-black text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+                      >
+                        {actionKey === `cancel-${item._id}` ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
+                        Cancel friend request
+                      </button>
                     </article>
                   ))
                 )}

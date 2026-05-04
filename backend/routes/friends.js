@@ -10,6 +10,18 @@ const router = express.Router();
 
 const userFields = 'name email course campus avatar coverPhoto bio lastSeen createdAt';
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
+const activeStatuses = ['pending', 'accepted'];
+const statusPriority = { accepted: 2, pending: 1, declined: 0 };
+
+const getPairKey = (firstUserId, secondUserId) => (
+  [normalizeId(firstUserId), normalizeId(secondUserId)].sort().join(':')
+);
+
+const sortRelationships = (relationships = []) => [...relationships].sort((a, b) => {
+  const statusDelta = (statusPriority[b.status] || 0) - (statusPriority[a.status] || 0);
+  if (statusDelta !== 0) return statusDelta;
+  return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+});
 
 const toClientUser = (user) => {
   if (!user) return null;
@@ -50,12 +62,25 @@ const relationPayload = (friendship, currentUserId) => {
   return { status: 'none' };
 };
 
-const findRelationship = (currentUserId, otherUserId) => Friendship.findOne({
+const findRelationships = (currentUserId, otherUserId, statuses = null) => Friendship.find({
   $or: [
     { requester: currentUserId, recipient: otherUserId },
     { requester: otherUserId, recipient: currentUserId }
-  ]
+  ],
+  ...(statuses ? { status: { $in: statuses } } : {})
 });
+
+const cleanupDuplicateActiveRelationships = async (relationships = [], keepId) => {
+  const keep = normalizeId(keepId);
+  const duplicateIds = relationships
+    .filter(item => activeStatuses.includes(item.status))
+    .filter(item => normalizeId(item._id) !== keep)
+    .map(item => item._id);
+
+  if (duplicateIds.length) {
+    await Friendship.deleteMany({ _id: { $in: duplicateIds } });
+  }
+};
 
 const emitFriendSync = (io, userIds = []) => {
   if (!io) return;
@@ -87,9 +112,20 @@ router.get('/summary', auth, async (req, res) => {
     const incoming = [];
     const outgoing = [];
 
-    connections.forEach(connection => {
+    const sortedConnections = sortRelationships(connections);
+    const duplicateActiveIds = [];
+    const seenPairs = new Set();
+
+    sortedConnections.forEach(connection => {
       const requesterId = normalizeId(connection.requester);
       const recipientId = normalizeId(connection.recipient);
+      const pairKey = getPairKey(requesterId, recipientId);
+      if (seenPairs.has(pairKey)) {
+        duplicateActiveIds.push(connection._id);
+        return;
+      }
+      seenPairs.add(pairKey);
+
       const isRequester = requesterId === normalizeId(currentUserId);
       const otherUser = isRequester ? connection.recipient : connection.requester;
       if (!otherUser) return;
@@ -120,6 +156,10 @@ router.get('/summary', auth, async (req, res) => {
         });
       }
     });
+
+    if (duplicateActiveIds.length) {
+      Friendship.deleteMany({ _id: { $in: duplicateActiveIds } }).catch(() => {});
+    }
 
     const people = users.map(user => ({
       ...toClientUser(user),
@@ -156,13 +196,27 @@ router.post('/request/:userId', auth, async (req, res) => {
     const targetUser = await User.findById(targetId).select(userFields).lean();
     if (!targetUser) return res.status(404).json({ msg: 'User not found' });
 
-    let friendship = await findRelationship(req.user, targetId);
+    const relationships = sortRelationships(await findRelationships(req.user, targetId));
+    let friendship = relationships.find(item => activeStatuses.includes(item.status));
+
     if (friendship?.status === 'accepted') {
+      await cleanupDuplicateActiveRelationships(relationships, friendship._id);
       return res.json({ msg: 'Already friends', friendship: relationPayload(friendship, req.user) });
     }
     if (friendship?.status === 'pending') {
-      return res.json({ msg: 'Friend request already pending', friendship: relationPayload(friendship, req.user) });
+      await cleanupDuplicateActiveRelationships(relationships, friendship._id);
+      const relation = relationPayload(friendship, req.user);
+      return res.json({
+        msg: relation.status === 'incoming' ? 'This user already sent you a request' : 'Friend request already pending',
+        friendship: relation
+      });
     }
+
+    friendship = relationships.find(item => (
+      item.status === 'declined'
+      && normalizeId(item.requester) === normalizeId(req.user)
+      && normalizeId(item.recipient) === normalizeId(targetId)
+    )) || relationships.find(item => item.status === 'declined');
 
     if (friendship) {
       friendship.requester = req.user;
@@ -178,6 +232,7 @@ router.post('/request/:userId', auth, async (req, res) => {
     }
 
     await friendship.save();
+    await cleanupDuplicateActiveRelationships(relationships, friendship._id);
     emitFriendSync(req.app.get('io'), [req.user, targetId]);
     await createNotification({
       io: req.app.get('io'),
@@ -197,7 +252,11 @@ router.post('/request/:userId', auth, async (req, res) => {
     });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({ msg: 'Friend request already exists' });
+      const existing = sortRelationships(await findRelationships(req.user, req.params.userId, activeStatuses))[0];
+      return res.json({
+        msg: 'Friend request already exists',
+        friendship: relationPayload(existing, req.user)
+      });
     }
     res.status(500).json({ msg: err.message });
   }
@@ -220,6 +279,8 @@ router.put('/requests/:requestId/accept', auth, async (req, res) => {
     friendship.status = 'accepted';
     friendship.respondedAt = new Date();
     await friendship.save();
+    const relationships = await findRelationships(friendship.requester, friendship.recipient, activeStatuses);
+    await cleanupDuplicateActiveRelationships(relationships, friendship._id);
 
     emitFriendSync(req.app.get('io'), [friendship.requester, friendship.recipient]);
     await createNotification({
@@ -255,9 +316,44 @@ router.put('/requests/:requestId/decline', auth, async (req, res) => {
     friendship.status = 'declined';
     friendship.respondedAt = new Date();
     await friendship.save();
+    await Friendship.updateMany({
+      _id: { $ne: friendship._id },
+      status: 'pending',
+      $or: [
+        { requester: friendship.requester, recipient: friendship.recipient },
+        { requester: friendship.recipient, recipient: friendship.requester }
+      ]
+    }, {
+      $set: { status: 'declined', respondedAt: new Date() }
+    });
 
     emitFriendSync(req.app.get('io'), [friendship.requester, friendship.recipient]);
     res.json({ msg: 'Friend request declined', friendship: { status: 'none' } });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.delete('/requests/:requestId', auth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+      return res.status(404).json({ msg: 'Friend request not found' });
+    }
+
+    const friendship = await Friendship.findOneAndDelete({
+      _id: req.params.requestId,
+      requester: req.user,
+      status: 'pending'
+    });
+
+    if (!friendship) return res.status(404).json({ msg: 'Friend request not found' });
+
+    const remaining = sortRelationships(
+      await findRelationships(friendship.requester, friendship.recipient, activeStatuses)
+    )[0];
+
+    emitFriendSync(req.app.get('io'), [friendship.requester, friendship.recipient]);
+    res.json({ msg: 'Friend request canceled', friendship: relationPayload(remaining, req.user) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }

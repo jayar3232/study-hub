@@ -164,7 +164,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     try {
       const res = await api.post(`/friends/request/${profileId}`);
       updateFriendship(res.data?.friendship || { status: 'outgoing' });
-      toast.success('Friend request sent');
+      toast.success(res.data?.msg || 'Friend request sent');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Friend request failed');
     } finally {
@@ -195,6 +195,20 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
       toast.success('Friend request declined');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Decline failed');
+    } finally {
+      setFriendAction('');
+    }
+  };
+
+  const cancelFriendRequest = async () => {
+    if (!friendship?.requestId) return;
+    setFriendAction('cancel');
+    try {
+      const res = await api.delete(`/friends/requests/${friendship.requestId}`);
+      updateFriendship(res.data?.friendship || { status: 'none' });
+      toast.success('Friend request canceled');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Cancel failed');
     } finally {
       setFriendAction('');
     }
@@ -239,9 +253,20 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
 
     if (friendship?.status === 'outgoing') {
       return (
-        <div className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-black text-amber-700 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60">
-          <Clock size={16} />
-          Request pending
+        <div className="grid gap-2">
+          <div className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-black text-amber-700 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60">
+            <Clock size={16} />
+            Request pending
+          </div>
+          <button
+            type="button"
+            onClick={cancelFriendRequest}
+            disabled={friendAction === 'cancel'}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 px-3 py-2.5 text-sm font-black text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:border-amber-900/60 dark:text-amber-200 dark:hover:bg-amber-950/30"
+          >
+            {friendAction === 'cancel' ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
+            Cancel friend request
+          </button>
         </div>
       );
     }
@@ -368,7 +393,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Work Rank</p>
                     <p className="truncate text-sm font-black text-gray-950 dark:text-white">{profile?.rankStats?.rank?.name || 'Rookie Operator'}</p>
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.rankStats?.xp || 0} XP · {profile?.rankStats?.completedTasks || 0} completed tasks</p>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.rankStats?.xp || 0} XP - {profile?.rankStats?.completedTasks || 0} completed tasks</p>
                   </div>
                   <RankBadge stats={profile?.rankStats} compact />
                 </div>
@@ -380,7 +405,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Division Rank</p>
                     <p className="truncate text-sm font-black text-gray-950 dark:text-white">{profile?.gameStats?.rank?.name || 'Arena Recruit'}</p>
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.gameStats?.highScore || 0} high score · {profile?.gameStats?.totalPlays || 0} runs</p>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.gameStats?.highScore || 0} high score - {profile?.gameStats?.totalPlays || 0} runs</p>
                   </div>
                   <GameRankBadge stats={profile?.gameStats} compact />
                 </div>

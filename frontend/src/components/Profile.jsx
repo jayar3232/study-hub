@@ -188,7 +188,7 @@ export default function Profile() {
     fetchGroups();
     fetchRankings();
     fetchGameSummary();
-    fetchStories();
+    fetchStories(getEntityId(user));
   }, [user]);
 
   useEffect(() => () => {
@@ -222,9 +222,10 @@ export default function Profile() {
     }
   };
 
-  const fetchStories = async () => {
+  const fetchStories = async (targetUserId = getEntityId(user)) => {
+    if (!targetUserId) return;
     try {
-      const res = await api.get('/stories/active/grouped').catch(() => api.get('/stories/active'));
+      const res = await api.get(`/stories/user/${targetUserId}/grouped`).catch(() => api.get(`/stories/user/${targetUserId}`));
       setStories(Array.isArray(res.data) ? res.data : res.data?.stories || []);
     } catch (err) {
       console.error('Error fetching My Day:', err);
@@ -528,6 +529,12 @@ export default function Profile() {
     { id: 'settings', label: 'Settings', icon: Settings, count: null }
   ];
 
+  const selectProfileTab = (tabId) => {
+    setActiveProfileTab(tabId);
+    if (tabId !== 'about') setEditing(false);
+    if (tabId !== 'about' && tabId !== 'settings') setShowPasswords(false);
+  };
+
   const renderProfileTabs = (extraClassName = '') => (
     <nav className={`profile-tab-bar ${extraClassName} rounded-2xl border border-gray-200 bg-white px-2 py-2 shadow-sm dark:border-gray-800 dark:bg-gray-900`} aria-label="Profile sections">
       <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -538,7 +545,7 @@ export default function Profile() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveProfileTab(tab.id)}
+              onClick={() => selectProfileTab(tab.id)}
               className={`profile-tab-button ${isActive ? 'is-active' : ''}`}
               aria-current={isActive ? 'page' : undefined}
             >
@@ -1037,7 +1044,7 @@ export default function Profile() {
                 <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Campus</p>
                 <p className="mt-1 font-semibold text-gray-950 dark:text-white">{user.campus || 'Not set'}</p>
               </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950 md:col-span-2">
                 <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Bio</p>
                 <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">{user.bio || 'No bio yet.'}</p>
               </div>
@@ -1208,7 +1215,7 @@ export default function Profile() {
               <h3 className="font-black text-gray-950 dark:text-white">Mobile app</h3>
               <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">SYNCROVA checks for Android updates automatically after the app opens.</p>
               <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm font-bold text-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
-                Current build target: 3.0.8
+                Current build target: 3.1.1
               </div>
             </div>
             <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">

@@ -498,6 +498,20 @@
     display: none;
   }
 
+  .call-overlay {
+    overscroll-behavior: none;
+  }
+
+  .call-shell {
+    max-height: min(92svh, 44rem);
+  }
+
+  .call-body {
+    max-height: calc(min(92svh, 44rem) - 5.25rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
   @media (min-width: 768px) {
     .profile-tab-bar {
       top: calc(4.75rem + env(safe-area-inset-top));
@@ -1034,6 +1048,59 @@
       padding: 0.85rem;
     }
 
+    .call-overlay {
+      align-items: center !important;
+      justify-content: center !important;
+      padding: calc(env(safe-area-inset-top) + 0.75rem) 0.75rem calc(env(safe-area-inset-bottom) + 0.75rem) !important;
+    }
+
+    .call-shell {
+      width: min(100%, 25rem) !important;
+      max-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem) !important;
+      border-radius: 1.35rem !important;
+    }
+
+    .call-shell > div:first-child {
+      padding: 0.85rem 1rem !important;
+    }
+
+    .call-shell h3 {
+      font-size: 1.05rem !important;
+      line-height: 1.2 !important;
+    }
+
+    .call-body {
+      max-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 6rem) !important;
+      padding: 0.85rem !important;
+    }
+
+    .call-video-stage {
+      aspect-ratio: 9 / 16 !important;
+      width: min(100%, 22rem) !important;
+      max-height: min(62svh, 34rem) !important;
+      margin-inline: auto;
+      border-radius: 1.2rem !important;
+    }
+
+    .call-audio-stage {
+      min-height: min(54svh, 24rem) !important;
+      padding: 1.1rem !important;
+      border-radius: 1.2rem !important;
+    }
+
+    .call-self-preview {
+      right: 0.65rem !important;
+      bottom: 0.65rem !important;
+      height: 7rem !important;
+      width: 5rem !important;
+      border-radius: 1rem !important;
+    }
+
+    .call-actions {
+      gap: 0.6rem !important;
+      padding-bottom: 0.15rem;
+    }
+
     .mobile-bottom-sheet {
       max-height: min(88svh, 42rem);
       border-radius: 1.5rem 1.5rem 0 0;
@@ -1186,7 +1253,15 @@
     .mobile-metric-strip > * {
       min-width: 0;
       border-radius: 1rem !important;
+      border: 1px solid rgba(203, 213, 225, 0.95) !important;
+      background: #ffffff !important;
       padding: 0.85rem !important;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    .dark .mobile-metric-strip > * {
+      border-color: rgba(51, 65, 85, 0.95) !important;
+      background: #020617 !important;
     }
 
     .mobile-metric-strip .text-3xl,
@@ -1241,11 +1316,17 @@
       scrollbar-width: none;
       border: 1px solid rgba(203, 213, 225, 0.9) !important;
       border-radius: 1.05rem !important;
-      background: rgba(255, 255, 255, 0.98) !important;
+      background: #ffffff !important;
       padding: 0.45rem !important;
       box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14) !important;
-      backdrop-filter: blur(16px);
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
       transform: translateZ(0);
+    }
+
+    .dark .mobile-fixed-tabbar {
+      border-color: rgba(51, 65, 85, 0.95) !important;
+      background: #020617 !important;
     }
 
     .mobile-fixed-tabbar::-webkit-scrollbar {
@@ -1286,10 +1367,16 @@
       width: auto !important;
       max-width: calc(100vw - 1rem);
       border-radius: 1.05rem !important;
-      background: rgba(255, 255, 255, 0.98) !important;
+      background: #ffffff !important;
       box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12) !important;
-      backdrop-filter: blur(16px);
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
       transform: translateZ(0);
+    }
+
+    .dark .mobile-filter-dock {
+      border-color: rgba(51, 65, 85, 0.95) !important;
+      background: #020617 !important;
     }
 
     .mobile-filter-dock > div {
@@ -1344,8 +1431,16 @@
       flex: 0 0 13.25rem;
       min-height: 6.25rem;
       scroll-snap-align: start;
+      border: 1px solid rgba(203, 213, 225, 0.95) !important;
       border-radius: 1rem !important;
+      background: #ffffff !important;
       padding: 0.85rem !important;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    .dark .mobile-game-tabs > button {
+      border-color: rgba(51, 65, 85, 0.95) !important;
+      background: #020617 !important;
     }
 
     .mobile-game-active {
