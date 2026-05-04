@@ -2124,7 +2124,7 @@ export default function GroupPage() {
   ];
 
   return (
-    <div className="mobile-page mx-auto max-w-7xl space-y-4 overflow-x-hidden px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+    <div className="mobile-page mobile-tab-dock-page mx-auto max-w-7xl space-y-4 overflow-x-hidden px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
       {activeTab === 'overview' ? (
         <section className="mobile-group-hero relative overflow-hidden rounded-2xl border border-pink-200/70 bg-white shadow-[0_0_0_1px_rgba(236,72,153,0.08),0_18px_50px_rgba(236,72,153,0.12)] dark:border-pink-900/40 dark:bg-gray-900 dark:shadow-[0_0_0_1px_rgba(236,72,153,0.10),0_18px_50px_rgba(236,72,153,0.08)]">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pink-500 via-cyan-400 to-emerald-400" />

@@ -542,7 +542,7 @@ export default function Reels() {
   );
 
   return (
-    <main className="reels-page mx-auto grid w-full max-w-[82rem] gap-3 lg:grid-cols-[18rem_minmax(20rem,34rem)_20rem]">
+    <main className="mobile-tab-dock-page reels-page mx-auto grid w-full max-w-[82rem] gap-3 lg:grid-cols-[18rem_minmax(20rem,34rem)_20rem]">
       <aside className="hidden min-h-0 flex-col gap-3 lg:flex">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
           <p className="flex items-center gap-2 text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">

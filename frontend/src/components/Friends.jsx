@@ -300,7 +300,7 @@ export default function Friends() {
   ];
 
   return (
-    <div className="mobile-page mx-auto max-w-7xl space-y-4 sm:space-y-6">
+    <div className="mobile-page mobile-tab-dock-page mx-auto max-w-7xl space-y-4 sm:space-y-6">
       <section className="mobile-hero-panel overflow-hidden rounded-3xl bg-gradient-to-br from-[#07036f] via-[#0b2f80] to-[#123f63] text-white shadow-2xl shadow-blue-900/20">
         <div className="relative p-5 sm:p-7">
           <div className="absolute -right-12 top-3 h-32 w-32 rounded-full border-[14px] border-cyan-300/20" />

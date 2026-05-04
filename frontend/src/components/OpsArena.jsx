@@ -772,7 +772,7 @@ export default function OpsArena() {
   }
 
   return (
-    <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
+    <div className="mobile-page mobile-tab-dock-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
       <section className={`fix-arena-hero overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 ${arenaView === 'report' || arenaView === 'developer' ? 'fix-report-hero' : ''}`}>
         <div className={`grid gap-5 p-5 md:p-6 ${arenaView === 'report' || arenaView === 'developer' ? '2xl:grid-cols-[minmax(0,1fr)_340px] 2xl:items-center' : 'xl:grid-cols-[minmax(0,1fr)_340px] xl:items-center'}`}>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">

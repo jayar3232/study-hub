@@ -29,6 +29,13 @@
   --app-ambient: radial-gradient(circle at 16% 8%, rgba(8, 0, 107, 0.08), transparent 30%), radial-gradient(circle at 84% 12%, rgba(35, 135, 168, 0.08), transparent 32%);
   --theme-accent: #08006b;
   --theme-accent-2: #0b57d0;
+  --surface-bg: rgba(255, 255, 255, 0.96);
+  --surface-bg-muted: rgba(248, 250, 252, 0.92);
+  --surface-border: rgba(203, 213, 225, 0.78);
+  --surface-shadow: 0 1px 1px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(15, 23, 42, 0.08);
+  --surface-shadow-strong: 0 1px 1px rgba(15, 23, 42, 0.05), 0 16px 38px rgba(15, 23, 42, 0.11);
+  --surface-shadow-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 18px 42px rgba(11, 87, 208, 0.12);
+  --surface-ring: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .dark {
@@ -40,6 +47,13 @@
   --app-ambient: radial-gradient(circle at 20% 10%, rgba(37, 99, 235, 0.18), transparent 32%), radial-gradient(circle at 82% 8%, rgba(20, 184, 166, 0.12), transparent 30%);
   --theme-accent: #93c5fd;
   --theme-accent-2: #67e8f9;
+  --surface-bg: rgba(15, 23, 42, 0.94);
+  --surface-bg-muted: rgba(2, 6, 23, 0.78);
+  --surface-border: rgba(51, 65, 85, 0.88);
+  --surface-shadow: 0 1px 1px rgba(0, 0, 0, 0.16), 0 12px 30px rgba(0, 0, 0, 0.32);
+  --surface-shadow-strong: 0 1px 1px rgba(0, 0, 0, 0.2), 0 18px 42px rgba(0, 0, 0, 0.38);
+  --surface-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.2), 0 18px 44px rgba(59, 130, 246, 0.14);
+  --surface-ring: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
 /* ---------- Base ---------- */
@@ -381,6 +395,118 @@
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   }
 
+  .portal-shell .app-main :where(
+    section,
+    article,
+    aside,
+    form,
+    .glass-card,
+    .feed-card,
+    .reel-card,
+    .workspace-card,
+    .workspace-stat-card,
+    .workspace-toolbar,
+    .messages-pro-shell,
+    .messages-conversation-column,
+    .messages-details-panel,
+    .mobile-conversation-panel,
+    .mobile-conversation-list,
+    .mobile-chat-header,
+    .mobile-bottom-sheet,
+    .profile-stat-card,
+    .profile-tab-bar,
+    .mobile-page-titlebar,
+    .mobile-control-panel,
+    .mobile-fixed-tabbar,
+    .mobile-filter-dock,
+    .reels-mobile-toolbar,
+    .fix-arena-hero,
+    .fix-arena-action-card,
+    .fix-arena-stat-card,
+    .fix-report-detail-panel
+  ) {
+    border-color: var(--surface-border) !important;
+    background-clip: padding-box;
+    box-shadow: var(--surface-shadow) !important;
+  }
+
+  .portal-shell .app-main :where(
+    .dashboard-welcome-card,
+    .profile-tab-bar,
+    .mobile-fixed-tabbar,
+    .mobile-filter-dock,
+    .workspace-toolbar,
+    .messages-pro-shell,
+    .fix-arena-hero,
+    .mobile-bottom-sheet
+  ) {
+    box-shadow: var(--surface-shadow-strong) !important;
+  }
+
+  .portal-shell .app-main :where(
+    .workspace-card,
+    .feed-card,
+    .reel-card,
+    .fix-arena-action-card,
+    .profile-stat-card
+  ):hover {
+    border-color: rgba(147, 197, 253, 0.95) !important;
+    box-shadow: var(--surface-shadow-hover) !important;
+  }
+
+  .portal-shell .app-main :where(.message-row, .message-bubble, .message-composer-footer, .media-viewer-stage, .story-viewer-overlay, .story-viewer-shell, .story-viewer-stage) {
+    box-shadow: none !important;
+  }
+
+  .portal-shell .app-main :where(.bug-hunt-stage, .jet-arena-stage, .block-stack-board, .block-stack-grid, .reels-feed, .reels-feed-shell) {
+    box-shadow: none !important;
+  }
+
+  .mobile-fixed-tabbar,
+  .mobile-filter-dock {
+    scrollbar-width: none;
+  }
+
+  .mobile-fixed-tabbar::-webkit-scrollbar,
+  .mobile-filter-dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 768px) {
+    .profile-tab-bar {
+      top: calc(4.75rem + env(safe-area-inset-top));
+      border-radius: 1.15rem !important;
+      background: rgba(255, 255, 255, 0.96) !important;
+      padding: 0.45rem !important;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1) !important;
+      backdrop-filter: blur(18px);
+    }
+
+    .profile-tab-button {
+      min-height: 3rem;
+      border-radius: 0.95rem;
+      padding-inline: 1.05rem;
+      font-size: 0.92rem;
+    }
+
+    .profile-tab-button.is-active {
+      background: linear-gradient(135deg, #07036f, #0b57d0);
+      box-shadow: 0 16px 32px rgba(11, 87, 208, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .mobile-fixed-tabbar:not(.mobile-game-tabs) {
+      border-radius: 1rem;
+      padding: 0.35rem;
+      background: rgba(248, 250, 252, 0.8);
+      box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.85);
+    }
+
+    .mobile-fixed-tabbar:not(.mobile-game-tabs) > button {
+      border-radius: 0.85rem !important;
+    }
+  }
+
   .profile-page section:hover,
   .profile-page aside:hover {
     border-color: rgba(24, 119, 242, 0.22);
@@ -700,6 +826,12 @@
       font-size: 0.94rem;
     }
 
+    .mobile-tab-dock-page,
+    .mobile-page:has(.mobile-fixed-tabbar),
+    .mobile-page:has(.mobile-filter-dock) {
+      padding-top: calc(4.05rem + env(safe-area-inset-top)) !important;
+    }
+
     .mobile-page .shadow-2xl,
     .mobile-page .shadow-xl {
       box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12) !important;
@@ -916,6 +1048,12 @@
     .mobile-page form,
     .mobile-page aside {
       max-width: 100%;
+      border-radius: 1.05rem !important;
+      box-shadow: var(--surface-shadow) !important;
+    }
+
+    .mobile-page :where(.mobile-hero-panel, .mobile-profile-hero, .mobile-group-hero, .fix-arena-hero) {
+      box-shadow: var(--surface-shadow-strong) !important;
     }
 
     .mobile-page .rounded-3xl,
@@ -1058,11 +1196,14 @@
     }
 
     .mobile-fixed-tabbar {
-      position: sticky !important;
+      position: fixed !important;
       top: calc(3.72rem + env(safe-area-inset-top)) !important;
+      left: 0.5rem !important;
+      right: 0.5rem !important;
       z-index: 42 !important;
       display: flex !important;
-      max-width: 100%;
+      width: auto !important;
+      max-width: calc(100vw - 1rem);
       min-height: 3.25rem;
       align-items: center;
       gap: 0.45rem !important;
@@ -1099,8 +1240,8 @@
     }
 
     .mobile-fixed-tabbar--chat {
-      top: 0 !important;
-      z-index: 10 !important;
+      top: calc(3.72rem + env(safe-area-inset-top)) !important;
+      z-index: 54 !important;
       margin-left: -0.15rem;
       margin-right: -0.15rem;
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08) !important;
@@ -1111,9 +1252,13 @@
     }
 
     .mobile-filter-dock {
-      position: sticky !important;
+      position: fixed !important;
       top: calc(3.72rem + env(safe-area-inset-top)) !important;
+      left: 0.5rem !important;
+      right: 0.5rem !important;
       z-index: 38 !important;
+      width: auto !important;
+      max-width: calc(100vw - 1rem);
       border-radius: 1.05rem !important;
       background: rgba(255, 255, 255, 0.98) !important;
       box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12) !important;
@@ -1251,8 +1396,8 @@
     .profile-tab-bar--mobile {
       position: fixed !important;
       top: calc(3.72rem + env(safe-area-inset-top)) !important;
-      left: 0.5rem;
-      right: 0.5rem;
+      left: 0.5rem !important;
+      right: 0.5rem !important;
       z-index: 72 !important;
       margin: 0 !important;
       max-width: calc(100vw - 1rem);
@@ -1281,7 +1426,7 @@
     }
 
     .profile-page {
-      padding-top: calc(3.55rem + env(safe-area-inset-top)) !important;
+      padding-top: calc(4.25rem + env(safe-area-inset-top)) !important;
     }
 
     .mobile-profile-hero > div:first-child {

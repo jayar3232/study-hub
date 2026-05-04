@@ -273,7 +273,7 @@ export default function MyGroups() {
   }
 
   return (
-    <div className="mobile-page mobile-workspaces-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
+    <div className="mobile-page mobile-tab-dock-page mobile-workspaces-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
       <section className="rounded-[1.35rem] border border-slate-200 bg-white/90 p-5 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
