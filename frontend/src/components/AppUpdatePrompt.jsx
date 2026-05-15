@@ -10,6 +10,19 @@ const CHECK_SCHEDULE_MS = [1200, 8000, 30000, 90000];
 const CHECK_TIMEOUT_MS = 18000;
 const SyncrovaUpdater = registerPlugin('SyncrovaUpdater');
 
+const withCacheBuster = (url, versionCode) => {
+  const value = String(url || '').trim();
+  if (!value) return value;
+  const separator = value.includes('?') ? '&' : '?';
+  return `${value}${separator}v=${encodeURIComponent(versionCode || Date.now())}&t=${Date.now()}`;
+};
+
+const getUpdateFileName = (versionName, versionCode) => {
+  const safeVersion = String(versionName || versionCode || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-');
+  const safeCode = String(versionCode || Date.now()).replace(/[^0-9]/g, '');
+  return `syncrova-${safeVersion}${safeCode ? `-${safeCode}` : ''}.apk`;
+};
+
 const isNativeAndroid = () => {
   if (typeof window === 'undefined') return false;
   const importedPlatform = Capacitor?.getPlatform?.();
@@ -156,9 +169,9 @@ export default function AppUpdatePrompt() {
       const nativeUpdater = SyncrovaUpdater || window.Capacitor?.Plugins?.SyncrovaUpdater;
       if (isNativeAndroid() && nativeUpdater?.downloadAndInstall) {
         const result = await nativeUpdater.downloadAndInstall({
-          url: update.apkUrl,
+          url: withCacheBuster(update.apkUrl, update.versionCode),
           versionName: update.versionName,
-          fileName: 'syncrova-latest.apk'
+          fileName: getUpdateFileName(update.versionName, update.versionCode)
         });
 
         if (result?.needsInstallPermission) {
@@ -167,7 +180,7 @@ export default function AppUpdatePrompt() {
           return;
         }
 
-        setDownloadMessage('Downloading inside Syncrova. Keep the app open; Android will show the installer when the APK is ready.');
+        setDownloadMessage('Downloading to your Downloads folder. Keep the app open; Android will show the installer when the APK is ready.');
         return;
       }
 
@@ -177,7 +190,7 @@ export default function AppUpdatePrompt() {
         return;
       }
 
-      window.open(update.apkUrl, '_blank', 'noopener,noreferrer');
+      window.open(withCacheBuster(update.apkUrl, update.versionCode), '_blank', 'noopener,noreferrer');
       setDownloadMessage('Opening the APK download.');
       setDownloading(false);
     } catch (err) {
@@ -204,7 +217,7 @@ export default function AppUpdatePrompt() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black">{update.required ? 'Syncrova update required' : 'New Syncrova update available'}</p>
             <p className="mt-1 text-xs font-semibold text-white/70">
-              Version {update.versionName} is ready{apkSizeLabel ? ` - ${apkSizeLabel}` : ''}. Download inside Syncrova, then approve the Android installer.
+              Version {update.versionName} is ready{apkSizeLabel ? ` - ${apkSizeLabel}` : ''}. Download the APK, then approve the Android installer.
             </p>
             {noteItems.length > 0 && (
               <div className="mt-2 rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">

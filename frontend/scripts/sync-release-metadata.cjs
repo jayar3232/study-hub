@@ -7,6 +7,7 @@ const packageJsonPath = path.join(frontendRoot, 'package.json');
 const capacitorConfigPath = path.join(frontendRoot, 'capacitor.config.json');
 const androidGradlePath = path.join(frontendRoot, 'android', 'app', 'build.gradle');
 const backendUpdateRoutePath = path.join(repoRoot, 'backend', 'routes', 'appUpdate.js');
+const backendAssistantRoutePath = path.join(repoRoot, 'backend', 'routes', 'assistant.js');
 const generatedReleaseDir = path.join(frontendRoot, 'src', 'generated');
 const generatedReleaseInfoPath = path.join(generatedReleaseDir, 'releaseInfo.js');
 
@@ -32,8 +33,11 @@ if (!applicationId) {
 }
 
 const currentVersionCode = Number(androidGradle.match(/versionCode\s+(\d+)/)?.[1] || 0);
+const currentVersionName = androidGradle.match(/versionName\s+"([^"]+)"/)?.[1] || '';
 const requestedVersionCode = process.env.SYNCROVA_VERSION_CODE;
-const versionCode = requestedVersionCode ? Number(requestedVersionCode) : currentVersionCode;
+const versionCode = requestedVersionCode
+  ? Number(requestedVersionCode)
+  : (currentVersionName && currentVersionName !== versionName ? currentVersionCode + 1 : currentVersionCode);
 
 if (!Number.isInteger(versionCode) || versionCode <= 0) {
   throw new Error('SYNCROVA_VERSION_CODE must be a positive integer');
@@ -46,7 +50,7 @@ androidGradle = replaceRequired(
   'Android versionName'
 );
 
-if (requestedVersionCode) {
+if (requestedVersionCode || currentVersionName !== versionName) {
   androidGradle = replaceRequired(
     androidGradle,
     /versionCode\s+\d+/,
@@ -77,17 +81,34 @@ if (fs.existsSync(backendUpdateRoutePath)) {
   let backendUpdateRoute = readText(backendUpdateRoutePath);
   backendUpdateRoute = replaceRequired(
     backendUpdateRoute,
-    /versionCode:\s*Number\(process\.env\.APP_VERSION_CODE\s*\|\|\s*\d+\)/,
-    `versionCode: Number(process.env.APP_VERSION_CODE || ${versionCode})`,
+    /const getReleaseVersionCode = \(\) => Number\(process\.env\.APP_VERSION_CODE \|\| \d+\)/,
+    `const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || ${versionCode})`,
     'backend update versionCode'
   );
   backendUpdateRoute = replaceRequired(
     backendUpdateRoute,
-    /versionName:\s*process\.env\.APP_VERSION_NAME\s*\|\|\s*'[^']+'/,
-    `versionName: process.env.APP_VERSION_NAME || '${versionName}'`,
+    /const getReleaseVersionName = \(\) => String\(process\.env\.APP_VERSION_NAME \|\| '[^']+'\)\.trim\(\) \|\| '[^']+';/,
+    `const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '${versionName}').trim() || '${versionName}';`,
     'backend update versionName'
   );
   writeText(backendUpdateRoutePath, backendUpdateRoute);
+}
+
+if (fs.existsSync(backendAssistantRoutePath)) {
+  let backendAssistantRoute = readText(backendAssistantRoutePath);
+  backendAssistantRoute = replaceRequired(
+    backendAssistantRoute,
+    /currentVersion:\s*process\.env\.APP_VERSION_NAME\s*\|\|\s*'[^']+'/,
+    `currentVersion: process.env.APP_VERSION_NAME || '${versionName}'`,
+    'backend assistant versionName'
+  );
+  backendAssistantRoute = replaceRequired(
+    backendAssistantRoute,
+    /androidVersionCode:\s*Number\(process\.env\.APP_VERSION_CODE\s*\|\|\s*\d+\)/,
+    `androidVersionCode: Number(process.env.APP_VERSION_CODE || ${versionCode})`,
+    'backend assistant versionCode'
+  );
+  writeText(backendAssistantRoutePath, backendAssistantRoute);
 }
 
 console.log(`Release metadata synced: ${applicationId} v${versionName} (${versionCode})`);

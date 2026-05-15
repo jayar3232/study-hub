@@ -86,7 +86,7 @@ export default function AppHealthPage() {
         <StatusCard icon={Wifi} title="Realtime socket" status={socketConnected ? 'Connected' : health?.socket?.status || 'Disconnected'} helper={`${health?.socket?.connectedClients ?? 0} backend clients, browser ${socketConnected ? 'connected' : 'not connected'}`} good={socketConnected || health?.socket?.status === 'online'} />
         <StatusCard icon={Cloud} title="Storage" status={health?.storage?.provider || 'Unknown'} helper={health?.storage?.status || 'Upload provider unavailable'} good={Boolean(health?.storage)} />
         <StatusCard icon={Phone} title="Calls" status={callStatus} helper={callHelper} good={callGood} />
-        <StatusCard icon={ShieldCheck} title="Release updater" status="Ready" helper={health?.app?.releaseUrl || '/releases/syncrova-latest.apk'} good />
+        <StatusCard icon={ShieldCheck} title="Release updater" status="Ready" helper={health?.app?.releaseUrl || '/releases/syncrova-4.2.0.apk'} good />
       </section>
 
       <section className="rounded-[1.25rem] border border-blue-100 bg-blue-50/80 p-5 text-sm font-semibold leading-6 text-slate-600 shadow-sm shadow-blue-200/35 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-slate-300">

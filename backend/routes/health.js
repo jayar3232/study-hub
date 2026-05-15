@@ -12,6 +12,12 @@ const mongoStates = {
   3: 'disconnecting'
 };
 
+const getReleaseApkPath = () => {
+  const versionName = String(process.env.APP_VERSION_NAME || '4.2.0').trim() || '4.2.0';
+  const safeVersion = versionName.replace(/[^a-zA-Z0-9._-]/g, '-');
+  return `/releases/syncrova-${safeVersion}.apk`;
+};
+
 router.get('/', auth, async (req, res) => {
   const io = req.app.get('io');
   const turnUrls = String(process.env.TURN_URLS || process.env.APP_TURN_URLS || process.env.VITE_TURN_URLS || '')
@@ -57,7 +63,7 @@ router.get('/', auth, async (req, res) => {
           : 'auto'
     },
     app: {
-      releaseUrl: '/releases/syncrova-latest.apk'
+      releaseUrl: process.env.APP_APK_URL || getReleaseApkPath()
     }
   });
 });

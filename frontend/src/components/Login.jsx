@@ -7,14 +7,6 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AppLogo, { AppLogoMark } from './AppLogo';
 
-const decodeBase64Url = (value = '') => {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
-  return atob(padded);
-};
-
-const authBaseUrl = () => (api.defaults.baseURL || '/api').replace(/\/$/, '');
-
 const AuthMetric = ({ icon: Icon, label, value, delay }) => (
   <motion.div
     initial={{ opacity: 0, y: 12 }}
@@ -28,29 +20,11 @@ const AuthMetric = ({ icon: Icon, label, value, delay }) => (
   </motion.div>
 );
 
-const SocialButton = ({ provider, loading, onClick }) => {
-  const isGoogle = provider === 'google';
-  return (
-    <button
-      type="button"
-      onClick={() => onClick(provider)}
-      disabled={loading}
-      className="group inline-flex h-12 items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:hover:border-pink-900/70"
-    >
-      <span className={`grid h-7 w-7 place-items-center rounded-full text-base font-black ${isGoogle ? 'bg-white text-pink-600 ring-1 ring-gray-200' : 'bg-pink-600 text-white'}`}>
-        {isGoogle ? 'G' : 'f'}
-      </span>
-      {isGoogle ? 'Google' : 'Facebook'}
-    </button>
-  );
-};
-
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState('');
   const [forgotOpen, setForgotOpen] = useState(false);
   const [resetStep, setResetStep] = useState('request');
   const [resetEmail, setResetEmail] = useState('');
@@ -64,22 +38,8 @@ export default function Login() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const oauthToken = params.get('oauthToken');
-    const oauthUser = params.get('oauthUser');
     const incomingResetToken = params.get('resetToken');
     const incomingResetEmail = params.get('resetEmail');
-
-    if (oauthToken && oauthUser) {
-      try {
-        const user = JSON.parse(decodeBase64Url(oauthUser));
-        login(oauthToken, user);
-        toast.success('Login successful');
-        navigate('/dashboard', { replace: true });
-      } catch {
-        toast.error('Social login response was invalid');
-        navigate('/login', { replace: true });
-      }
-    }
 
     if (incomingResetToken) {
       setForgotOpen(true);
@@ -88,7 +48,7 @@ export default function Login() {
       setResetEmail(incomingResetEmail || '');
       navigate('/login', { replace: true });
     }
-  }, [location.search, login, navigate]);
+  }, [location.search, navigate]);
 
   const canReset = useMemo(() => (
     resetToken.trim() && newPassword.length >= 6 && newPassword === confirmPassword
@@ -107,22 +67,6 @@ export default function Login() {
       toast.error(err.response?.data?.msg || 'Login failed');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const startSocialLogin = async (provider) => {
-    setSocialLoading(provider);
-    try {
-      const res = await api.get('/auth/oauth/status');
-      if (!res.data?.[provider]) {
-        toast.error(`${provider === 'google' ? 'Google' : 'Facebook'} login needs OAuth keys in Render env first`);
-        return;
-      }
-      window.location.href = `${authBaseUrl()}/auth/oauth/${provider}?returnTo=${encodeURIComponent(window.location.origin)}`;
-    } catch (err) {
-      toast.error(err.response?.data?.msg || 'Social login is not ready yet');
-    } finally {
-      setSocialLoading('');
     }
   };
 
@@ -270,17 +214,6 @@ export default function Login() {
                   {!loading && <ArrowRight size={17} className="transition group-hover:translate-x-1" />}
                 </button>
               </form>
-
-              <div className="relative my-6 flex items-center gap-3 text-xs font-black uppercase text-gray-400">
-                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-                Or sign in with
-                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <SocialButton provider="google" loading={Boolean(socialLoading)} onClick={startSocialLogin} />
-                <SocialButton provider="facebook" loading={Boolean(socialLoading)} onClick={startSocialLogin} />
-              </div>
 
               <p className="mt-6 text-center text-sm font-semibold text-gray-500 dark:text-gray-400">
                 No account yet?{' '}

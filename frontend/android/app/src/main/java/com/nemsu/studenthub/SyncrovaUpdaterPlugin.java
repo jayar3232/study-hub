@@ -75,7 +75,7 @@ public class SyncrovaUpdaterPlugin extends Plugin {
         request.setAllowedOverMetered(true);
         request.setAllowedOverRoaming(true);
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-        request.setDestinationUri(Uri.fromFile(targetFile));
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, targetFile.getName());
 
         activeDownloadId = downloadManager.enqueue(request);
         registerDownloadReceiver(targetFile);
@@ -90,7 +90,7 @@ public class SyncrovaUpdaterPlugin extends Plugin {
         String fileName = requestedName == null || !requestedName.endsWith(".apk")
                 ? "syncrova-latest.apk"
                 : requestedName.replaceAll("[^a-zA-Z0-9._-]", "");
-        File downloadDir = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
         if (downloadDir == null) downloadDir = getContext().getCacheDir();
         if (downloadDir == null) return null;
         if (!downloadDir.exists()) downloadDir.mkdirs();

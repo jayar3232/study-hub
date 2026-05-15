@@ -12,7 +12,15 @@ const jwt = require('jsonwebtoken');
 const auth = require('./middleware/auth');
 const User = require('./models/User');
 
-dotenv.config();
+const envFiles = [
+  path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, '..', '.env'),
+  path.resolve(process.cwd(), '.env')
+];
+
+Array.from(new Set(envFiles)).forEach(envFile => {
+  dotenv.config({ path: envFile, quiet: true });
+});
 
 const isProduction = process.env.NODE_ENV === 'production';
 const allowPreviewOrigins = process.env.ALLOW_PREVIEW_ORIGINS === 'true' || !isProduction;
@@ -158,7 +166,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 }));
 app.use('/releases', express.static(path.join(__dirname, 'public', 'releases'), {
   etag: true,
-  maxAge: '7d'
+  maxAge: '7d',
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.apk')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    }
+  }
 }));
 
 // Routes

@@ -4,9 +4,8 @@ const path = require('path');
 
 const router = express.Router();
 
-const DEFAULT_RELEASE_APK_PATH = '/releases/syncrova-latest.apk';
-const bundledReleaseApkPath = path.join(__dirname, '..', 'public', 'releases', 'syncrova-latest.apk');
-const uploadedReleaseApkPath = path.join(__dirname, '..', 'uploads', 'releases', 'syncrova-latest.apk');
+const publicReleaseDir = path.join(__dirname, '..', 'public', 'releases');
+const uploadedReleaseDir = path.join(__dirname, '..', 'uploads', 'releases');
 const DEFAULT_STUN_SERVERS = [
   'stun:stun.l.google.com:19302',
   'stun:stun1.l.google.com:19302',
@@ -30,6 +29,37 @@ const toAbsoluteUrl = (req, value) => {
   if (/^https?:\/\//i.test(value)) return value;
   const normalizedPath = value.startsWith('/') ? value : `/${value}`;
   return `${getRequestOrigin(req)}${normalizedPath}`;
+};
+
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.2.0').trim() || '4.2.0';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 43);
+const getReleaseApkFileName = (versionName) => (
+  `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
+);
+
+const getLocalReleaseApk = (versionName) => {
+  const fileName = getReleaseApkFileName(versionName);
+  const bundledPath = path.join(publicReleaseDir, fileName);
+  const uploadedPath = path.join(uploadedReleaseDir, fileName);
+
+  if (fs.existsSync(uploadedPath)) {
+    return {
+      filePath: uploadedPath,
+      urlPath: `/uploads/releases/${fileName}`
+    };
+  }
+
+  if (fs.existsSync(bundledPath)) {
+    return {
+      filePath: bundledPath,
+      urlPath: `/releases/${fileName}`
+    };
+  }
+
+  return {
+    filePath: '',
+    urlPath: `/releases/${fileName}`
+  };
 };
 
 const parseList = (value = '') => String(value || '')
@@ -88,26 +118,24 @@ const getIceServers = () => {
 };
 
 router.get('/update', (req, res) => {
-  const apkUrl = process.env.APP_APK_URL || DEFAULT_RELEASE_APK_PATH;
-  const apkAvailable = Boolean(process.env.APP_APK_URL)
-    || fs.existsSync(bundledReleaseApkPath)
-    || fs.existsSync(uploadedReleaseApkPath);
-  const localApkPath = fs.existsSync(bundledReleaseApkPath)
-    ? bundledReleaseApkPath
-    : (fs.existsSync(uploadedReleaseApkPath) ? uploadedReleaseApkPath : '');
-  const apkSize = localApkPath ? fs.statSync(localApkPath).size : 0;
+  const versionName = getReleaseVersionName();
+  const versionCode = getReleaseVersionCode();
+  const releaseApk = getLocalReleaseApk(versionName);
+  const apkUrl = process.env.APP_APK_URL || releaseApk.urlPath;
+  const apkAvailable = Boolean(process.env.APP_APK_URL) || Boolean(releaseApk.filePath);
+  const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
 
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 42),
-    versionName: process.env.APP_VERSION_NAME || '4.1.0',
+    versionCode,
+    versionName,
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, true),
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.1.0 responsive message, media, friends, and game layout fixes|Call history now shows voice/video duration in conversations|AI assistant logo and live OpenAI-backed responses when configured|Knife Duel socket auth refresh for signed-in players'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.2.0 release metadata and Android update reliability fixes|APK downloads now avoid stale cache and use versioned filenames|Update APKs download through the public Downloads folder|Google and Facebook auth buttons are hidden until OAuth keys are configured'
   });
 });
 
