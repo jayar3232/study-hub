@@ -108,7 +108,7 @@ router.post('/group/:groupId', auth, uploadMemory, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local'
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local')
     });
     await memory.save();
     await memory.populate('userId', 'name avatar isDeveloper');

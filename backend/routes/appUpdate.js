@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { getLiveKitStatus } = require('../services/livekitConfig');
 
 const router = express.Router();
 
@@ -80,19 +81,6 @@ const isCallRelayForced = () => toBoolean(
   || process.env.VITE_CALL_FORCE_RELAY,
   false
 );
-
-const getLiveKitStatus = () => {
-  const missing = [
-    !String(process.env.LIVEKIT_URL || '').trim() && 'LIVEKIT_URL',
-    !String(process.env.LIVEKIT_API_KEY || '').trim() && 'LIVEKIT_API_KEY',
-    !String(process.env.LIVEKIT_API_SECRET || '').trim() && 'LIVEKIT_API_SECRET'
-  ].filter(Boolean);
-
-  return {
-    livekitConfigured: missing.length === 0,
-    livekitMissing: missing
-  };
-};
 
 const getIceServers = () => {
   const turnUrls = getTurnUrls();

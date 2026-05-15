@@ -97,12 +97,15 @@ const sanitizeAttachment = (attachment = {}, userId = '') => {
   if (!fileUrl) return null;
 
   const fileType = ['image', 'video', 'audio', 'file'].includes(attachment.fileType) ? attachment.fileType : 'file';
-  const storageProvider = attachment.storageProvider === 'supabase' ? 'supabase' : '';
+  const storageProvider = ['local', 'supabase'].includes(attachment.storageProvider) ? attachment.storageProvider : '';
   const userMessageFolder = `messages/${userId}/`;
+  const rawStoragePath = String(attachment.storagePath || '').trim();
   const storagePath = storageProvider === 'supabase'
     && typeof attachment.storagePath === 'string'
     && attachment.storagePath.startsWith(userMessageFolder)
     ? attachment.storagePath
+    : storageProvider === 'local' && rawStoragePath.startsWith(userMessageFolder)
+      ? rawStoragePath
     : '';
 
   return {
@@ -112,7 +115,7 @@ const sanitizeAttachment = (attachment = {}, userId = '') => {
     mimeType: String(attachment.mimeType || '').slice(0, 120),
     fileSize: Math.max(0, Number(attachment.fileSize) || 0),
     storagePath,
-    storageProvider: storagePath ? 'supabase' : (fileUrl.startsWith('/uploads/messages/') ? 'local' : '')
+    storageProvider: storagePath ? storageProvider : (fileUrl.startsWith('/uploads/messages/') ? 'local' : '')
   };
 };
 
@@ -171,7 +174,7 @@ router.post('/upload', auth, uploadSingleFile, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local'
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local')
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

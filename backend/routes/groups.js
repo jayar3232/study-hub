@@ -484,7 +484,7 @@ router.post('/:id/photo', auth, uploadGroupPhoto, async (req, res) => {
     const previousPhoto = group.photo;
     group.photo = uploadedPhoto.url;
     group.photoStoragePath = uploadedPhoto.path;
-    group.photoStorageProvider = isCloudStorageEnabled ? 'supabase' : 'local';
+    group.photoStorageProvider = uploadedPhoto.provider || (isCloudStorageEnabled ? 'supabase' : 'local');
     await group.save();
 
     await createGroupActivity({

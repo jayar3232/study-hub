@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -12,6 +13,8 @@ const supabaseBucket = (
 ).trim();
 
 const isCloudStorageEnabled = Boolean(supabaseUrl && supabaseServiceKey && supabaseBucket);
+const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
+const allowLocalFallback = String(process.env.STORAGE_LOCAL_FALLBACK || 'true').toLowerCase() !== 'false';
 const serviceKeyLooksLikeJwt = Boolean(
   supabaseServiceKey
   && supabaseServiceKey.startsWith('eyJ')
@@ -47,21 +50,81 @@ const createObjectPath = (folder, originalName) => {
   };
 };
 
+const isRecoverableCloudStorageError = (error = {}) => {
+  const message = String(error.message || error.error || error.name || error || '').toLowerCase();
+  return [
+    'exceed_cached_egress_quota',
+    'egress quota',
+    'quota',
+    'limit exceeded',
+    'resource exhausted',
+    'rate limit',
+    'too many requests'
+  ].some(pattern => message.includes(pattern));
+};
+
+const localPathFromObjectPath = (objectPath = '') => (
+  objectPath
+    .split('/')
+    .map(part => part.trim().replace(/[^a-zA-Z0-9._-]/g, '-'))
+    .filter(Boolean)
+    .join('/')
+);
+
+const uploadBufferLocally = async ({ buffer, originalName, folder }) => {
+  const { filename, objectPath } = createObjectPath(folder, originalName);
+  const localPath = localPathFromObjectPath(objectPath);
+  const targetPath = path.join(uploadsRoot, localPath);
+
+  if (!targetPath.startsWith(`${uploadsRoot}${path.sep}`)) {
+    throw new Error('Invalid local upload path');
+  }
+
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.promises.writeFile(targetPath, buffer);
+
+  return {
+    filename,
+    path: localPath.replace(/\\/g, '/'),
+    provider: 'local',
+    url: `/uploads/${localPath.replace(/\\/g, '/')}`
+  };
+};
+
 const uploadBuffer = async ({ buffer, originalName, mimeType, folder }) => {
   if (!isCloudStorageEnabled || !supabase) {
     throw new Error('Cloud storage is not configured');
   }
 
   const { filename, objectPath } = createObjectPath(folder, originalName);
-  const { data, error } = await supabase.storage
-    .from(supabaseBucket)
-    .upload(objectPath, buffer, {
-      contentType: mimeType || 'application/octet-stream',
-      cacheControl: '3600',
-      upsert: false
-    });
+  let uploadResult;
+  try {
+    uploadResult = await supabase.storage
+      .from(supabaseBucket)
+      .upload(objectPath, buffer, {
+        contentType: mimeType || 'application/octet-stream',
+        cacheControl: '3600',
+        upsert: false
+      });
+  } catch (error) {
+    if (allowLocalFallback && isRecoverableCloudStorageError(error)) {
+      const fallback = await uploadBufferLocally({ buffer, originalName, folder });
+      fallback.fallbackReason = error.message || 'Cloud upload failed';
+      return fallback;
+    }
+
+    throw error;
+  }
+
+  const { data, error } = uploadResult;
 
   if (error) {
+    if (allowLocalFallback && isRecoverableCloudStorageError(error)) {
+      const fallback = await uploadBufferLocally({ buffer, originalName, folder });
+      fallback.fallbackReason = error.message || 'Cloud upload failed';
+      return fallback;
+    }
+
     throw new Error(error.message || 'Cloud upload failed');
   }
 
@@ -71,12 +134,22 @@ const uploadBuffer = async ({ buffer, originalName, mimeType, folder }) => {
   return {
     filename,
     path: storedPath,
+    provider: 'supabase',
     url: publicData?.publicUrl || ''
   };
 };
 
 const deleteObject = async (objectPath) => {
-  if (!isCloudStorageEnabled || !supabase || !objectPath) return;
+  if (!objectPath) return;
+
+  const localPath = localPathFromObjectPath(objectPath);
+  const targetPath = path.join(uploadsRoot, localPath);
+  if (targetPath.startsWith(`${uploadsRoot}${path.sep}`) && fs.existsSync(targetPath)) {
+    await fs.promises.unlink(targetPath).catch(() => {});
+    return;
+  }
+
+  if (!isCloudStorageEnabled || !supabase) return;
 
   const { error } = await supabase.storage.from(supabaseBucket).remove([objectPath]);
   if (error) {
@@ -87,6 +160,7 @@ const deleteObject = async (objectPath) => {
 const getStorageConfigStatus = () => ({
   provider: isCloudStorageEnabled ? 'supabase' : 'local',
   enabled: isCloudStorageEnabled,
+  localFallbackEnabled: allowLocalFallback,
   bucket: supabaseBucket || '',
   urlConfigured: Boolean(supabaseUrl),
   serviceRoleKeyConfigured: Boolean(supabaseServiceKey),

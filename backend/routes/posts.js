@@ -187,7 +187,7 @@ router.post('/upload', auth, uploadPostMedia, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local'
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local')
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

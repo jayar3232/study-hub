@@ -195,7 +195,7 @@ router.post('/', auth, uploadStory, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local',
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local'),
       expiresAt: new Date(Date.now() + STORY_DURATION_MS)
     });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const { getStorageConfigStatus, isCloudStorageEnabled } = require('../services/storage');
+const { getLiveKitStatus } = require('../services/livekitConfig');
 
 const router = express.Router();
 
@@ -30,11 +31,8 @@ router.get('/', auth, async (req, res) => {
     || process.env.VITE_CALL_FORCE_RELAY
     || ''
   ).toLowerCase() === 'true';
-  const livekitConfigured = Boolean(
-    String(process.env.LIVEKIT_URL || '').trim()
-    && String(process.env.LIVEKIT_API_KEY || '').trim()
-    && String(process.env.LIVEKIT_API_SECRET || '').trim()
-  );
+  const livekitStatus = getLiveKitStatus();
+  const livekitConfigured = Boolean(livekitStatus.livekitConfigured);
 
   res.json({
     ok: true,
@@ -56,6 +54,7 @@ router.get('/', auth, async (req, res) => {
       turnConfigured: turnUrls.length > 0,
       turnCount: turnUrls.length,
       livekitConfigured,
+      livekitMissing: livekitStatus.livekitMissing,
       relayMode: relayForced
         ? 'relay preferred'
         : livekitConfigured

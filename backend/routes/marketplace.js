@@ -123,7 +123,7 @@ const storeUploadedFile = async (file, folder, localPrefix) => {
       filename: uploaded.filename,
       url: uploaded.url,
       storagePath: uploaded.path,
-      storageProvider: 'supabase'
+      storageProvider: uploaded.provider || 'supabase'
     };
   }
 

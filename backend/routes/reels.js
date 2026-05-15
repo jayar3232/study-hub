@@ -209,7 +209,7 @@ router.post('/', auth, uploadGallery, async (req, res) => {
       mimeType,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local',
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local'),
       uploadedBy: req.user
     });
 

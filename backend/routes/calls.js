@@ -2,6 +2,7 @@ const express = require('express');
 const { AccessToken } = require('livekit-server-sdk');
 const auth = require('../middleware/auth');
 const User = require('../models/User');
+const { getLiveKitConfig } = require('../services/livekitConfig');
 
 const router = express.Router();
 
@@ -13,22 +14,6 @@ const sanitizeRoomName = (value) => (
     .replace(/-+/g, '-')
     .slice(0, 96)
 );
-
-const getLiveKitConfig = () => {
-  const livekitUrl = String(process.env.LIVEKIT_URL || '').trim();
-  const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
-  const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
-  return {
-    livekitUrl,
-    apiKey,
-    apiSecret,
-    missing: [
-      !livekitUrl && 'LIVEKIT_URL',
-      !apiKey && 'LIVEKIT_API_KEY',
-      !apiSecret && 'LIVEKIT_API_SECRET'
-    ].filter(Boolean)
-  };
-};
 
 router.post('/livekit-token', auth, async (req, res) => {
   try {

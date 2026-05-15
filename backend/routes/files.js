@@ -95,7 +95,7 @@ router.post('/upload/:groupId', auth, ensureGroupMember, uploadSingleFile, async
       originalName: req.file.originalname,
       url: uploadedFile.url,
       storagePath: uploadedFile.path,
-      storageProvider: isCloudStorageEnabled ? 'supabase' : 'local',
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local'),
       mimeType: req.file.mimetype,
       size: req.file.size,
       uploadedBy: req.user
