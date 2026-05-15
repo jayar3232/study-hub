@@ -1,0 +1,2058 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import toast from 'react-hot-toast';
+import {
+  Globe2,
+  BadgeCheck,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Loader2,
+  Lock,
+  MessageCircle,
+  CornerDownRight,
+  Bookmark,
+  Copy,
+  EyeOff,
+  Flag,
+  MoreHorizontal,
+  RefreshCw,
+  Reply,
+  Send,
+  Share2,
+  SmilePlus,
+  Trash2,
+  Users,
+  Video,
+  X
+} from 'lucide-react';
+import api from '../services/api';
+import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
+import MediaViewer from './MediaViewer';
+import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
+
+const QUICK_REACTIONS = ['\u{1F44D}', '\u2764\uFE0F', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F525}', '\u{1F44F}', '\u2705'];
+const MAX_HOME_POST_UPLOAD = 35 * 1024 * 1024;
+const HOME_VIDEO_AUTOPLAY_KEY = 'syncrova.home.videoAutoplay';
+
+const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+
+const privacyOptions = {
+  public: { label: 'Public', helper: 'Everyone', icon: Globe2 },
+  friends: { label: 'Friends', helper: 'Friends only', icon: Users },
+  private: { label: 'Only me', helper: 'Private', icon: Lock }
+};
+
+const TEXT_BACKGROUND_OPTIONS = [
+  { id: '', label: 'Clean', preview: '#f8fafc', style: {} },
+  { id: 'ocean', label: 'Ocean', preview: '#0b57d0', style: { background: 'linear-gradient(135deg, #07036f, #0b57d0 52%, #22d3ee)', color: '#ffffff' } },
+  { id: 'sunset', label: 'Sunset', preview: '#fb7185', style: { background: 'linear-gradient(135deg, #fb7185, #f97316 54%, #facc15)', color: '#ffffff' } },
+  { id: 'mint', label: 'Mint', preview: '#10b981', style: { background: 'linear-gradient(135deg, #ecfdf5, #a7f3d0 48%, #34d399)', color: '#064e3b' } },
+  { id: 'midnight', label: 'Midnight', preview: '#020617', style: { background: 'linear-gradient(135deg, #020617, #111827 58%, #312e81)', color: '#ffffff' } }
+];
+
+const MOOD_OPTIONS = ['Focused', 'Happy', 'Celebrating', 'Need help', 'Working hard'];
+const ACTIVITY_OPTIONS = ['Sharing an update', 'Working on a project', 'Looking for teammates', 'Posting media', 'Asking a question'];
+
+const getTextBackgroundOption = (id) => (
+  TEXT_BACKGROUND_OPTIONS.find(option => option.id === id) || TEXT_BACKGROUND_OPTIONS[0]
+);
+
+const formatFeedTime = (value) => {
+  if (!value) return 'Just now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Just now';
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const getPostTitle = (text, fallback = 'Timeline post') => {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return fallback;
+  return normalized.length > 90 ? `${normalized.slice(0, 87)}...` : normalized;
+};
+
+const isVideoPost = (post) => (
+  post?.fileType === 'video' || /\.(mp4|webm|mov|m4v)$/i.test(post?.fileUrl || '')
+);
+
+const withVideoPreviewTime = (src) => {
+  if (!src) return '';
+  if (src.includes('#')) return src;
+  return `${src}#t=0.12`;
+};
+
+const readVideoAutoplayPreference = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(HOME_VIDEO_AUTOPLAY_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const saveVideoAutoplayPreference = (enabled) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(HOME_VIDEO_AUTOPLAY_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Preference storage can be blocked in private modes.
+  }
+};
+
+const getLocalMediaType = (file = {}) => {
+  const mimeType = String(file.type || '').toLowerCase();
+  const name = String(file.name || '').toLowerCase();
+  if (mimeType.startsWith('image/') || /\.(jpe?g|png|gif|webp|avif|heic|heif)$/i.test(name)) return 'image';
+  if (mimeType.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|3gpp|mkv|avi)$/i.test(name)) return 'video';
+  return '';
+};
+
+const getPostAttachments = (post = {}) => {
+  const attachments = Array.isArray(post.attachments)
+    ? post.attachments.filter(item => item?.fileUrl)
+    : [];
+  if (attachments.length) return attachments;
+  if (!post.fileUrl) return [];
+  return [{
+    fileUrl: post.fileUrl,
+    fileType: isVideoPost(post) ? 'video' : post.fileType || 'image',
+    fileName: post.fileName || post.title || 'Post media',
+    mimeType: post.mimeType || '',
+    fileSize: post.fileSize || 0
+  }];
+};
+
+const formatMediaSize = (bytes = 0) => {
+  const value = Number(bytes || 0);
+  if (!value) return '';
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  return `${Math.max(1, Math.round(value / 1024))} KB`;
+};
+
+const getCountLabel = (count = 0, singular = 'item', plural = `${singular}s`) => (
+  `${count} ${count === 1 ? singular : plural}`
+);
+
+const getReactionSummary = (reactions = []) => {
+  const counts = new Map();
+  reactions.forEach(reaction => {
+    const emoji = String(reaction?.emoji || '').trim();
+    if (!emoji) return;
+    counts.set(emoji, (counts.get(emoji) || 0) + 1);
+  });
+
+  const icons = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emoji]) => emoji);
+
+  return { count: reactions.length || 0, icons };
+};
+
+const getShareCount = (post = {}) => (
+  Array.isArray(post.shares) ? post.shares.length : Number(post.shareCount || 0)
+);
+
+const getCommentId = (comment = {}) => getEntityId(comment._id || comment.id);
+
+const shufflePosts = (items = []) => (
+  [...items]
+    .map((item, index) => ({ item, index, score: Math.random() }))
+    .sort((a, b) => a.score - b.score || a.index - b.index)
+    .map(entry => entry.item)
+);
+
+function ReactionBurst({ emoji, className = '' }) {
+  if (!emoji) return null;
+  return (
+    <span className={`reaction-motion-zone reaction-burst ${className}`} aria-hidden="true">
+      {emoji}
+    </span>
+  );
+}
+
+function ReactionPicker({ onSelect, align = 'left' }) {
+  return (
+    <div className={`feed-reaction-picker reaction-motion-zone flex gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-2xl shadow-slate-900/16 ring-1 ring-white/80 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-800/80 ${align === 'right' ? 'origin-bottom-right' : 'origin-bottom-left'}`}>
+      {QUICK_REACTIONS.map(emoji => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onSelect(emoji)}
+          className="emoji-pop-button reaction-motion-zone grid h-10 w-10 place-items-center rounded-full text-[22px] hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none dark:hover:bg-slate-800 dark:focus-visible:bg-slate-800"
+          aria-label={`React ${emoji}`}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReactionSummary({ reactions = [], onOpen }) {
+  const { count, icons } = getReactionSummary(reactions);
+  if (!count) {
+    return <span className="text-xs font-bold text-slate-400 dark:text-slate-500">Be first to react</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="inline-flex min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-left hover:bg-blue-50 hover:text-[#0b57d0] dark:hover:bg-blue-950/30 dark:hover:text-sky-200"
+    >
+      <span className="flex shrink-0 -space-x-1">
+        {icons.map(emoji => (
+          <span key={emoji} className="reaction-motion-zone grid h-5 w-5 place-items-center rounded-full bg-white text-[13px] shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+            {emoji}
+          </span>
+        ))}
+      </span>
+      <span className="truncate">{count}</span>
+    </button>
+  );
+}
+
+function CommentReactionSummary({ reactions = [], onReact, onOpen }) {
+  const { count, icons } = getReactionSummary(reactions);
+  return (
+    <div className="relative inline-flex items-center gap-2">
+      {count > 0 && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="reaction-motion-zone inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-black text-slate-600 shadow-sm hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-blue-950/30"
+          aria-label={getCountLabel(count, 'comment reaction')}
+        >
+          <span className="flex -space-x-1">
+            {icons.map(emoji => (
+              <span key={emoji} className="grid h-4 w-4 place-items-center rounded-full bg-white text-[10px] dark:bg-slate-900">
+                {emoji}
+              </span>
+            ))}
+          </span>
+          {count}
+        </button>
+      )}
+      <div className="relative group/comment-reactions">
+        <button
+          type="button"
+          className="rounded-full px-1.5 py-0.5 text-[11px] font-black text-slate-500 hover:text-[#0b57d0] dark:text-slate-400 dark:hover:text-sky-200"
+        >
+          React
+        </button>
+        <div className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 opacity-0 transition group-hover/comment-reactions:pointer-events-auto group-hover/comment-reactions:opacity-100 group-focus-within/comment-reactions:pointer-events-auto group-focus-within/comment-reactions:opacity-100">
+          <ReactionPicker onSelect={onReact} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose }) {
+  const [activeFilter, setActiveFilter] = useState('all');
+  const grouped = reactions.reduce((map, reaction) => {
+    const emoji = String(reaction?.emoji || '').trim();
+    if (!emoji) return map;
+    map.set(emoji, (map.get(emoji) || 0) + 1);
+    return map;
+  }, new Map());
+  const tabs = [
+    { key: 'all', label: 'All', count: reactions.length },
+    ...[...grouped.entries()].sort((a, b) => b[1] - a[1]).map(([emoji, count]) => ({
+      key: emoji,
+      label: emoji,
+      count
+    }))
+  ];
+  const visibleReactions = activeFilter === 'all'
+    ? reactions
+    : reactions.filter(reaction => reaction?.emoji === activeFilter);
+
+  return (
+    <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="max-h-[82vh] w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950" onClick={event => event.stopPropagation()}>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+          <div className="min-w-0">
+            <p className="truncate text-base font-black text-slate-950 dark:text-white">{title}</p>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{getCountLabel(reactions.length, 'reaction')}</p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" aria-label="Close reactors">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="flex gap-2 overflow-x-auto border-b border-slate-100 px-4 py-2 dark:border-slate-800">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveFilter(tab.key)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black ${
+                activeFilter === tab.key
+                  ? 'bg-[#0b57d0] text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-[#0b57d0] dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span>{tab.count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="max-h-[56vh] overflow-y-auto p-3">
+          {visibleReactions.length ? (
+            <div className="space-y-1">
+              {visibleReactions.map((reaction, index) => {
+                const reactor = reaction.userId || {};
+                const name = reactor.name || 'Member';
+                return (
+                  <div key={`${getEntityId(reactor) || name}-${reaction.emoji}-${index}`} className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <div className="relative shrink-0">
+                      <Avatar user={reactor} size="h-11 w-11" />
+                      <span className="reaction-motion-zone absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-white text-sm shadow ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                        {reaction.emoji}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-slate-950 dark:text-white">{name}</p>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Reacted with {reaction.emoji}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+              No reactors in this filter.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ user, size = 'h-11 w-11' }) {
+  const avatar = resolveMediaUrl(user?.avatar);
+  return (
+    <DeveloperAvatarFrame user={user}>
+      <span className={`${size} grid shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white`}>
+        {avatar ? <img src={avatar} alt={user?.name || 'User'} className="h-full w-full object-cover" /> : (user?.name || 'U').charAt(0).toUpperCase()}
+      </span>
+    </DeveloperAvatarFrame>
+  );
+}
+
+function PrivacyPill({ value = 'public' }) {
+  const option = privacyOptions[value] || privacyOptions.public;
+  const Icon = option.icon;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <Icon size={11} />
+      {option.label}
+    </span>
+  );
+}
+
+function FeedVideoPlayer({
+  src,
+  title = 'Post video',
+  className = '',
+  videoClassName = '',
+  videoKey = '',
+  autoPlay = false,
+  activeVideoKey = '',
+  onVideoPlay = () => {}
+}) {
+  const [failed, setFailed] = useState(false);
+  const videoRef = useRef(null);
+  const previewedRef = useRef(false);
+  const resolvedSrc = resolveMediaUrl(src);
+  const previewSrc = withVideoPreviewTime(resolvedSrc);
+  const ownVideoKey = videoKey || resolvedSrc;
+
+  const revealPreviewFrame = () => {
+    if (previewedRef.current) return;
+    previewedRef.current = true;
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    try {
+      video.currentTime = Math.min(0.12, Math.max(0, video.duration - 0.05));
+    } catch {
+      // Some mobile browsers only reveal the first frame after enough metadata loads.
+    }
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !ownVideoKey) return;
+    if (activeVideoKey !== ownVideoKey && !video.paused) video.pause();
+  }, [activeVideoKey, ownVideoKey]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !autoPlay || !resolvedSrc || !ownVideoKey || typeof IntersectionObserver === 'undefined') return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      const currentVideo = videoRef.current;
+      if (!currentVideo) return;
+
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
+        currentVideo.defaultMuted = false;
+        currentVideo.muted = false;
+        onVideoPlay(ownVideoKey);
+        const playPromise = currentVideo.play();
+        if (playPromise?.catch) playPromise.catch(() => {});
+      } else if (!currentVideo.paused) {
+        currentVideo.pause();
+      }
+    }, { threshold: [0, 0.35, 0.65, 1] });
+
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, [autoPlay, onVideoPlay, ownVideoKey, resolvedSrc]);
+
+  if (!resolvedSrc) return null;
+
+  if (failed) {
+    return (
+      <div className={`grid min-h-52 place-items-center rounded-2xl border border-slate-200 bg-slate-950 p-5 text-center dark:border-slate-800 ${className}`}>
+        <div>
+          <Video className="mx-auto text-white/80" size={30} />
+          <p className="mt-3 text-sm font-black text-white">Video preview unavailable</p>
+          <a
+            href={resolvedSrc}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-950"
+          >
+            Open video
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`overflow-hidden rounded-2xl bg-black ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
+      <video
+        ref={videoRef}
+        src={previewSrc}
+        controls
+        defaultMuted={false}
+        playsInline
+        preload="metadata"
+        title={title}
+        onLoadedMetadata={revealPreviewFrame}
+        onLoadedData={revealPreviewFrame}
+        onPlay={() => onVideoPlay(ownVideoKey)}
+        onError={() => setFailed(true)}
+        className={`block max-h-[32rem] w-full bg-black object-contain ${videoClassName}`}
+      />
+    </div>
+  );
+}
+
+function FeedMediaGrid({
+  attachments = [],
+  title = 'Post media',
+  mediaGroupKey = 'post',
+  autoPlayVideos = false,
+  activeVideoKey = '',
+  onVideoPlay = () => {},
+  onOpenMedia = () => {}
+}) {
+  const visible = attachments.slice(0, 4);
+  const hiddenCount = Math.max(0, attachments.length - visible.length);
+  const isSingle = attachments.length === 1;
+  const viewerItems = attachments.map((attachment, index) => {
+    const fileType = attachment.fileType === 'video' ? 'video' : 'image';
+    const url = resolveMediaUrl(attachment.fileUrl);
+    return {
+      type: fileType,
+      url,
+      name: attachment.fileName || `${title} ${index + 1}`
+    };
+  }).filter(item => item.url);
+
+  return (
+    <div className="feed-media-grid space-y-2">
+      {attachments.length > 1 && (
+        <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50">
+          <ImageIcon size={14} />
+          {attachments.length} media
+        </div>
+      )}
+      <div className={`grid gap-2 ${isSingle ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        {visible.map((attachment, index) => {
+          const fileType = attachment.fileType === 'video' ? 'video' : attachment.fileType === 'image' ? 'image' : '';
+          const src = resolveMediaUrl(attachment.fileUrl);
+          const label = attachment.fileName || title;
+          const showHiddenOverlay = hiddenCount > 0 && index === visible.length - 1;
+          const tileClass = isSingle ? '' : 'aspect-square min-h-0';
+          return (
+            <div
+              key={`${attachment.fileUrl}-${index}`}
+              className={`relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-200 dark:ring-slate-800 ${fileType === 'image' ? 'cursor-pointer' : ''} ${tileClass}`}
+              onClick={() => fileType === 'image' && onOpenMedia(index, viewerItems)}
+            >
+              {fileType === 'video' ? (
+                <FeedVideoPlayer
+                  src={src}
+                  title={label}
+                  videoKey={`${mediaGroupKey}-${index}-${src}`}
+                  autoPlay={autoPlayVideos && isSingle}
+                  activeVideoKey={activeVideoKey}
+                  onVideoPlay={onVideoPlay}
+                  className={`h-full w-full rounded-none ring-0 ${isSingle ? '' : 'min-h-full'}`}
+                  videoClassName={isSingle ? 'max-h-[32rem]' : 'h-full max-h-none object-cover'}
+                />
+              ) : (
+                <img
+                  src={src}
+                  alt={label}
+                  loading="lazy"
+                  decoding="async"
+                  className={`${isSingle ? 'max-h-[34rem] object-contain' : 'h-full object-cover'} w-full bg-slate-950`}
+                />
+              )}
+              {showHiddenOverlay && (
+                <div className="absolute inset-0 grid place-items-center bg-slate-950/70 text-3xl font-black text-white backdrop-blur-sm">
+                  +{hiddenCount}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenMedia(index, viewerItems);
+                }}
+                className="absolute right-2 top-2 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-black text-white shadow-lg backdrop-blur transition hover:bg-black/75"
+              >
+                Open
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export default function HomeFeed({
+  currentUser,
+  mobileTopSlot = null,
+  mobileOverviewSlot = null,
+  mobileVariant = 'default'
+}) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [posting, setPosting] = useState(false);
+  const [composerText, setComposerText] = useState('');
+  const [privacy, setPrivacy] = useState('public');
+  const [mediaItems, setMediaItems] = useState([]);
+  const [composerBackground, setComposerBackground] = useState('');
+  const [composerMood, setComposerMood] = useState('');
+  const [composerActivity, setComposerActivity] = useState('');
+  const [composerTaggedUsers, setComposerTaggedUsers] = useState([]);
+  const [friendOptions, setFriendOptions] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [visibleCount, setVisibleCount] = useState(8);
+  const [reactionBursts, setReactionBursts] = useState({});
+  const [commentReactionBursts, setCommentReactionBursts] = useState({});
+  const [reactionViewer, setReactionViewer] = useState(null);
+  const [autoPlayVideos, setAutoPlayVideos] = useState(readVideoAutoplayPreference);
+  const [activeVideoKey, setActiveVideoKey] = useState('');
+  const [mobileComposerOpen, setMobileComposerOpen] = useState(false);
+  const [activeReactionPostId, setActiveReactionPostId] = useState('');
+  const [reactionTrayAnchor, setReactionTrayAnchor] = useState(null);
+  const [commentReplyTargets, setCommentReplyTargets] = useState({});
+  const [activeCommentPostId, setActiveCommentPostId] = useState('');
+  const [activePostOptionsId, setActivePostOptionsId] = useState('');
+  const [hiddenPostIds, setHiddenPostIds] = useState(() => new Set());
+  const [mediaViewer, setMediaViewer] = useState(null);
+  const [uploadQueue, setUploadQueue] = useState(null);
+
+  const composerInputRef = useRef(null);
+  const commentInputRefs = useRef({});
+  const mediaItemsRef = useRef([]);
+  const reactionPressTimerRef = useRef(null);
+  const reactionPickerOpenedByPressRef = useRef(false);
+  const deepLinkHandledRef = useRef(false);
+  const currentUserId = getEntityId(currentUser);
+  const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
+  const visiblePosts = useMemo(
+    () => posts.filter(post => !hiddenPostIds.has(getEntityId(post))).slice(0, visibleCount),
+    [hiddenPostIds, posts, visibleCount]
+  );
+  const activeReactionPost = useMemo(
+    () => posts.find(post => getEntityId(post) === activeReactionPostId),
+    [activeReactionPostId, posts]
+  );
+  const activeCommentPost = useMemo(
+    () => posts.find(post => getEntityId(post) === activeCommentPostId),
+    [activeCommentPostId, posts]
+  );
+  const mediaViewerPost = useMemo(
+    () => posts.find(post => getEntityId(post) === mediaViewer?.postId),
+    [mediaViewer?.postId, posts]
+  );
+  const PrivacySelectIcon = privacyOptions[privacy]?.icon || Globe2;
+
+  const isMobileReactionMode = () => (
+    typeof window !== 'undefined'
+    && (
+      mobileVariant === 'facebook'
+      || document.documentElement.classList.contains('syncrova-native-app')
+      || window.matchMedia?.('(pointer: coarse), (max-width: 767px)').matches
+    )
+  );
+
+  const handleFeedVideoPlay = useCallback((videoKey) => {
+    if (videoKey) setActiveVideoKey(videoKey);
+  }, []);
+
+  const toggleVideoAutoplay = () => {
+    const nextValue = !autoPlayVideos;
+    setAutoPlayVideos(nextValue);
+    saveVideoAutoplayPreference(nextValue);
+    window.dispatchEvent(new CustomEvent('syncrova:video-autoplay-change', { detail: { enabled: nextValue } }));
+    if (!nextValue) setActiveVideoKey('');
+  };
+
+  useEffect(() => {
+    const syncAutoplayPreference = () => setAutoPlayVideos(readVideoAutoplayPreference());
+    window.addEventListener('syncrova:video-autoplay-change', syncAutoplayPreference);
+    window.addEventListener('storage', syncAutoplayPreference);
+    return () => {
+      window.removeEventListener('syncrova:video-autoplay-change', syncAutoplayPreference);
+      window.removeEventListener('storage', syncAutoplayPreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    mediaItemsRef.current = mediaItems;
+  }, [mediaItems]);
+
+  useEffect(() => () => {
+    mediaItemsRef.current.forEach(item => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    window.clearTimeout(reactionPressTimerRef.current);
+  }, []);
+
+  const loadFeed = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await api.get('/posts/home?limit=60');
+      setPosts(shufflePosts(res.data || []));
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to load home feed');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFeed();
+  }, [loadFeed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/friends/summary')
+      .then(res => {
+        if (cancelled) return;
+        const friends = (res.data?.friends || [])
+          .map(item => item.user)
+          .filter(Boolean);
+        setFriendOptions(friends);
+      })
+      .catch(() => {
+        if (!cancelled) setFriendOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => loadFeed({ silent: true });
+    window.addEventListener('syncrova:mobile-refresh', refresh);
+    return () => window.removeEventListener('syncrova:mobile-refresh', refresh);
+  }, [loadFeed]);
+
+  useEffect(() => {
+    if (!mobileComposerOpen) return undefined;
+    const handleNativeBack = (event) => {
+      event.preventDefault();
+      setMobileComposerOpen(false);
+    };
+    window.addEventListener('syncrova:native-back', handleNativeBack);
+    return () => window.removeEventListener('syncrova:native-back', handleNativeBack);
+  }, [mobileComposerOpen]);
+
+  useEffect(() => {
+    if (!activeReactionPostId) return undefined;
+    const closePicker = (event) => {
+      if (event.target?.closest?.('.mobile-reaction-tray, .feed-reaction-picker-shell, .feed-reaction-button')) return;
+      setActiveReactionPostId('');
+      setReactionTrayAnchor(null);
+    };
+    const closeOnScroll = () => {
+      setActiveReactionPostId('');
+      setReactionTrayAnchor(null);
+    };
+    window.addEventListener('pointerdown', closePicker, true);
+    window.addEventListener('scroll', closeOnScroll, true);
+    return () => {
+      window.removeEventListener('pointerdown', closePicker, true);
+      window.removeEventListener('scroll', closeOnScroll, true);
+    };
+  }, [activeReactionPostId]);
+
+  useEffect(() => {
+    if (!activePostOptionsId) return undefined;
+    const closeOptions = (event) => {
+      if (event.target?.closest?.('.feed-post-options, [aria-label="Post options"]')) return;
+      setActivePostOptionsId('');
+    };
+    window.addEventListener('pointerdown', closeOptions, true);
+    return () => window.removeEventListener('pointerdown', closeOptions, true);
+  }, [activePostOptionsId]);
+
+  useEffect(() => {
+    if (deepLinkHandledRef.current || !posts.length || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const targetPostId = params.get('post');
+    if (!targetPostId) return;
+    const targetIndex = posts.findIndex(post => getEntityId(post) === targetPostId);
+    if (targetIndex < 0) return;
+
+    deepLinkHandledRef.current = true;
+    setVisibleCount(count => Math.max(count, targetIndex + 1));
+    window.setTimeout(() => {
+      document.getElementById(`post-${targetPostId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (params.get('comment') || isMobileReactionMode()) setActiveCommentPostId(targetPostId);
+    }, 120);
+  }, [posts]);
+
+  const updatePost = (nextPost) => {
+    setPosts(prev => prev.map(post => getEntityId(post) === getEntityId(nextPost) ? nextPost : post));
+  };
+
+  const triggerBurst = (setter, key, emoji) => {
+    if (!key || !emoji) return;
+    setter(prev => ({ ...prev, [key]: emoji }));
+    window.setTimeout(() => {
+      setter(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }, 720);
+  };
+
+  const openReactionViewer = (title, reactions = []) => {
+    if (!reactions.length) return;
+    setReactionViewer({ title, reactions });
+  };
+
+  const clearMedia = () => {
+    mediaItems.forEach(item => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+    setMediaItems([]);
+    setUploadProgress(0);
+  };
+
+  const resetComposerDetails = () => {
+    setComposerText('');
+    setComposerBackground('');
+    setComposerMood('');
+    setComposerActivity('');
+    setComposerTaggedUsers([]);
+  };
+
+  const updateComposerText = (value) => {
+    setComposerText(value);
+  };
+
+  const addTaggedUser = (userToTag) => {
+    const userId = getEntityId(userToTag);
+    if (!userId || composerTaggedUsers.some(item => getEntityId(item) === userId)) return;
+    setComposerTaggedUsers(prev => [...prev, userToTag].slice(0, 8));
+  };
+
+  const removeTaggedUser = (userId) => {
+    setComposerTaggedUsers(prev => prev.filter(item => getEntityId(item) !== userId));
+  };
+
+  const removeMediaItem = (itemId) => {
+    setMediaItems(prev => {
+      const target = prev.find(item => item.id === itemId);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter(item => item.id !== itemId);
+    });
+  };
+
+  const moveMediaItem = (itemId, direction) => {
+    setMediaItems(prev => {
+      const index = prev.findIndex(item => item.id === itemId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      next.splice(nextIndex, 0, item);
+      return next;
+    });
+  };
+
+  const selectMedia = (files) => {
+    const nextFiles = Array.from(files || []).filter(Boolean);
+    if (!nextFiles.length) return;
+
+    const invalidFile = nextFiles.find(file => !getLocalMediaType(file));
+    if (invalidFile) {
+      toast.error('Home posts support photos and videos');
+      return;
+    }
+    const tooLargeFile = nextFiles.find(file => file.size > MAX_HOME_POST_UPLOAD);
+    if (tooLargeFile) {
+      toast.error(`${tooLargeFile.name} is too large. Maximum size is 35MB per file.`);
+      return;
+    }
+
+    clearMedia();
+    setMediaItems(nextFiles.slice(0, 12).map((file, index) => ({
+      id: `${file.name}-${file.size}-${file.lastModified || Date.now()}-${index}`,
+      file,
+      fileType: getLocalMediaType(file),
+      previewUrl: URL.createObjectURL(file)
+    })));
+  };
+
+  const createPost = async (event) => {
+    event.preventDefault();
+    if (!canPost) return;
+
+    setPosting(true);
+    setUploadProgress(0);
+    setUploadQueue({
+      status: 'uploading',
+      label: mediaItems.length ? `Uploading ${getCountLabel(mediaItems.length, 'file')}` : 'Publishing post',
+      progress: mediaItems.length ? 1 : 0
+    });
+    let completed = false;
+    try {
+      let attachments = [];
+      if (mediaItems.length) {
+        attachments = await Promise.all(mediaItems.map(async (item, index) => {
+          const uploadFile = item.fileType === 'image'
+            ? await optimizeImageFile(item.file, { maxDimension: 1600, quality: 0.84, minBytes: 700 * 1024 })
+            : item.file;
+          const formData = new FormData();
+          formData.append('file', uploadFile);
+          const uploadRes = await api.post('/posts/upload', formData, {
+            onUploadProgress: (progressEvent) => {
+              if (!progressEvent.total) return;
+              const fileProgress = progressEvent.loaded / progressEvent.total;
+              const nextProgress = Math.round(((index + fileProgress) / mediaItems.length) * 100);
+              setUploadProgress(nextProgress);
+              setUploadQueue({
+                status: 'uploading',
+                label: `Uploading ${index + 1} of ${mediaItems.length}`,
+                progress: nextProgress
+              });
+            }
+          });
+          return uploadRes.data || {};
+        }));
+      }
+
+      const text = String(composerText || composerInputRef.current?.value || '').trim();
+      const primaryAttachment = attachments[0] || {};
+      const res = await api.post('/posts/home', {
+        title: getPostTitle(text, mediaItems.length ? mediaItems[0].file.name : 'Timeline post'),
+        content: text,
+        privacy,
+        background: composerBackground,
+        mood: composerMood,
+        activity: composerActivity,
+        taggedUsers: composerTaggedUsers.map(item => getEntityId(item)).filter(Boolean),
+        attachments,
+        ...primaryAttachment
+      });
+      setPosts(prev => shufflePosts([res.data, ...prev]));
+      if (composerInputRef.current) composerInputRef.current.value = '';
+      resetComposerDetails();
+      clearMedia();
+      setMobileComposerOpen(false);
+      toast.success('Posted');
+      completed = true;
+    } catch (err) {
+      const message = err.response?.data?.msg || (navigator.onLine === false ? 'You appear offline. Connect and retry.' : 'Post failed. Check your connection and retry.');
+      setUploadQueue({
+        status: 'error',
+        label: 'Upload failed',
+        message,
+        progress: uploadProgress || 0
+      });
+      toast.error(message);
+    } finally {
+      setPosting(false);
+      if (completed) {
+        setUploadProgress(0);
+        window.setTimeout(() => setUploadQueue(null), 600);
+      }
+    }
+  };
+
+  const reactToPost = async (post, emoji) => {
+    const postId = getEntityId(post);
+    try {
+      triggerBurst(setReactionBursts, postId, emoji);
+      const res = await api.post(`/posts/${postId}/react`, { emoji });
+      updatePost(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Reaction failed');
+    }
+  };
+
+  const clearReactionPressTimer = () => {
+    window.clearTimeout(reactionPressTimerRef.current);
+    reactionPressTimerRef.current = null;
+  };
+
+  const getReactionTrayAnchor = (anchorElement) => {
+    if (typeof window === 'undefined' || !anchorElement?.getBoundingClientRect) return null;
+    const rect = anchorElement.getBoundingClientRect();
+    const trayWidth = Math.min(window.innerWidth - 16, 360);
+    const left = Math.min(
+      Math.max(rect.left, 8),
+      Math.max(8, window.innerWidth - trayWidth - 8)
+    );
+    const top = Math.max(rect.top - 12, 84);
+    return { left, top };
+  };
+
+  const openReactionPicker = (postId, anchorElement = null) => {
+    if (!postId) return;
+    setReactionTrayAnchor(getReactionTrayAnchor(anchorElement));
+    setActiveReactionPostId(postId);
+  };
+
+  const handleReactionPressStart = (postId, anchorElement = null) => {
+    if (!isMobileReactionMode()) return;
+    clearReactionPressTimer();
+    reactionPressTimerRef.current = window.setTimeout(() => {
+      reactionPickerOpenedByPressRef.current = true;
+      openReactionPicker(postId, anchorElement);
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, 260);
+  };
+
+  const handleReactionButtonClick = (post, anchorElement = null) => {
+    const postId = getEntityId(post);
+    if (isMobileReactionMode()) {
+      if (reactionPickerOpenedByPressRef.current) {
+        reactionPickerOpenedByPressRef.current = false;
+        return;
+      }
+      setActiveReactionPostId(prev => {
+        if (prev === postId) {
+          setReactionTrayAnchor(null);
+          return '';
+        }
+        setReactionTrayAnchor(getReactionTrayAnchor(anchorElement));
+        return postId;
+      });
+      return;
+    }
+    const myReaction = post.reactions?.find(reaction => getEntityId(reaction.userId) === currentUserId);
+    reactToPost(post, myReaction?.emoji || QUICK_REACTIONS[0]);
+  };
+
+  const choosePostReaction = (post, emoji) => {
+    reactToPost(post, emoji);
+    reactionPickerOpenedByPressRef.current = false;
+    setActiveReactionPostId('');
+    setReactionTrayAnchor(null);
+  };
+
+  const reactToComment = async (post, comment, emoji) => {
+    const postId = getEntityId(post);
+    const commentId = getCommentId(comment);
+    if (!postId || !commentId) return;
+
+    try {
+      triggerBurst(setCommentReactionBursts, `${postId}:${commentId}`, emoji);
+      const res = await api.post(`/posts/${postId}/comments/${commentId}/react`, { emoji });
+      updatePost(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Comment reaction failed');
+    }
+  };
+
+  const deletePost = async (post) => {
+    try {
+      await api.delete(`/posts/${getEntityId(post)}`);
+      setPosts(prev => prev.filter(item => getEntityId(item) !== getEntityId(post)));
+      toast.success('Post deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Delete failed');
+    }
+  };
+
+  const addComment = async (event, post) => {
+    event.preventDefault();
+    const postId = getEntityId(post);
+    const text = String(commentDrafts[postId] || '').trim();
+    if (!text) return;
+    const replyTarget = commentReplyTargets[postId];
+    const replyTo = getCommentId(replyTarget);
+
+    try {
+      const res = await api.post(`/posts/${postId}/comment`, { text, replyTo: replyTo || undefined });
+      updatePost(res.data);
+      setCommentDrafts(prev => ({ ...prev, [postId]: '' }));
+      setCommentReplyTargets(prev => {
+        const next = { ...prev };
+        delete next[postId];
+        return next;
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Comment failed');
+    }
+  };
+
+  const openCommentsForPost = (postId) => {
+    if (!postId) return;
+    if (isMobileReactionMode()) {
+      setActiveCommentPostId(postId);
+      return;
+    }
+    commentInputRefs.current[postId]?.focus();
+  };
+
+  const sharePost = async (post) => {
+    const postId = getEntityId(post);
+    const text = `${post.userId?.name || 'Syncrova'}: ${post.title || 'Post'}`;
+    const url = `${window.location.origin}/dashboard`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'Syncrova post', text, url });
+      else {
+        await navigator.clipboard.writeText(url);
+      }
+      const res = await api.post(`/posts/${postId}/share`);
+      updatePost(res.data);
+      toast.success(navigator.share ? 'Post shared' : 'Post link copied');
+    } catch {
+      // Native share sheet was cancelled.
+    }
+  };
+
+  const savePost = async (post) => {
+    const postId = getEntityId(post);
+    if (!postId) return;
+    try {
+      const res = await api.put(`/posts/${postId}/save`);
+      updatePost(res.data);
+      const saved = (res.data?.savedBy || []).some(userId => getEntityId(userId) === currentUserId);
+      toast.success(saved ? 'Post saved' : 'Post removed from saved');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Save failed');
+    } finally {
+      setActivePostOptionsId('');
+    }
+  };
+
+  const copyPostLink = async (post) => {
+    const postId = getEntityId(post);
+    const url = `${window.location.origin}/dashboard?post=${encodeURIComponent(postId)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Post link copied');
+    } catch {
+      toast.error('Could not copy link');
+    } finally {
+      setActivePostOptionsId('');
+    }
+  };
+
+  const hidePost = (post) => {
+    const postId = getEntityId(post);
+    setHiddenPostIds(prev => new Set([...prev, postId]));
+    setActivePostOptionsId('');
+    toast.success('Post hidden from this view');
+  };
+
+  const reportPost = () => {
+    setActivePostOptionsId('');
+    toast.success('Thanks. The report option is noted for review.');
+  };
+
+  const openMediaViewer = (post, index, items = []) => {
+    if (!items.length) return;
+    setMediaViewer({
+      postId: getEntityId(post),
+      index,
+      items,
+      details: post?.userId?.name || 'Post media'
+    });
+  };
+
+  const renderMediaViewerActions = () => {
+    if (!mediaViewerPost) return null;
+    const postId = getEntityId(mediaViewerPost);
+    const myReaction = mediaViewerPost.reactions?.find(reaction => getEntityId(reaction.userId) === currentUserId);
+
+    return (
+      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-white/10 p-2 text-white backdrop-blur">
+        <button
+          type="button"
+          onClick={() => reactToPost(mediaViewerPost, myReaction?.emoji || QUICK_REACTIONS[0])}
+          className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-white/10 text-xs font-black hover:bg-white/20 sm:text-sm"
+        >
+          <SmilePlus size={16} />
+          {myReaction?.emoji || 'React'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMediaViewer(null);
+            setActiveCommentPostId(postId);
+          }}
+          className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-white/10 text-xs font-black hover:bg-white/20 sm:text-sm"
+        >
+          <MessageCircle size={16} />
+          Comment
+        </button>
+        <button
+          type="button"
+          onClick={() => sharePost(mediaViewerPost)}
+          className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-white/10 text-xs font-black hover:bg-white/20 sm:text-sm"
+        >
+          <Share2 size={16} />
+          Share
+        </button>
+      </div>
+    );
+  };
+
+  const renderComposerEnhancements = ({ compact = false } = {}) => {
+    const selectedBackground = getTextBackgroundOption(composerBackground);
+    const availableFriends = friendOptions.filter(friend => (
+      !composerTaggedUsers.some(tagged => getEntityId(tagged) === getEntityId(friend))
+    ));
+    const hasPreview = Boolean(composerText.trim() || composerMood || composerActivity || composerTaggedUsers.length || composerBackground);
+
+    return (
+      <div className={`mt-3 space-y-3 ${compact ? 'text-xs' : 'text-sm'}`}>
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_12rem_13rem]">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
+            <p className="mb-2 text-[11px] font-black uppercase text-slate-500 dark:text-slate-400">Background</p>
+            <div className="flex gap-2 overflow-x-auto pb-0.5">
+              {TEXT_BACKGROUND_OPTIONS.map(option => (
+                <button
+                  key={option.id || 'clean'}
+                  type="button"
+                  onClick={() => setComposerBackground(option.id)}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs font-black transition ${
+                    composerBackground === option.id
+                      ? 'border-[#0b57d0] bg-white text-[#0b57d0] shadow-sm dark:bg-slate-900 dark:text-sky-200'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                  }`}
+                >
+                  <span className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ background: option.preview }} />
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
+            <span className="mb-2 block text-[11px] font-black uppercase text-slate-500 dark:text-slate-400">Mood</span>
+            <select value={composerMood} onChange={event => setComposerMood(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-[#0b57d0] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+              <option value="">No mood</option>
+              {MOOD_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+
+          <label className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
+            <span className="mb-2 block text-[11px] font-black uppercase text-slate-500 dark:text-slate-400">Activity</span>
+            <select value={composerActivity} onChange={event => setComposerActivity(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-[#0b57d0] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+              <option value="">No activity</option>
+              {ACTIVITY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black uppercase text-slate-500 dark:text-slate-400">Tag friends</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Mention classmates in the post preview and feed.</p>
+            </div>
+            <select
+              value=""
+              onChange={event => {
+                const nextFriend = friendOptions.find(friend => getEntityId(friend) === event.target.value);
+                if (nextFriend) addTaggedUser(nextFriend);
+              }}
+              className="h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-[#0b57d0] disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 sm:w-56"
+              disabled={!availableFriends.length}
+            >
+              <option value="">{availableFriends.length ? 'Choose friend' : 'No friends to tag'}</option>
+              {availableFriends.map(friend => <option key={getEntityId(friend)} value={getEntityId(friend)}>{friend.name}</option>)}
+            </select>
+          </div>
+          {composerTaggedUsers.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {composerTaggedUsers.map(friend => (
+                <button
+                  key={getEntityId(friend)}
+                  type="button"
+                  onClick={() => removeTaggedUser(getEntityId(friend))}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-2 py-1 text-xs font-black text-slate-700 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700"
+                >
+                  <Avatar user={friend} size="h-6 w-6" />
+                  {friend.name}
+                  <X size={12} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {hasPreview && (
+          <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm shadow-blue-100/55 dark:border-blue-900/40 dark:bg-slate-950 dark:shadow-black/20">
+            <div className="border-b border-blue-50 px-3 py-2 text-[11px] font-black uppercase text-[#0b57d0] dark:border-slate-800 dark:text-sky-200">
+              Post preview
+            </div>
+            <div className="p-3">
+              <div className="flex items-center gap-2">
+                <Avatar user={currentUser} size="h-9 w-9" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">{currentUser?.name || 'You'}</p>
+                  <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {privacyOptions[privacy]?.label || 'Public'}
+                    {composerMood ? ` · feeling ${composerMood}` : ''}
+                    {composerActivity ? ` · ${composerActivity}` : ''}
+                  </p>
+                </div>
+              </div>
+              {composerTaggedUsers.length > 0 && (
+                <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                  with {composerTaggedUsers.map(friend => friend.name).join(', ')}
+                </p>
+              )}
+              {composerText.trim() && (
+                <div
+                  className={`mt-3 rounded-2xl ${composerBackground ? 'px-4 py-8 text-center text-xl font-black leading-snug shadow-inner' : 'text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200'}`}
+                  style={selectedBackground.style}
+                >
+                  {composerText}
+                </div>
+              )}
+              {mediaItems.length > 0 && (
+                <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-black text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                  {getCountLabel(mediaItems.length, 'media item')} attached in one grouped post
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <section className={`home-feed space-y-4 ${mobileVariant === 'facebook' ? 'home-feed--facebook-mobile' : ''}`}>
+      <button
+        type="button"
+        onClick={() => setMobileComposerOpen(true)}
+        className="home-feed-composer-button flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 md:hidden"
+      >
+        <Avatar user={currentUser} size="h-10 w-10" />
+        <span className="min-w-0 flex-1 rounded-full bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+          What's on your mind?
+        </span>
+        <ImageIcon size={20} className="home-feed-composer-photo text-emerald-600 dark:text-emerald-300" />
+      </button>
+
+      {mobileTopSlot && <div className="home-feed-mobile-slot md:hidden">{mobileTopSlot}</div>}
+
+      <form onSubmit={createPost} className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 md:block">
+        <div className="p-4">
+          <div className="flex items-start gap-3">
+            <Avatar user={currentUser} />
+            <textarea
+              ref={composerInputRef}
+              value={composerText}
+              onChange={event => updateComposerText(event.target.value)}
+              rows={3}
+              placeholder={`What's on your mind, ${currentUser?.name?.split(' ')[0] || 'there'}?`}
+              className="min-h-[5rem] min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:bg-slate-950"
+            />
+          </div>
+
+          {renderComposerEnhancements()}
+
+          {mediaItems.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">
+                    {mediaItems.length} media selected
+                  </p>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Photos and videos will be grouped in one post
+                  </p>
+                </div>
+                <button type="button" onClick={clearMedia} className="grid h-8 w-8 place-items-center rounded-full bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-300" aria-label="Remove media">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className={`grid gap-2 p-2 ${mediaItems.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'}`}>
+                {mediaItems.map((item, index) => (
+                  <div key={item.id} className="relative overflow-hidden rounded-xl bg-slate-950 ring-1 ring-slate-200 dark:ring-slate-800">
+                    {item.fileType === 'video' ? (
+                      <FeedVideoPlayer
+                        src={item.previewUrl}
+                        title={item.file.name}
+                        videoKey={`composer-${item.id}`}
+                        activeVideoKey={activeVideoKey}
+                        onVideoPlay={handleFeedVideoPlay}
+                        className="h-full max-h-80 w-full rounded-none ring-0"
+                        videoClassName="max-h-80"
+                      />
+                    ) : (
+                      <img src={item.previewUrl} alt={item.file.name} className="max-h-80 w-full object-contain" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeMediaItem(item.id)}
+                      className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/65 text-white backdrop-blur hover:bg-rose-600"
+                      aria-label={`Remove ${item.file.name}`}
+                    >
+                      <X size={15} />
+                    </button>
+                    {mediaItems.length > 1 && (
+                      <div className="absolute left-2 top-2 flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveMediaItem(item.id, -1)}
+                          disabled={index === 0}
+                          className="grid h-8 w-8 place-items-center rounded-full bg-black/65 text-white backdrop-blur disabled:opacity-35"
+                          aria-label="Move media left"
+                        >
+                          <ChevronLeft size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveMediaItem(item.id, 1)}
+                          disabled={index === mediaItems.length - 1}
+                          className="grid h-8 w-8 place-items-center rounded-full bg-black/65 text-white backdrop-blur disabled:opacity-35"
+                          aria-label="Move media right"
+                        >
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    )}
+                    <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-full bg-black/60 px-2 py-1 text-[11px] font-black text-white">
+                      #{index + 1} {item.fileType === 'video' ? 'Video' : 'Photo'} {formatMediaSize(item.file.size)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {posting && uploadProgress > 0 && (
+                <div className="h-1.5 bg-slate-200 dark:bg-slate-800">
+                  <div className="h-full bg-[#0b57d0]" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/35 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900">
+              <ImageIcon size={15} />
+              Photo/video
+              <input
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={event => {
+                  selectMedia(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            <label className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+              <PrivacySelectIcon size={15} />
+              <select value={privacy} onChange={event => setPrivacy(event.target.value)} className="bg-transparent outline-none">
+                <option value="public">Public</option>
+                <option value="friends">Friends</option>
+                <option value="private">Only me</option>
+              </select>
+            </label>
+          </div>
+          <button
+            type="submit"
+            disabled={!canPost}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#07036f] px-5 py-2.5 text-sm font-black text-white hover:bg-[#05004f] disabled:opacity-50"
+          >
+            {posting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            Post
+          </button>
+        </div>
+      </form>
+
+      {mobileComposerOpen && (
+        <div className="fixed inset-0 z-[92] flex items-end bg-slate-950/45 backdrop-blur-sm md:hidden" onClick={() => setMobileComposerOpen(false)}>
+          <form
+            onSubmit={createPost}
+            className="mobile-post-composer-sheet w-full rounded-t-[1.7rem] border border-slate-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl dark:border-slate-800 dark:bg-slate-950"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-11 rounded-full bg-slate-200 dark:bg-slate-800" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar user={currentUser} size="h-10 w-10" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">{currentUser?.name || 'Create post'}</p>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Share an update</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setMobileComposerOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300" aria-label="Close composer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <textarea
+              ref={composerInputRef}
+              value={composerText}
+              onChange={event => updateComposerText(event.target.value)}
+              rows={4}
+              autoFocus
+              placeholder={`What's on your mind, ${currentUser?.name?.split(' ')[0] || 'there'}?`}
+              className="mt-4 min-h-[8rem] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+            />
+
+            {renderComposerEnhancements({ compact: true })}
+
+            {mediaItems.length > 0 && (
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+                <div className={`grid gap-2 ${mediaItems.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  {mediaItems.slice(0, 4).map((item, index) => (
+                    <div key={item.id} className="relative h-28 overflow-hidden rounded-xl bg-slate-950">
+                      {item.fileType === 'video' ? (
+                        <FeedVideoPlayer
+                          src={item.previewUrl}
+                          title={item.file.name}
+                          videoKey={`mobile-composer-${item.id}`}
+                          activeVideoKey={activeVideoKey}
+                          onVideoPlay={handleFeedVideoPlay}
+                          className="h-full w-full rounded-none ring-0"
+                          videoClassName="h-full max-h-none object-cover"
+                        />
+                      ) : (
+                        <img src={item.previewUrl} alt={item.file.name} className="h-full w-full object-cover" />
+                      )}
+                      {mediaItems.length > 4 && index === 3 && (
+                        <span className="absolute inset-0 grid place-items-center bg-black/55 text-xl font-black text-white">+{mediaItems.length - 4}</span>
+                      )}
+                      <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-black text-white">
+                        #{index + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {mediaItems.length > 1 && (
+                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                    {mediaItems.map((item, index) => (
+                      <div key={`order-${item.id}`} className="flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-200 dark:ring-slate-800">
+                        <span>#{index + 1}</span>
+                        <button type="button" onClick={() => moveMediaItem(item.id, -1)} disabled={index === 0} className="rounded-full p-1 disabled:opacity-30" aria-label="Move media earlier">
+                          <ChevronLeft size={13} />
+                        </button>
+                        <button type="button" onClick={() => moveMediaItem(item.id, 1)} disabled={index === mediaItems.length - 1} className="rounded-full p-1 disabled:opacity-30" aria-label="Move media later">
+                          <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button type="button" onClick={clearMedia} className="mt-2 w-full rounded-xl bg-white py-2 text-xs font-black text-rose-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  Remove media
+                </button>
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <ImageIcon size={15} />
+                  Media
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                    onChange={event => {
+                      selectMedia(event.target.files);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+                <label className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <PrivacySelectIcon size={15} />
+                  <select value={privacy} onChange={event => setPrivacy(event.target.value)} className="bg-transparent outline-none">
+                    <option value="public">Public</option>
+                    <option value="friends">Friends</option>
+                    <option value="private">Only me</option>
+                  </select>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={!canPost}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#07036f] px-5 text-sm font-black text-white disabled:opacity-50"
+              >
+                {posting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                Post
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="home-feed-autoplay-card flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50">
+            <Video size={18} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-black text-slate-950 dark:text-white">Video autoplay</p>
+            <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {autoPlayVideos ? 'On for visible feed videos' : 'Off until you press play'}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => loadFeed({ silent: true })}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-blue-50 hover:text-[#0b57d0] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-blue-950/30"
+          >
+            <RefreshCw size={15} />
+            Shuffle
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoPlayVideos}
+            aria-label="Toggle video autoplay"
+            onClick={toggleVideoAutoplay}
+            className={`relative h-8 w-14 shrink-0 rounded-full p-1 transition ${
+              autoPlayVideos ? 'bg-[#0b57d0]' : 'bg-slate-200 dark:bg-slate-800'
+            }`}
+          >
+            <span className={`block h-6 w-6 rounded-full bg-white shadow-lg transition ${autoPlayVideos ? 'translate-x-6' : 'translate-x-0'}`} />
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <>
+          <div className="space-y-3 md:hidden">
+            {[0, 1, 2].map(item => (
+              <div key={item} className="mobile-skeleton-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-3">
+                  <span className="h-11 w-11 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  <span className="h-4 w-40 rounded-full bg-slate-200 dark:bg-slate-800" />
+                </div>
+                <div className="mt-4 h-4 w-11/12 rounded-full bg-slate-200 dark:bg-slate-800" />
+                <div className="mt-2 h-4 w-7/12 rounded-full bg-slate-200 dark:bg-slate-800" />
+                <div className="mt-4 aspect-video rounded-2xl bg-slate-200 dark:bg-slate-800" />
+              </div>
+            ))}
+          </div>
+          <div className="hidden rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 md:block">
+            Loading home feed...
+          </div>
+        </>
+      ) : visiblePosts.length ? (
+        <>
+          {visiblePosts.map(post => {
+            const postId = getEntityId(post);
+            const author = post.userId || {};
+            const attachments = getPostAttachments(post);
+            const myReaction = post.reactions?.find(reaction => getEntityId(reaction.userId) === currentUserId);
+            const isOwner = getEntityId(author) === currentUserId;
+            const shareCount = getShareCount(post);
+            const commentCount = post.comments?.length || 0;
+            const allComments = post.comments || [];
+            const replyTarget = commentReplyTargets[postId];
+            const postBackground = getTextBackgroundOption(post.background);
+            const hasStyledText = Boolean(post.content && post.background && attachments.length === 0);
+            const taggedNames = (post.taggedUsers || []).map(person => person?.name).filter(Boolean);
+
+            return (
+              <article id={`post-${postId}`} key={postId} className="feed-card mobile-facebook-post overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+                <header className="feed-card-header flex items-start gap-3 p-4">
+                  <Avatar user={author} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 truncate font-black text-slate-950 dark:text-white">{author.name || 'Member'}</span>
+                      <DeveloperBadge user={author} compact />
+                      {author.studentVerificationStatus === 'approved' && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black uppercase text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/35 dark:text-emerald-200 dark:ring-emerald-500/20" title="Official campus student">
+                          <BadgeCheck size={12} />
+                          Verified
+                        </span>
+                      )}
+                      <PrivacyPill value={post.privacy} />
+                    </div>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {formatFeedTime(post.createdAt)}
+                      {post.mood ? ` · feeling ${post.mood}` : ''}
+                      {post.activity ? ` · ${post.activity}` : ''}
+                    </p>
+                    {taggedNames.length > 0 && (
+                      <p className="mt-0.5 line-clamp-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+                        with {taggedNames.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setActivePostOptionsId(prev => (prev === postId ? '' : postId))}
+                      className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-[#0b57d0] dark:text-slate-400 dark:hover:bg-slate-800"
+                      aria-label="Post options"
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                    {activePostOptionsId === postId && (
+                      <div className="feed-post-options absolute right-0 top-10 z-30 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-sm font-bold text-slate-700 shadow-2xl shadow-slate-950/15 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                        <button type="button" onClick={() => savePost(post)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-900">
+                          <Bookmark size={16} />
+                          Save post
+                        </button>
+                        <button type="button" onClick={() => copyPostLink(post)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-900">
+                          <Copy size={16} />
+                          Copy link
+                        </button>
+                        <button type="button" onClick={() => hidePost(post)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-900">
+                          <EyeOff size={16} />
+                          Hide post
+                        </button>
+                        <button type="button" onClick={reportPost} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-900">
+                          <Flag size={16} />
+                          Report
+                        </button>
+                        {isOwner && (
+                          <button type="button" onClick={() => deletePost(post)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/35">
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </header>
+
+                <div className="feed-card-body space-y-3 px-4 pb-4">
+                  {post.content && (hasStyledText ? (
+                    <div
+                      className="whitespace-pre-wrap break-words rounded-2xl px-5 py-10 text-center text-2xl font-black leading-snug shadow-inner"
+                      style={postBackground.style}
+                    >
+                      {post.content}
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words text-[15px] leading-6 text-slate-800 dark:text-slate-100">{post.content}</p>
+                  ))}
+                  {attachments.length > 0 && (
+                    <FeedMediaGrid
+                      attachments={attachments}
+                      title={post.title || 'Post media'}
+                      mediaGroupKey={postId}
+                      autoPlayVideos={autoPlayVideos}
+                      activeVideoKey={activeVideoKey}
+                      onVideoPlay={handleFeedVideoPlay}
+                      onOpenMedia={(index, items) => openMediaViewer(post, index, items)}
+                    />
+                  )}
+                </div>
+
+                <div className="feed-card-stats mx-4 flex flex-wrap items-center justify-between gap-2 border-y border-slate-100 py-2 text-xs font-bold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  <ReactionSummary
+                    reactions={post.reactions || []}
+                    onOpen={() => openReactionViewer('Post reactions', post.reactions || [])}
+                  />
+                  <div className="flex min-w-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openCommentsForPost(postId)}
+                      className="hover:text-[#0b57d0] dark:hover:text-sky-200"
+                    >
+                      {commentCount ? getCountLabel(commentCount, 'comment') : 'No comments'}
+                    </button>
+                    <span>{shareCount ? getCountLabel(shareCount, 'share') : 'Share'}</span>
+                  </div>
+                </div>
+
+                <div className="feed-card-actions grid grid-cols-3 gap-1 px-4 py-2">
+                  <div className="relative group/reactions">
+                    <button
+                      type="button"
+                      onPointerDown={event => handleReactionPressStart(postId, event.currentTarget)}
+                      onPointerUp={clearReactionPressTimer}
+                      onPointerCancel={clearReactionPressTimer}
+                      onPointerLeave={clearReactionPressTimer}
+                      onClick={event => handleReactionButtonClick(post, event.currentTarget)}
+                      className={`feed-reaction-button ${myReaction ? 'is-reacted' : ''} flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black ${
+                        myReaction ? 'bg-blue-50 text-[#0b57d0] dark:bg-blue-950/30 dark:text-sky-200' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <SmilePlus size={17} />
+                      <span className="inline-flex items-center gap-1">
+                        {myReaction?.emoji && <span className="reaction-motion-zone text-base">{myReaction.emoji}</span>}
+                        {myReaction ? 'Reacted' : 'React'}
+                      </span>
+                    </button>
+                    <ReactionBurst emoji={reactionBursts[postId]} className="right-4 top-0" />
+                    <div className="feed-reaction-picker-shell pointer-events-none absolute bottom-full left-0 z-20 mb-2 opacity-0 transition group-hover/reactions:pointer-events-auto group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:opacity-100">
+                      <ReactionPicker onSelect={(emoji) => choosePostReaction(post, emoji)} />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openCommentsForPost(postId)}
+                    className="feed-card-action-button flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    <MessageCircle size={17} />
+                    Comment
+                  </button>
+                  <button type="button" onClick={() => sharePost(post)} className="feed-card-action-button flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800">
+                    <Share2 size={17} />
+                    Share
+                  </button>
+                </div>
+
+                <div className="feed-card-comments space-y-2 px-4 pb-4">
+                  {allComments.slice(-3).map((comment, index) => {
+                    const commentId = getCommentId(comment) || `${index}-${comment.date || ''}`;
+                    const commentReactionKey = `${postId}:${commentId}`;
+                    const parentComment = allComments.find(item => getCommentId(item) === getEntityId(comment.replyTo));
+
+                    return (
+                      <div key={commentReactionKey} className="flex gap-2">
+                        <Avatar user={comment.userId} size="h-8 w-8" />
+                        <div className="min-w-0 flex-1">
+                          <div className="relative inline-block max-w-full">
+                            <div className="min-w-0 rounded-2xl bg-slate-100 px-3 py-2 dark:bg-slate-950">
+                              {parentComment && (
+                                <div className="mb-1.5 rounded-xl border-l-2 border-[#0b57d0] bg-white/70 px-2 py-1 text-[11px] font-bold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+                                  <span className="inline-flex max-w-full items-center gap-1">
+                                    <CornerDownRight size={12} className="shrink-0 text-[#0b57d0]" />
+                                    <span className="truncate">
+                                      Replying to {parentComment.userId?.name || 'Member'}: {parentComment.text}
+                                    </span>
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <span className="truncate text-xs font-black text-slate-950 dark:text-white">{comment.userId?.name || 'Member'}</span>
+                                <DeveloperBadge user={comment.userId} compact />
+                              </div>
+                              <p className="break-words text-sm text-slate-700 dark:text-slate-200">{comment.text}</p>
+                            </div>
+                            <ReactionBurst emoji={commentReactionBursts[commentReactionKey]} className="right-1 top-0" />
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 pl-2">
+                            <CommentReactionSummary
+                              reactions={comment.reactions || []}
+                              onReact={(emoji) => reactToComment(post, comment, emoji)}
+                              onOpen={() => openReactionViewer('Comment reactions', comment.reactions || [])}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCommentReplyTargets(prev => ({ ...prev, [postId]: comment }));
+                                window.setTimeout(() => commentInputRefs.current[postId]?.focus(), 0);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-black text-slate-500 hover:text-[#0b57d0] dark:text-slate-400 dark:hover:text-sky-200"
+                            >
+                              <Reply size={12} />
+                              Reply
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {replyTarget && (
+                    <div className="ml-10 flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-sky-100">
+                      <span className="min-w-0 truncate">
+                        Replying to {replyTarget.userId?.name || 'Member'}: {replyTarget.text}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCommentReplyTargets(prev => {
+                          const next = { ...prev };
+                          delete next[postId];
+                          return next;
+                        })}
+                        className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/80 text-blue-700 dark:bg-slate-900 dark:text-sky-100"
+                        aria-label="Cancel reply"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+                  <form onSubmit={event => addComment(event, post)} className="flex items-center gap-2">
+                    <Avatar user={currentUser} size="h-8 w-8" />
+                    <input
+                      ref={(node) => {
+                        if (node) commentInputRefs.current[postId] = node;
+                        else delete commentInputRefs.current[postId];
+                      }}
+                      value={commentDrafts[postId] || ''}
+                      onChange={event => setCommentDrafts(prev => ({ ...prev, [postId]: event.target.value }))}
+                      placeholder={replyTarget ? `Reply to ${replyTarget.userId?.name || 'Member'}...` : 'Write a comment...'}
+                      className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:bg-slate-950"
+                    />
+                    <button type="submit" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#0b57d0] text-white disabled:opacity-50" disabled={!String(commentDrafts[postId] || '').trim()}>
+                      <MessageCircle size={16} />
+                    </button>
+                  </form>
+                </div>
+              </article>
+            );
+          })}
+
+          {visibleCount < posts.length && (
+            <button type="button" onClick={() => setVisibleCount(count => count + 8)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
+              Load more posts
+            </button>
+          )}
+        </>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
+          <Video className="mx-auto text-[#0b57d0]" size={32} />
+          <p className="mt-3 font-black text-slate-950 dark:text-white">No posts yet</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share the first update from the composer above.</p>
+        </div>
+      )}
+
+      {mobileOverviewSlot && <div className="home-feed-mobile-slot home-feed-mobile-overview-slot md:hidden">{mobileOverviewSlot}</div>}
+
+      {activeReactionPost && typeof document !== 'undefined' && createPortal(
+        <div
+          className="mobile-reaction-tray-overlay md:hidden"
+          onClick={() => {
+            setActiveReactionPostId('');
+            setReactionTrayAnchor(null);
+          }}
+        >
+          <div
+            className="mobile-reaction-tray mobile-reaction-tray--anchored"
+            style={reactionTrayAnchor ? { left: `${reactionTrayAnchor.left}px`, top: `${reactionTrayAnchor.top}px` } : undefined}
+            onClick={event => event.stopPropagation()}
+          >
+            <ReactionPicker onSelect={(emoji) => choosePostReaction(activeReactionPost, emoji)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {uploadQueue && typeof document !== 'undefined' && createPortal(
+        <div className={`mobile-upload-queue md:hidden ${uploadQueue.status === 'error' ? 'mobile-upload-queue--error' : ''}`}>
+          <div className="flex items-center gap-3">
+            {uploadQueue.status === 'error' ? (
+              <X size={18} className="text-rose-600" />
+            ) : (
+              <Loader2 size={18} className="animate-spin text-[#0b57d0]" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-black text-slate-950">{uploadQueue.label}</p>
+              {uploadQueue.message && <p className="mt-0.5 line-clamp-2 text-xs font-bold text-slate-500">{uploadQueue.message}</p>}
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                <div className={`h-full rounded-full ${uploadQueue.status === 'error' ? 'bg-rose-500' : 'bg-[#0b57d0]'}`} style={{ width: `${Math.max(6, uploadQueue.progress || uploadProgress || 8)}%` }} />
+              </div>
+            </div>
+            {uploadQueue.status === 'error' && (
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => createPost({ preventDefault() {} })}
+                  disabled={posting || !canPost}
+                  className="rounded-xl bg-[#0b57d0] px-3 py-2 text-xs font-black text-white disabled:opacity-50"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadQueue(null)}
+                  className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-500"
+                  aria-label="Dismiss upload error"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {activeCommentPost && typeof document !== 'undefined' && createPortal((() => {
+        const sheetPostId = getEntityId(activeCommentPost);
+        const sheetComments = activeCommentPost.comments || [];
+        const sheetReplyTarget = commentReplyTargets[sheetPostId];
+
+        return (
+          <div className="mobile-comment-sheet-overlay md:hidden" onClick={() => setActiveCommentPostId('')}>
+            <section className="mobile-comment-sheet" onClick={event => event.stopPropagation()} aria-label="Post comments">
+              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
+              <header className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="min-w-0">
+                  <p className="text-base font-black text-slate-950">Comments</p>
+                  <p className="truncate text-xs font-semibold text-slate-500">{getCountLabel(sheetComments.length, 'comment')}</p>
+                </div>
+                <button type="button" onClick={() => setActiveCommentPostId('')} className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600" aria-label="Close comments">
+                  <X size={18} />
+                </button>
+              </header>
+
+              <div className="mobile-comment-sheet-list">
+                {sheetComments.length ? sheetComments.map((comment, index) => {
+                  const commentId = getCommentId(comment) || `${index}-${comment.date || ''}`;
+                  const commentReactionKey = `${sheetPostId}:${commentId}`;
+                  const parentComment = sheetComments.find(item => getCommentId(item) === getEntityId(comment.replyTo));
+                  return (
+                    <div key={`sheet-${commentReactionKey}`} className="flex gap-2">
+                      <Avatar user={comment.userId} size="h-8 w-8" />
+                      <div className="min-w-0 flex-1">
+                        <div className="relative inline-block max-w-full">
+                          <div className="min-w-0 rounded-2xl bg-slate-100 px-3 py-2">
+                            {parentComment && (
+                              <div className="mb-1.5 rounded-xl border-l-2 border-[#0b57d0] bg-white/80 px-2 py-1 text-[11px] font-bold text-slate-500">
+                                <span className="inline-flex max-w-full items-center gap-1">
+                                  <CornerDownRight size={12} className="shrink-0 text-[#0b57d0]" />
+                                  <span className="truncate">Replying to {parentComment.userId?.name || 'Member'}: {parentComment.text}</span>
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-xs font-black text-slate-950">{comment.userId?.name || 'Member'}</span>
+                              <DeveloperBadge user={comment.userId} compact />
+                            </div>
+                            <p className="break-words text-sm text-slate-700">{comment.text}</p>
+                          </div>
+                          <ReactionBurst emoji={commentReactionBursts[commentReactionKey]} className="right-1 top-0" />
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 pl-2">
+                          <CommentReactionSummary
+                            reactions={comment.reactions || []}
+                            onReact={(emoji) => reactToComment(activeCommentPost, comment, emoji)}
+                            onOpen={() => openReactionViewer('Comment reactions', comment.reactions || [])}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCommentReplyTargets(prev => ({ ...prev, [sheetPostId]: comment }));
+                              window.setTimeout(() => commentInputRefs.current[sheetPostId]?.focus(), 0);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-black text-slate-500"
+                          >
+                            <Reply size={12} />
+                            Reply
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">No comments yet.</p>
+                )}
+              </div>
+
+              {sheetReplyTarget && (
+                <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">
+                  <span className="min-w-0 truncate">Replying to {sheetReplyTarget.userId?.name || 'Member'}: {sheetReplyTarget.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCommentReplyTargets(prev => {
+                      const next = { ...prev };
+                      delete next[sheetPostId];
+                      return next;
+                    })}
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/80 text-blue-700"
+                    aria-label="Cancel reply"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
+
+              <form onSubmit={event => addComment(event, activeCommentPost)} className="mobile-comment-sheet-input flex items-center gap-2">
+                <Avatar user={currentUser} size="h-8 w-8" />
+                <input
+                  ref={(node) => {
+                    if (node) commentInputRefs.current[sheetPostId] = node;
+                    else delete commentInputRefs.current[sheetPostId];
+                  }}
+                  value={commentDrafts[sheetPostId] || ''}
+                  onChange={event => setCommentDrafts(prev => ({ ...prev, [sheetPostId]: event.target.value }))}
+                  placeholder={sheetReplyTarget ? `Reply to ${sheetReplyTarget.userId?.name || 'Member'}...` : 'Write a comment...'}
+                  className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white"
+                />
+                <button type="submit" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0b57d0] text-white disabled:opacity-50" disabled={!String(commentDrafts[sheetPostId] || '').trim()}>
+                  <MessageCircle size={16} />
+                </button>
+              </form>
+            </section>
+          </div>
+        );
+      })(), document.body)}
+
+      {mediaViewer && typeof document !== 'undefined' && createPortal(
+        <MediaViewer
+          media={mediaViewer.items[mediaViewer.index]}
+          onClose={() => setMediaViewer(null)}
+          onPrevious={mediaViewer.index > 0 ? () => setMediaViewer(prev => ({ ...prev, index: Math.max(0, prev.index - 1) })) : null}
+          onNext={mediaViewer.index < mediaViewer.items.length - 1 ? () => setMediaViewer(prev => ({ ...prev, index: Math.min(prev.items.length - 1, prev.index + 1) })) : null}
+          positionLabel={`${mediaViewer.index + 1} of ${mediaViewer.items.length}`}
+          details={mediaViewer.details}
+          footerActions={renderMediaViewerActions()}
+        />,
+        document.body
+      )}
+
+      {reactionViewer && typeof document !== 'undefined' && createPortal(
+        <ReactionPeopleModal
+          title={reactionViewer.title}
+          reactions={reactionViewer.reactions}
+          onClose={() => setReactionViewer(null)}
+        />,
+        document.body
+      )}
+    </section>
+  );
+}
