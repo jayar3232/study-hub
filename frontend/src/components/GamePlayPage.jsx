@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Activity, ArrowLeft, Crosshair, Gamepad2, Gauge, Maximize2, Minimize2, Orbit, Plane, Sparkles, Sword, Trophy } from 'lucide-react';
+import { Activity, ArrowLeft, Crosshair, Gamepad2, Gauge, Maximize2, Minimize2, Orbit, Plane, Sparkles, Sword, Trophy, X } from 'lucide-react';
 import api from '../services/api';
 import GameRankBadge from './GameRankBadge';
 import LoadingSpinner from './LoadingSpinner';
@@ -77,6 +77,8 @@ export default function GamePlayPage() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
+  const fullscreenPromptKey = useMemo(() => `syncrova-game-fullscreen-prompt-${gameKey || 'game'}`, [gameKey]);
 
   const triggerGameFeedback = useCallback((duration = 10) => {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
@@ -100,6 +102,13 @@ export default function GamePlayPage() {
   useEffect(() => {
     loadSummary();
   }, [loadSummary, gameKey]);
+
+  useEffect(() => {
+    if (!game || typeof window === 'undefined') return;
+    const isMobileGameViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+    const alreadyDismissed = window.localStorage.getItem(fullscreenPromptKey) === 'dismissed';
+    setShowFullscreenPrompt(Boolean(isMobileGameViewport && !alreadyDismissed));
+  }, [fullscreenPromptKey, game]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -134,6 +143,21 @@ export default function GamePlayPage() {
       await shell.requestFullscreen().catch(() => {});
     }
   }, [triggerGameFeedback]);
+
+  const dismissFullscreenPrompt = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(fullscreenPromptKey, 'dismissed');
+    }
+    setShowFullscreenPrompt(false);
+  }, [fullscreenPromptKey]);
+
+  const startFullscreenFromPrompt = useCallback(async () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(fullscreenPromptKey, 'dismissed');
+    }
+    setShowFullscreenPrompt(false);
+    await enterFocusMode();
+  }, [enterFocusMode, fullscreenPromptKey]);
 
   const exitFocusMode = useCallback(async () => {
     triggerGameFeedback(8);
@@ -180,6 +204,44 @@ export default function GamePlayPage() {
           >
             <Minimize2 size={18} /> Exit
           </button>
+        </div>
+      ) : null}
+
+      {showFullscreenPrompt && !focusMode ? (
+        <div className="game-fullscreen-prompt" role="dialog" aria-modal="true" aria-label="Use fullscreen for better game experience">
+          <div className="game-fullscreen-prompt__panel">
+            <button
+              type="button"
+              onClick={dismissFullscreenPrompt}
+              className="game-fullscreen-prompt__close"
+              aria-label="Dismiss fullscreen prompt"
+            >
+              <X size={17} />
+            </button>
+            <div className="game-fullscreen-prompt__icon">
+              <Maximize2 size={24} />
+            </div>
+            <p className="text-base font-black text-slate-950 dark:text-white">Enter fullscreen</p>
+            <p className="mt-1 text-sm font-semibold leading-5 text-slate-500 dark:text-slate-400">
+              Better controls and full game view on mobile.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={dismissFullscreenPrompt}
+                className="h-11 rounded-xl bg-slate-100 text-sm font-black text-slate-700 ring-1 ring-slate-200 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/10"
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                onClick={startFullscreenFromPrompt}
+                className="h-11 rounded-xl bg-[#0b57d0] text-sm font-black text-white shadow-lg shadow-blue-500/20"
+              >
+                Enter
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -231,7 +293,7 @@ export default function GamePlayPage() {
       </section>
       )}
 
-      <div className="game-play-layout grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="game-play-layout grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_18rem]">
         <main className="game-play-frame min-w-0">
           {loading ? (
             <section className="grid min-h-[24rem] place-items-center rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -250,7 +312,7 @@ export default function GamePlayPage() {
         </main>
 
         {!focusMode && (
-        <aside className="game-play-side grid min-w-0 gap-4 md:grid-cols-2 xl:block xl:space-y-4">
+        <aside className="game-play-side grid min-w-0 gap-4 md:grid-cols-2 2xl:block 2xl:space-y-4">
           <GameRankBadge stats={summary?.stats} showProgress />
           <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <p className="text-sm font-black text-gray-950 dark:text-white">Game Hub</p>

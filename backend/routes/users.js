@@ -11,6 +11,7 @@ const Group = require('../models/Group');
 const Task = require('../models/Task');
 const GameSession = require('../models/GameSession');
 const Friendship = require('../models/Friendship');
+const Post = require('../models/Post');
 const { RANK_TIERS, buildLeaderboard, buildRankStats } = require('../services/ranks');
 const { buildGameStats } = require('../services/gameRanks');
 const { syncDeveloperAccess } = require('../services/roles');
@@ -79,6 +80,19 @@ const getActiveFriendshipBetween = async (currentUserId, profileUserId) => {
     if (statusDelta !== 0) return statusDelta;
     return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
   })[0] || null;
+};
+
+const getAcceptedFriendIds = async (userId) => {
+  const rows = await Friendship.find({
+    status: 'accepted',
+    $or: [{ requester: userId }, { recipient: userId }]
+  }).select('requester recipient').lean();
+
+  return rows.map(row => {
+    const requester = String(row.requester || '');
+    const recipient = String(row.recipient || '');
+    return requester === String(userId) ? recipient : requester;
+  }).filter(Boolean);
 };
 
 const localStorage = multer.diskStorage({
@@ -308,7 +322,7 @@ router.get('/:id/public', auth, async (req, res) => {
     if (!profile) return res.status(404).json({ msg: 'User not found' });
 
     const isSelf = String(profile._id) === String(req.user);
-    const [sharedWorkspaces, rankTasks, gameSessions, friendship] = await Promise.all([
+    const [sharedWorkspaces, rankTasks, gameSessions, friendship, viewerFriendIds, profileFriendIds] = await Promise.all([
       Group.countDocuments({
         members: { $all: [req.user, profile._id] }
       }),
@@ -320,10 +334,36 @@ router.get('/:id/public', auth, async (req, res) => {
         .lean(),
       isSelf
         ? Promise.resolve(null)
-        : getActiveFriendshipBetween(req.user, profile._id)
+        : getActiveFriendshipBetween(req.user, profile._id),
+      getAcceptedFriendIds(req.user),
+      getAcceptedFriendIds(profile._id)
     ]);
 
     const profileObject = profile.toObject();
+    const profileFriendIdSet = new Set(profileFriendIds.map(String));
+    const mutualFriendIds = viewerFriendIds
+      .map(String)
+      .filter(friendId => friendId !== String(profile._id) && profileFriendIdSet.has(friendId));
+    const isFriend = isSelf || friendship?.status === 'accepted';
+    const visiblePostPrivacy = isSelf ? ['public', 'friends', 'private'] : isFriend ? ['public', 'friends'] : ['public'];
+    const [posts, mutualFriends] = await Promise.all([
+      Post.find({
+        userId: profile._id,
+        scope: 'timeline',
+        privacy: { $in: visiblePostPrivacy }
+      })
+        .populate('userId', 'name avatar isDeveloper studentVerificationStatus')
+        .populate('comments.userId', 'name avatar isDeveloper')
+        .populate('comments.reactions.userId', 'name avatar isDeveloper')
+        .populate('reactions.userId', 'name avatar isDeveloper')
+        .populate('taggedUsers', 'name avatar isDeveloper')
+        .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 })
+        .limit(12)
+        .lean(),
+      User.find({ _id: { $in: mutualFriendIds.slice(0, 12) } })
+        .select('name email course campus avatar coverPhoto lastSeen isDeveloper createdAt')
+        .lean()
+    ]);
 
     res.json({
       ...profileObject,
@@ -333,6 +373,10 @@ router.get('/:id/public', auth, async (req, res) => {
       studentVerifiedAt: profileObject.studentVerifiedAt || null,
       studentVerificationReviewedAt: profileObject.studentVerificationReviewedAt || null,
       sharedWorkspaces,
+      friendCount: profileFriendIds.length,
+      mutualFriendCount: mutualFriendIds.length,
+      mutualFriends: mutualFriends.map(toClientUser),
+      posts,
       rankStats: buildRankStats(rankTasks, profile._id),
       gameStats: buildGameStats(gameSessions),
       friendship: isSelf ? { status: 'self' } : getFriendshipState(friendship, req.user)

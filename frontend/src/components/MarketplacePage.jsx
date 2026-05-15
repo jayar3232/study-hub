@@ -117,6 +117,11 @@ const statusCopy = {
     tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
     helper: 'Campus marketplace is unlocked.'
   },
+  developer: {
+    label: 'Developer access',
+    tone: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-100',
+    helper: 'Developer accounts can use Marketplace without student verification.'
+  },
   rejected: {
     label: 'Needs resubmission',
     tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200',
@@ -154,7 +159,7 @@ const listingStatusTone = {
 
 function StatusPill({ status }) {
   const copy = statusCopy[status] || statusCopy.not_submitted;
-  const Icon = status === 'approved' ? BadgeCheck : status === 'pending' ? Clock3 : status === 'rejected' ? XCircle : ShieldCheck;
+  const Icon = status === 'approved' || status === 'developer' ? BadgeCheck : status === 'pending' ? Clock3 : status === 'rejected' ? XCircle : ShieldCheck;
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black uppercase tracking-normal ${copy.tone}`}>
       <Icon size={14} />
@@ -195,12 +200,13 @@ function DocumentPreview({ submission, compact = false }) {
 }
 
 function SellerTrustBadge({ seller, compact = false }) {
-  const verified = seller?.studentVerificationStatus === 'approved';
+  const developer = Boolean(seller?.isDeveloper);
+  const verified = developer || seller?.studentVerificationStatus === 'approved';
   const successfulDeals = Number(seller?.marketplaceDeals || seller?.successfulDeals || seller?.soldCount || 0);
   const rating = Number(seller?.marketplaceRating || seller?.sellerRating || 0);
   const responseScore = Number(seller?.responseScore || seller?.sellerResponseScore || 0);
   const trustPills = [
-    verified ? 'Official student' : 'Campus profile',
+    developer ? 'Developer' : verified ? 'Official student' : 'Campus profile',
     successfulDeals > 0 ? `${successfulDeals} deal${successfulDeals === 1 ? '' : 's'}` : 'Campus meetup',
     rating > 0 ? `${rating.toFixed(1)} seller rating` : responseScore > 0 ? 'Responds fast' : 'In-app chat'
   ];
@@ -230,7 +236,7 @@ function SellerTrustBadge({ seller, compact = false }) {
       {verified && (
         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black uppercase text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200">
           <BadgeCheck size={12} />
-          Verified
+          {developer ? 'Developer' : 'Verified'}
         </span>
       )}
     </div>
@@ -346,6 +352,17 @@ function MarketplaceEmptyState({ canBuySell, activeTab }) {
 }
 
 function VerificationTimeline({ status }) {
+  if (status === 'developer') {
+    return (
+      <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs font-black uppercase text-cyan-800 dark:border-cyan-500/25 dark:bg-cyan-950/25 dark:text-cyan-100">
+        <div className="flex items-center gap-2">
+          <BadgeCheck size={15} />
+          Developer bypass active
+        </div>
+      </div>
+    );
+  }
+
   const steps = [
     { key: 'upload', label: 'Submit ID/COR', complete: ['pending', 'approved', 'rejected'].includes(status) },
     { key: 'review', label: 'Developer review', complete: ['approved', 'rejected'].includes(status), active: status === 'pending' },
@@ -597,10 +614,10 @@ export default function MarketplacePage() {
   const [queueLoading, setQueueLoading] = useState(false);
   const [reviewReasons, setReviewReasons] = useState({});
 
-  const verification = statusData?.verification || { status: user?.studentVerificationStatus || 'not_submitted' };
-  const currentStatus = statusData?.user?.studentVerificationStatus || verification.status || 'not_submitted';
-  const canBuySell = Boolean(statusData?.canBuySell);
   const isDeveloper = Boolean(statusData?.user?.isDeveloper || user?.isDeveloper);
+  const verification = statusData?.verification || { status: user?.studentVerificationStatus || 'not_submitted' };
+  const currentStatus = isDeveloper ? 'developer' : statusData?.user?.studentVerificationStatus || verification.status || 'not_submitted';
+  const canBuySell = Boolean(statusData?.canBuySell || isDeveloper);
   const selectedStatusCopy = statusCopy[currentStatus] || statusCopy.not_submitted;
 
   const listingStats = useMemo(() => ({
@@ -922,12 +939,18 @@ export default function MarketplacePage() {
               </div>
             </div>
 
-            {currentStatus === 'approved' ? (
+            {currentStatus === 'approved' || currentStatus === 'developer' ? (
               <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-950/25 dark:text-emerald-100">
                 <BadgeCheck size={30} />
-                <p className="mt-3 text-lg font-black">Official campus student</p>
-                <p className="mt-1 text-sm font-semibold">You can post listings, save items, and message sellers.</p>
-                <p className="mt-3 rounded-xl bg-white/80 px-3 py-2 text-xs font-black uppercase dark:bg-slate-950/60">Verified: {formatDate(statusData?.user?.studentVerifiedAt)}</p>
+                <p className="mt-3 text-lg font-black">{currentStatus === 'developer' ? 'Developer marketplace access' : 'Official campus student'}</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {currentStatus === 'developer'
+                    ? 'You can post listings, save items, and message sellers without student document review.'
+                    : 'You can post listings, save items, and message sellers.'}
+                </p>
+                {currentStatus !== 'developer' && (
+                  <p className="mt-3 rounded-xl bg-white/80 px-3 py-2 text-xs font-black uppercase dark:bg-slate-950/60">Verified: {formatDate(statusData?.user?.studentVerifiedAt)}</p>
+                )}
               </div>
             ) : (
               <form onSubmit={submitVerification} className="mt-5 space-y-4">

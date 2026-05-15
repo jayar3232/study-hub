@@ -31,9 +31,19 @@ export const getSocket = () => {
   return socket;
 };
 
-export const refreshSocketAuth = () => {
+export const refreshSocketAuth = ({ reconnect = false } = {}) => {
   if (!socket) return;
-  socket.auth = { token: getToken() };
+  const previousToken = socket.auth?.token || '';
+  const nextToken = getToken();
+  socket.auth = { token: nextToken };
+
+  if (!reconnect) return;
+  if (socket.connected && previousToken !== nextToken) {
+    socket.disconnect();
+    socket.connect();
+    return;
+  }
+  if (!socket.connected) socket.connect();
 };
 
 export const disconnectSocket = () => {

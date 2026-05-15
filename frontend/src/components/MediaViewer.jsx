@@ -295,7 +295,7 @@ export default function MediaViewer({ media, onClose, onPrevious, onNext, positi
             </div>
 
             <div
-              className="media-viewer-stage relative grid min-h-0 flex-1 touch-none select-none place-items-center overflow-hidden rounded-3xl bg-black/50 md:flex-none"
+              className="media-viewer-stage relative grid min-h-0 flex-1 touch-none select-none place-items-center overflow-hidden rounded-3xl bg-black/50"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={finishGesture}

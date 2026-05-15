@@ -18,6 +18,7 @@ import {
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { resolveMediaUrl } from '../utils/media';
+import AnimatedEmojiText from './AnimatedEmojiText';
 
 const getMemoryId = (memory) => String(memory?._id || memory?.id || memory?.videoId || '');
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
@@ -798,7 +799,7 @@ export default function Reels() {
             {(activeMemory?.comments || []).length ? activeMemory.comments.map(comment => (
               <div key={comment._id || `${comment.text}-${comment.createdAt}`} className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-900">
                 <p className="text-[11px] font-black text-gray-500 dark:text-gray-400">{comment.userId?.name || 'Member'}</p>
-                <p className="mt-0.5 text-xs font-semibold text-gray-800 dark:text-gray-100">{comment.text}</p>
+                <p className="mt-0.5 text-xs font-semibold text-gray-800 dark:text-gray-100"><AnimatedEmojiText text={comment.text} /></p>
               </div>
             )) : (
               <p className="rounded-xl bg-gray-50 p-2.5 text-xs font-semibold text-gray-500 dark:bg-gray-900 dark:text-gray-400">No comments yet.</p>
@@ -841,10 +842,10 @@ export default function Reels() {
             )}
           </div>
           <h2 className="mt-3 line-clamp-3 text-xl font-black leading-tight text-gray-950 dark:text-white">
-            {activeMemory?.title || 'Gallery item'}
+            <AnimatedEmojiText text={activeMemory?.title || 'Gallery item'} />
           </h2>
           {activeMemory?.caption && (
-            <p className="mt-2 text-sm font-bold leading-6 text-gray-500 dark:text-gray-400">{activeMemory.caption}</p>
+            <p className="mt-2 text-sm font-bold leading-6 text-gray-500 dark:text-gray-400"><AnimatedEmojiText text={activeMemory.caption} /></p>
           )}
           <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-xl bg-gray-50 p-3 text-center dark:bg-gray-900">
@@ -868,7 +869,7 @@ export default function Reels() {
             {(activeMemory?.comments || []).length ? activeMemory.comments.map(comment => (
               <div key={comment._id || `${comment.text}-${comment.createdAt}`} className="rounded-xl bg-gray-50 p-3 dark:bg-gray-900">
                 <p className="text-xs font-black text-gray-500 dark:text-gray-400">{comment.userId?.name || 'Member'}</p>
-                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{comment.text}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100"><AnimatedEmojiText text={comment.text} /></p>
               </div>
             )) : (
               <p className="rounded-xl bg-gray-50 p-3 text-sm font-semibold text-gray-500 dark:bg-gray-900 dark:text-gray-400">No comments yet.</p>

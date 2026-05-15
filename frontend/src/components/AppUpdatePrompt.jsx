@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Download, RefreshCw, X } from 'lucide-react';
+import { Download, Loader2, RefreshCw, X } from 'lucide-react';
 import { getBackendOrigin } from '../utils/media';
 import { RELEASE_ANDROID_VERSION_CODE } from '../generated/releaseInfo';
 
@@ -53,6 +53,7 @@ export default function AppUpdatePrompt() {
   const [update, setUpdate] = useState(null);
   const [hidden, setHidden] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState('');
 
   const dismissKey = useMemo(() => (
@@ -148,6 +149,7 @@ export default function AppUpdatePrompt() {
 
   const downloadUpdate = async () => {
     setChecking(true);
+    setDownloading(true);
     setDownloadMessage('');
 
     try {
@@ -161,22 +163,26 @@ export default function AppUpdatePrompt() {
 
         if (result?.needsInstallPermission) {
           setDownloadMessage('Allow installs for Syncrova, then tap Download again.');
+          setDownloading(false);
           return;
         }
 
-        setDownloadMessage('Downloading inside Syncrova. The Android installer will open when ready.');
+        setDownloadMessage('Downloading inside Syncrova. Keep the app open; Android will show the installer when the APK is ready.');
         return;
       }
 
       if (isNativeAndroid()) {
         setDownloadMessage('This APK does not have the in-app updater plugin yet. Install the latest APK once, then future updates download inside Syncrova.');
+        setDownloading(false);
         return;
       }
 
       window.open(update.apkUrl, '_blank', 'noopener,noreferrer');
       setDownloadMessage('Opening the APK download.');
+      setDownloading(false);
     } catch (err) {
       setDownloadMessage(err?.message || 'Could not start the in-app update download.');
+      setDownloading(false);
     } finally {
       setChecking(false);
     }
@@ -215,7 +221,10 @@ export default function AppUpdatePrompt() {
             )}
             {downloadMessage && (
               <p className="mt-2 rounded-2xl bg-blue-500/15 px-3 py-2 text-xs font-semibold text-blue-100">
-                {downloadMessage}
+                <span className="inline-flex items-center gap-2">
+                  {downloading && <Loader2 size={13} className="animate-spin" />}
+                  {downloadMessage}
+                </span>
               </p>
             )}
           </div>
@@ -243,12 +252,12 @@ export default function AppUpdatePrompt() {
           <button
             type="button"
             onClick={downloadUpdate}
-            disabled={checking}
+            disabled={checking || downloading}
             className="h-11 flex-[1.5] rounded-2xl bg-[#1877f2] px-4 text-sm font-black text-white transition hover:bg-[#0f63d5] disabled:opacity-60"
           >
             <span className="inline-flex items-center justify-center gap-2">
-              <Download size={17} />
-              {checking ? 'Preparing...' : 'Download in app'}
+              {downloading ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}
+              {downloading ? 'Downloading...' : checking ? 'Preparing...' : 'Download in app'}
             </span>
           </button>
         </div>

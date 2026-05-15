@@ -15,6 +15,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (token) {
       api.defaults.headers.common['x-auth-token'] = token;
+      refreshSocketAuth({ reconnect: true });
       // Fetch user profile
       api.get('/users/profile')
         .then(res => {
@@ -57,7 +58,7 @@ export const AuthProvider = ({ children }) => {
   const login = (newToken, userData) => {
     localStorage.setItem('token', newToken);
     api.defaults.headers.common['x-auth-token'] = newToken;
-    refreshSocketAuth();
+    refreshSocketAuth({ reconnect: true });
     setToken(newToken);
     setUser(userData);
     syncNativeNotificationAuth({ user: userData }).catch(() => {});

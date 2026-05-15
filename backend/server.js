@@ -181,6 +181,7 @@ app.use('/api/friends', require('./routes/friends'));
 app.use('/api/stories', require('./routes/stories'));
 app.use('/api/reels', require('./routes/reels'));
 app.use('/api/app', require('./routes/appUpdate'));
+app.use('/api/assistant', require('./routes/assistant'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/saved', require('./routes/saved'));
 app.use('/api/health', require('./routes/health'));
@@ -326,7 +327,7 @@ const BOW_DUEL_MAX_ROUNDS = 0;
 const BOW_DUEL_MAX_HP = 540;
 const BOW_DUEL_UNLOCK_DAMAGE = 130;
 const BOW_DUEL_GRAVITY = 0.22;
-const BOW_DUEL_THROW_ORIGIN_HEIGHT = 166;
+const BOW_DUEL_THROW_ORIGIN_HEIGHT = 118;
 const BOW_DUEL_OBSTACLES = [
   { id: 'valley-spire', label: 'Stone Spire', x: 792, y: 426, width: 92, height: 128 },
   { id: 'ridge-pillar', label: 'Ridge Pillar', x: 1030, y: 462, width: 70, height: 96 }
@@ -384,10 +385,11 @@ const getBowDuelPlayerPoint = (side) => ({
 
 const getBowDuelTargetZones = (side) => {
   const point = getBowDuelPlayerPoint(side);
+  const facingOffset = side === 'left' ? 8 : -8;
   return {
-    head: { x: point.x, y: point.y - 182, radius: 36 },
-    body: { x: point.x, y: point.y - 92, radius: 86 },
-    leg: { x: point.x, y: point.y - 20, radius: 62 }
+    head: { x: point.x + facingOffset, y: point.y - 176, radius: 26 },
+    body: { x: point.x, y: point.y - 102, radius: 58 },
+    leg: { x: point.x, y: point.y - 26, radius: 38 }
   };
 };
 
@@ -473,7 +475,7 @@ const simulateBowDuelShot = ({ player, opponent, angle, power, wind }) => {
   const bodyHit = !blockedBy && closest.body.distance <= targetZones.body.radius;
   const legHit = !blockedBy && closest.leg.distance <= targetZones.leg.radius;
   const hit = headshot || bodyHit || legHit;
-  const graze = !blockedBy && !hit && closest[bestZone].distance <= 116;
+  const graze = !blockedBy && !hit && closest[bestZone].distance <= 72;
   const closestDistance = blockedBy ? 999 : closest[bestZone].distance;
   const hitZone = blockedBy ? 'cover' : headshot ? 'head' : bodyHit ? 'body' : legHit ? 'leg' : graze ? 'graze' : 'miss';
 
@@ -503,15 +505,11 @@ const simulateBowDuelShot = ({ player, opponent, angle, power, wind }) => {
     baseDamage = 38 + Math.round((targetZones.body.radius - closest.body.distance) * 0.5) + Math.round(safePower * 0.09);
   } else if (legHit) {
     baseDamage = 30 + Math.round((targetZones.leg.radius - closest.leg.distance) * 0.42) + Math.round(safePower * 0.07);
-  } else if (graze) {
-    baseDamage = 7 + Math.round((110 - closestDistance) * 0.12);
-  } else if (closestDistance <= 150) {
-    baseDamage = 3;
   }
 
   const bonusDamage = headshot ? Math.round(bowBonus * 1.45) : legHit ? Math.round(bowBonus * 0.85) : bowBonus;
-  const maxDamage = headshot ? 155 : legHit ? 78 : bodyHit ? 96 : 28;
-  const damage = Math.round(clampBowNumber(baseDamage + bonusDamage, hit ? 16 : 0, maxDamage, 0));
+  const maxDamage = headshot ? 155 : legHit ? 78 : bodyHit ? 96 : 0;
+  const damage = hit ? Math.round(clampBowNumber(baseDamage + bonusDamage, 16, maxDamage, 0)) : 0;
   const accuracy = Math.round(clampBowNumber((1 - Math.min(closestDistance, 260) / 260) * 100, 0, 100, 0));
   const impactVelocity = roundBowNumber(Math.hypot(impactVelocityX, impactVelocityY));
   const impactAngle = roundBowNumber(Math.atan2(impactVelocityY, impactVelocityX));
@@ -1037,7 +1035,7 @@ io.on('connection', async (socket) => {
     opponent.streak = 0;
     player.totalDamage += appliedDamage;
     player.shots += 1;
-    if (shot.hit || shot.hitZone === 'graze') {
+    if (shot.hit) {
       player.hits += 1;
       player.streak = (player.streak || 0) + 1;
     } else {

@@ -100,14 +100,14 @@ router.get('/update', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     platform: 'android',
-    versionCode: Number(process.env.APP_VERSION_CODE || 40),
-    versionName: process.env.APP_VERSION_NAME || '3.3.10',
+    versionCode: Number(process.env.APP_VERSION_CODE || 42),
+    versionName: process.env.APP_VERSION_NAME || '4.1.0',
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, true),
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Knife Duel visual overhaul with larger fighters|Cinematic throwing-knife camera, dust, sound, and haptics|Student marketplace and mobile UI polish|LiveKit voice and video call support'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.1.0 responsive message, media, friends, and game layout fixes|Call history now shows voice/video duration in conversations|AI assistant logo and live OpenAI-backed responses when configured|Knife Duel socket auth refresh for signed-in players'
   });
 });
 

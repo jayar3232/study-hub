@@ -31,7 +31,6 @@ import { usePresence } from '../context/PresenceContext';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
-import { RankEmblem } from './RankBadge';
 import { GameRankEmblem } from './GameRankBadge';
 import OnlineRoster from './OnlineRoster';
 import LoadingSpinner from './LoadingSpinner';
@@ -153,24 +152,6 @@ function Panel({ title, helper, children }) {
   );
 }
 
-function RankLeaderRow({ entry, index }) {
-  const user = entry?.user || {};
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
-      <span className="w-6 text-center text-sm font-black text-slate-500 dark:text-slate-400">#{index + 1}</span>
-      <RankEmblem rank={entry?.stats?.rank} size="sm" animated />
-      <Avatar user={user} size="h-9 w-9" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-black text-slate-950 dark:text-white">{user.name || 'Member'}</p>
-        <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {entry?.stats?.rank?.shortName || 'Rookie'} - {entry?.stats?.completedTasks || 0} tasks
-        </p>
-      </div>
-      <span className="text-sm font-black text-slate-950 dark:text-white">{compactNumber(entry?.stats?.xp)}</span>
-    </div>
-  );
-}
-
 function GameLeaderRow({ entry, index }) {
   const user = entry?.user || {};
   return (
@@ -214,7 +195,7 @@ function HeaderMetric({ icon: Icon, label, value, helper, accent = 'blue' }) {
   );
 }
 
-function DashboardWelcomeHeader({ user, now, weather, weatherLoading, rankStats, onProfileClick }) {
+function DashboardWelcomeHeader({ user, now, weather, weatherLoading, gameStats, onProfileClick }) {
   const fullName = user?.name || 'Member';
   const firstName = fullName.split(' ')[0] || fullName;
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone?.replace(/_/g, ' ') || 'Local time';
@@ -228,7 +209,7 @@ function DashboardWelcomeHeader({ user, now, weather, weatherLoading, rankStats,
   const profileRows = [
     { icon: BookOpen, label: 'Course', value: user?.course || 'Course not set' },
     { icon: Building2, label: 'Campus', value: user?.campus || 'Campus not set' },
-    { icon: Trophy, label: 'Rank', value: rankStats?.rank?.name || 'Rookie profile' }
+    { icon: Trophy, label: 'Rank', value: gameStats?.rank?.name || 'Recruit profile' }
   ];
 
   return (
@@ -284,7 +265,7 @@ function DashboardWelcomeHeader({ user, now, weather, weatherLoading, rankStats,
               <span className="block truncate text-lg font-black text-slate-950 dark:text-white">{fullName}</span>
               <span className="mt-1 block truncate text-sm font-semibold text-slate-500 dark:text-slate-400">{user?.email || 'Syncrova member'}</span>
               <span className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-[#0b57d0] ring-1 ring-blue-100 dark:bg-slate-900 dark:text-sky-200 dark:ring-blue-900/50">
-                {compactNumber(rankStats?.xp)} XP
+                Best {compactNumber(gameStats?.highScore || 0)}
               </span>
             </span>
           </span>
@@ -448,7 +429,6 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [friendCount, setFriendCount] = useState(0);
-  const [rankData, setRankData] = useState(null);
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeStory, setActiveStory] = useState(null);
@@ -556,7 +536,7 @@ export default function Dashboard() {
       try {
         const requestConfig = { timeout: DASHBOARD_REQUEST_TIMEOUT_MS };
         const optionalRequestConfig = { timeout: DASHBOARD_OPTIONAL_TIMEOUT_MS };
-        const [dashboardRes, rankRes, gameRes, friendRes] = await Promise.all([
+        const [dashboardRes, gameRes, friendRes] = await Promise.all([
           safeDashboardRequest(async () => api.get('/dashboard/summary', requestConfig).catch(async () => {
             const [groupRes, conversationRes] = await Promise.all([
               safeDashboardRequest(() => api.get('/groups', optionalRequestConfig), []),
@@ -570,7 +550,6 @@ export default function Dashboard() {
               }
             };
           }), { groups: [], tasks: [], conversations: [] }),
-          safeDashboardRequest(() => api.get('/users/rankings/me', optionalRequestConfig), null),
           safeDashboardRequest(() => api.get('/games/summary/me', optionalRequestConfig), null),
           safeDashboardRequest(() => api.get('/friends/summary', optionalRequestConfig), null)
         ]);
@@ -580,7 +559,6 @@ export default function Dashboard() {
         setTasks(dashboardRes.data?.tasks || []);
         setConversations(dashboardRes.data?.conversations || []);
         setFriendCount(friendRes.data?.counts?.friends || 0);
-        setRankData(rankRes.data);
         setGameData(gameRes.data);
         window.dispatchEvent(new Event('marketplaceUpdated'));
       } catch (err) {
@@ -608,13 +586,7 @@ export default function Dashboard() {
     conversations.reduce((sum, conversation) => sum + (conversation.unreadCount || 0), 0)
   ), [conversations]);
 
-  const completedTasks = useMemo(() => (
-    tasks.filter(task => task.status === 'done').length
-  ), [tasks]);
-
-  const rankStats = rankData?.me;
   const gameStats = gameData?.stats || gameData?.typingStats;
-  const rankLeaders = rankData?.leaderboard || [];
   const gameLeaders = gameData?.leaderboard || [];
 
   const openStory = async (story) => {
@@ -927,7 +899,7 @@ export default function Dashboard() {
                 now={now}
                 weather={weather}
                 weatherLoading={weatherLoading}
-                rankStats={rankStats}
+                gameStats={gameStats}
                 onProfileClick={() => navigate('/profile')}
               />
               <OnboardingChecklist
@@ -942,7 +914,7 @@ export default function Dashboard() {
               <section className="dashboard-mobile-status-row grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => navigate('/marketplace')} className="dashboard-mobile-status-card">
                   <Store size={18} />
-                  <span>{user?.studentVerificationStatus === 'approved' ? 'OK' : 'ID'}</span>
+                  <span>{user?.isDeveloper || user?.studentVerificationStatus === 'approved' ? 'OK' : 'ID'}</span>
                   <small>Market</small>
                 </button>
                 <button type="button" onClick={() => navigate('/messages')} className="dashboard-mobile-status-card">
@@ -952,7 +924,7 @@ export default function Dashboard() {
                 </button>
                 <button type="button" onClick={() => navigate('/arena')} className="dashboard-mobile-status-card">
                   <Trophy size={18} />
-                  <span>{compactNumber(gameStats?.highScore || rankStats?.xp)}</span>
+                  <span>{compactNumber(gameStats?.highScore || 0)}</span>
                   <small>Score</small>
                 </button>
               </section>
@@ -967,7 +939,7 @@ export default function Dashboard() {
           now={now}
           weather={weather}
           weatherLoading={weatherLoading}
-          rankStats={rankStats}
+          gameStats={gameStats}
           onProfileClick={() => navigate('/profile')}
         />
 
@@ -981,44 +953,44 @@ export default function Dashboard() {
           openStoryPicker={openStoryPicker}
         />
 
-      <section className="dashboard-command-strip grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCommandCard
-          icon={Store}
-          label="Marketplace"
-          value={user?.studentVerificationStatus === 'approved' ? 'Verified' : 'Verify'}
-          helper="Campus buy and sell"
-          onClick={() => navigate('/marketplace')}
-          accent="blue"
-        />
-        <DashboardCommandCard
-          icon={MessageCircle}
-          label="Unread chats"
-          value={unreadMessages}
-          helper={`${onlinePeople.length} active now`}
-          onClick={() => navigate('/messages')}
-          accent="emerald"
-        />
-        <DashboardCommandCard
-          icon={Trophy}
-          label="Network XP"
-          value={compactNumber(rankStats?.xp)}
-          helper={rankStats?.rank?.name || 'Rank progress'}
-          onClick={() => navigate('/profile')}
-          accent="amber"
-        />
-        <DashboardCommandCard
-          icon={PlayCircle}
-          label="My Day"
-          value={storyRail.length}
-          helper="Active story groups"
-          onClick={() => navigate('/profile')}
-          accent="slate"
-        />
-      </section>
+        <section className="dashboard-command-strip grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <DashboardCommandCard
+            icon={Store}
+            label="Marketplace"
+            value={user?.isDeveloper || user?.studentVerificationStatus === 'approved' ? 'Unlocked' : 'Verify'}
+            helper="Campus buy and sell"
+            onClick={() => navigate('/marketplace')}
+            accent="blue"
+          />
+          <DashboardCommandCard
+            icon={MessageCircle}
+            label="Unread chats"
+            value={unreadMessages}
+            helper={`${onlinePeople.length} active now`}
+            onClick={() => navigate('/messages')}
+            accent="emerald"
+          />
+          <DashboardCommandCard
+            icon={Trophy}
+            label="Game rank"
+            value={gameStats?.rank?.shortName || 'Recruit'}
+            helper={`${compactNumber(gameStats?.highScore || 0)} best score`}
+            onClick={() => navigate('/arena')}
+            accent="amber"
+          />
+          <DashboardCommandCard
+            icon={PlayCircle}
+            label="My Day"
+            value={storyRail.length}
+            helper="Active story groups"
+            onClick={() => navigate('/profile')}
+            accent="slate"
+          />
+        </section>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <main className="min-w-0 space-y-4">
-          {renderStoryPanel()}
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <main className="min-w-0 space-y-4">
+            {renderStoryPanel()}
 
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:hidden">
             <Panel title="Your profile" helper="Home overview">
@@ -1033,7 +1005,7 @@ export default function Dashboard() {
             <Panel title="Quick status">
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-2xl bg-slate-50 p-3 text-center dark:bg-slate-950/70">
-                  <p className="text-lg font-black text-slate-950 dark:text-white">{user?.studentVerificationStatus === 'approved' ? 'OK' : 'ID'}</p>
+                  <p className="text-lg font-black text-slate-950 dark:text-white">{user?.isDeveloper || user?.studentVerificationStatus === 'approved' ? 'OK' : 'ID'}</p>
                   <p className="text-[11px] font-black text-slate-500 dark:text-slate-400">Market</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-3 text-center dark:bg-slate-950/70">
@@ -1053,19 +1025,6 @@ export default function Dashboard() {
 
         <aside className="space-y-4 xl:sticky xl:top-20">
           <OnlineRoster limit={12} title="Active now" />
-
-          <Panel title="Network ranks" helper="Top campus contributors">
-            <div className="space-y-2">
-              {rankLeaders.slice(0, 5).map((entry, index) => (
-                <RankLeaderRow key={getEntityId(entry.user) || index} entry={entry} index={index} />
-              ))}
-              {!rankLeaders.length && (
-                <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
-                  Complete tasks to start the leaderboard.
-                </p>
-              )}
-            </div>
-          </Panel>
 
           <Panel title="Game Hub" helper="Best game performers">
             <div className="space-y-2">

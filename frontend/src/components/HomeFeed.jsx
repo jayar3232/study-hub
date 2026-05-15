@@ -30,6 +30,7 @@ import api from '../services/api';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import MediaViewer from './MediaViewer';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
+import AnimatedEmojiText from './AnimatedEmojiText';
 
 const QUICK_REACTIONS = ['\u{1F44D}', '\u2764\uFE0F', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F525}', '\u{1F44F}', '\u2705'];
 const MAX_HOME_POST_UPLOAD = 35 * 1024 * 1024;
@@ -171,7 +172,7 @@ function ReactionBurst({ emoji, className = '' }) {
   if (!emoji) return null;
   return (
     <span className={`reaction-motion-zone reaction-burst ${className}`} aria-hidden="true">
-      {emoji}
+      <AnimatedEmojiText text={emoji} />
     </span>
   );
 }
@@ -187,7 +188,7 @@ function ReactionPicker({ onSelect, align = 'left' }) {
           className="emoji-pop-button reaction-motion-zone grid h-10 w-10 place-items-center rounded-full text-[22px] hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none dark:hover:bg-slate-800 dark:focus-visible:bg-slate-800"
           aria-label={`React ${emoji}`}
         >
-          {emoji}
+          <AnimatedEmojiText text={emoji} />
         </button>
       ))}
     </div>
@@ -209,7 +210,7 @@ function ReactionSummary({ reactions = [], onOpen }) {
       <span className="flex shrink-0 -space-x-1">
         {icons.map(emoji => (
           <span key={emoji} className="reaction-motion-zone grid h-5 w-5 place-items-center rounded-full bg-white text-[13px] shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
-            {emoji}
+            <AnimatedEmojiText text={emoji} />
           </span>
         ))}
       </span>
@@ -232,7 +233,7 @@ function CommentReactionSummary({ reactions = [], onReact, onOpen }) {
           <span className="flex -space-x-1">
             {icons.map(emoji => (
               <span key={emoji} className="grid h-4 w-4 place-items-center rounded-full bg-white text-[10px] dark:bg-slate-900">
-                {emoji}
+                <AnimatedEmojiText text={emoji} />
               </span>
             ))}
           </span>
@@ -299,7 +300,7 @@ function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose }) {
                   : 'bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-[#0b57d0] dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
-              <span>{tab.label}</span>
+              <span><AnimatedEmojiText text={tab.label} /></span>
               <span>{tab.count}</span>
             </button>
           ))}
@@ -316,12 +317,12 @@ function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose }) {
                     <div className="relative shrink-0">
                       <Avatar user={reactor} size="h-11 w-11" />
                       <span className="reaction-motion-zone absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-white text-sm shadow ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
-                        {reaction.emoji}
+                        <AnimatedEmojiText text={reaction.emoji} />
                       </span>
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black text-slate-950 dark:text-white">{name}</p>
-                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Reacted with {reaction.emoji}</p>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Reacted with <AnimatedEmojiText text={reaction.emoji} /></p>
                     </div>
                   </div>
                 );
@@ -1681,10 +1682,10 @@ export default function HomeFeed({
                       className="whitespace-pre-wrap break-words rounded-2xl px-5 py-10 text-center text-2xl font-black leading-snug shadow-inner"
                       style={postBackground.style}
                     >
-                      {post.content}
+                      <AnimatedEmojiText text={post.content} />
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words text-[15px] leading-6 text-slate-800 dark:text-slate-100">{post.content}</p>
+                    <p className="whitespace-pre-wrap break-words text-[15px] leading-6 text-slate-800 dark:text-slate-100"><AnimatedEmojiText text={post.content} /></p>
                   ))}
                   {attachments.length > 0 && (
                     <FeedMediaGrid
@@ -1731,7 +1732,7 @@ export default function HomeFeed({
                     >
                       <SmilePlus size={17} />
                       <span className="inline-flex items-center gap-1">
-                        {myReaction?.emoji && <span className="reaction-motion-zone text-base">{myReaction.emoji}</span>}
+                        {myReaction?.emoji && <span className="reaction-motion-zone text-base"><AnimatedEmojiText text={myReaction.emoji} /></span>}
                         {myReaction ? 'Reacted' : 'React'}
                       </span>
                     </button>
@@ -1771,7 +1772,7 @@ export default function HomeFeed({
                                   <span className="inline-flex max-w-full items-center gap-1">
                                     <CornerDownRight size={12} className="shrink-0 text-[#0b57d0]" />
                                     <span className="truncate">
-                                      Replying to {parentComment.userId?.name || 'Member'}: {parentComment.text}
+                                      Replying to {parentComment.userId?.name || 'Member'}: <AnimatedEmojiText text={parentComment.text} />
                                     </span>
                                   </span>
                                 </div>
@@ -1780,7 +1781,7 @@ export default function HomeFeed({
                                 <span className="truncate text-xs font-black text-slate-950 dark:text-white">{comment.userId?.name || 'Member'}</span>
                                 <DeveloperBadge user={comment.userId} compact />
                               </div>
-                              <p className="break-words text-sm text-slate-700 dark:text-slate-200">{comment.text}</p>
+                              <p className="break-words text-sm text-slate-700 dark:text-slate-200"><AnimatedEmojiText text={comment.text} /></p>
                             </div>
                             <ReactionBurst emoji={commentReactionBursts[commentReactionKey]} className="right-1 top-0" />
                           </div>
@@ -1955,7 +1956,7 @@ export default function HomeFeed({
                               <div className="mb-1.5 rounded-xl border-l-2 border-[#0b57d0] bg-white/80 px-2 py-1 text-[11px] font-bold text-slate-500">
                                 <span className="inline-flex max-w-full items-center gap-1">
                                   <CornerDownRight size={12} className="shrink-0 text-[#0b57d0]" />
-                                  <span className="truncate">Replying to {parentComment.userId?.name || 'Member'}: {parentComment.text}</span>
+                                  <span className="truncate">Replying to {parentComment.userId?.name || 'Member'}: <AnimatedEmojiText text={parentComment.text} /></span>
                                 </span>
                               </div>
                             )}
@@ -1963,7 +1964,7 @@ export default function HomeFeed({
                               <span className="truncate text-xs font-black text-slate-950">{comment.userId?.name || 'Member'}</span>
                               <DeveloperBadge user={comment.userId} compact />
                             </div>
-                            <p className="break-words text-sm text-slate-700">{comment.text}</p>
+                            <p className="break-words text-sm text-slate-700"><AnimatedEmojiText text={comment.text} /></p>
                           </div>
                           <ReactionBurst emoji={commentReactionBursts[commentReactionKey]} className="right-1 top-0" />
                         </div>

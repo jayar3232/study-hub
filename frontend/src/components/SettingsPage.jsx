@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useCall } from '../context/CallContext';
 import { useTheme } from '../context/ThemeContext';
+import { RELEASE_VERSION_NAME } from '../generated/releaseInfo';
 import { resolveMediaUrl } from '../utils/media';
 import { getNotificationPermissionState, requestNotificationPermission } from '../utils/notifications';
 
@@ -392,7 +393,7 @@ export default function SettingsPage() {
             <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/45">
               <Info size={18} className="text-[#0b57d0] dark:text-sky-300" />
               <p className="mt-2 text-sm font-black text-slate-950 dark:text-white">Syncrova</p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">made by sigmaboyz</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Version {RELEASE_VERSION_NAME} - made by sigmaboyz</p>
             </div>
             <button type="button" onClick={handleLogout} className="w-full rounded-2xl bg-rose-600 px-4 py-3 text-sm font-black text-white shadow-sm shadow-rose-600/20 transition hover:bg-rose-700">
               Logout

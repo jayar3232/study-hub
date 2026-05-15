@@ -122,7 +122,7 @@ function Avatar({ person, size = 'md' }) {
   const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : 'h-11 w-11 text-sm';
 
   return (
-    <div className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b57d0] to-[#2387a8] font-black text-white shadow-sm`}>
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] font-black text-white shadow-sm ring-1 ring-slate-200 dark:ring-white/10`}>
       {avatar ? (
         <img src={avatar} alt={person?.name || 'User'} className="h-full w-full object-cover" />
       ) : (
@@ -374,21 +374,19 @@ export default function Friends() {
 
   return (
     <div className="mobile-page mobile-tab-dock-page mx-auto max-w-7xl space-y-4 sm:space-y-6">
-      <section className="mobile-hero-panel overflow-hidden rounded-3xl bg-gradient-to-br from-[#07036f] via-[#0b2f80] to-[#123f63] text-white shadow-2xl shadow-blue-900/20">
-        <div className="relative p-5 sm:p-7">
-          <div className="absolute -right-12 top-3 h-32 w-32 rounded-full border-[14px] border-cyan-300/20" />
-          <div className="absolute -bottom-16 left-1/2 h-40 w-40 rounded-full border-[18px] border-blue-300/15" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex items-center gap-4">
+      <section className="friends-overview-panel mobile-hero-panel overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+        <div className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
               <div
-                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-white text-[#0b57d0] shadow-xl"
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/40"
               >
                 <Users size={30} />
               </div>
-              <div>
-                <p className="text-sm font-black uppercase text-sky-200">Syncrova Network</p>
-                <h1 className="mt-1 text-3xl font-black tracking-normal sm:text-4xl">Friends</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-[#0b57d0] dark:text-sky-300">Syncrova Network</p>
+                <h1 className="mt-1 text-3xl font-black tracking-normal text-slate-950 dark:text-white sm:text-4xl">Friends</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
                   Manage your trusted teammates, review requests, and start conversations faster.
                 </p>
               </div>
@@ -400,9 +398,9 @@ export default function Friends() {
                 ['Requests', summary.counts?.incoming || 0],
                 ['Pending', summary.counts?.outgoing || 0]
               ].map(([label, value]) => (
-                <div key={label} className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10 backdrop-blur">
-                  <p className="text-xs font-bold text-white/60">{label}</p>
-                  <p className="mt-1 text-2xl font-black">{value}</p>
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-zinc-900">
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</p>
+                  <p className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{value}</p>
                 </div>
               ))}
             </div>

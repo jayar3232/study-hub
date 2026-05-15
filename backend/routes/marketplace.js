@@ -238,7 +238,7 @@ const requireVerifiedStudent = async (req, res, next) => {
   try {
     const user = await User.findById(req.user).select(USER_SELECT);
     if (!user) return res.status(404).json({ msg: 'User not found' });
-    if (user.studentVerificationStatus !== VERIFIED_STATUS) {
+    if (!user.isDeveloper && user.studentVerificationStatus !== VERIFIED_STATUS) {
       return res.status(403).json({
         msg: 'Campus verification is required before using the marketplace',
         verificationStatus: user.studentVerificationStatus || 'not_submitted'
@@ -262,12 +262,13 @@ router.get('/status', auth, async (req, res) => {
 
     if (!user) return res.status(404).json({ msg: 'User not found' });
 
-    const userStatus = user.studentVerificationStatus || 'not_submitted';
+    const userStatus = user.isDeveloper ? VERIFIED_STATUS : user.studentVerificationStatus || 'not_submitted';
     const status = userStatus === 'not_submitted' && verification?.status ? verification.status : userStatus;
     res.json({
       user: serializeUser(user),
       verification: verification ? serializeVerification(verification) : { status },
-      canBuySell: status === VERIFIED_STATUS
+      canBuySell: user.isDeveloper || status === VERIFIED_STATUS,
+      developerAccess: Boolean(user.isDeveloper)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

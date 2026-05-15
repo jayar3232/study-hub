@@ -17,6 +17,7 @@ import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
 import VideoThumbnail from './VideoThumbnail';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
+import AnimatedEmojiText from './AnimatedEmojiText';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '👏'];
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
@@ -239,8 +240,8 @@ export default function SocialFeed({ groups = [], currentUser }) {
                 </header>
 
                 <div className="mt-3 space-y-3">
-                  {post.title && <h3 className="text-base font-black text-gray-950 dark:text-white">{post.title}</h3>}
-                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-200">{post.content}</p>
+                  {post.title && <h3 className="text-base font-black text-gray-950 dark:text-white"><AnimatedEmojiText text={post.title} /></h3>}
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-200"><AnimatedEmojiText text={post.content} /></p>
                   {post.fileUrl && (
                     post.fileUrl.match(/\.(mp4|webm|mov)$/i) ? (
                       <VideoThumbnail src={mediaUrl} className="max-h-[28rem] w-full rounded-2xl" />
@@ -263,12 +264,12 @@ export default function SocialFeed({ groups = [], currentUser }) {
                       className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black transition ${myReaction ? 'bg-blue-50 text-[#1877f2] dark:bg-blue-950/30 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'}`}
                     >
                       <SmilePlus size={17} />
-                      {myReaction?.emoji || 'React'}
+                      {myReaction?.emoji ? <AnimatedEmojiText text={myReaction.emoji} /> : 'React'}
                     </button>
                     <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 flex translate-y-1 gap-1 rounded-2xl border border-gray-200 bg-white p-1 opacity-0 shadow-xl transition group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 dark:border-gray-700 dark:bg-gray-900">
                       {QUICK_REACTIONS.map(emoji => (
                         <button key={emoji} type="button" onClick={() => reactToPost(post, emoji)} className="grid h-9 w-9 place-items-center rounded-xl text-xl hover:bg-gray-100 dark:hover:bg-gray-800">
-                          {emoji}
+                          <AnimatedEmojiText text={emoji} />
                         </button>
                       ))}
                     </div>
@@ -292,7 +293,7 @@ export default function SocialFeed({ groups = [], currentUser }) {
                           <span className="truncate text-xs font-black text-gray-950 dark:text-white">{comment.userId?.name || 'Member'}</span>
                           <DeveloperBadge user={comment.userId} compact />
                         </div>
-                        <p className="break-words text-sm text-gray-700 dark:text-gray-200">{comment.text}</p>
+                        <p className="break-words text-sm text-gray-700 dark:text-gray-200"><AnimatedEmojiText text={comment.text} /></p>
                       </div>
                     </div>
                   ))}

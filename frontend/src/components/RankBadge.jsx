@@ -370,7 +370,7 @@ export default function RankBadge({ stats, compact = false, showProgress = true 
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-xs font-black uppercase tracking-normal text-gray-500 dark:text-gray-400">
             <Sparkles size={14} className={power >= 5 ? 'text-yellow-500' : 'text-[#1877f2]'} />
-            Work Rank
+            Profile Rank
           </p>
           <h3 className="mt-1 truncate text-xl font-black text-gray-950 dark:text-white">{rank.name}</h3>
           <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-400">

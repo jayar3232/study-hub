@@ -56,7 +56,7 @@ const KNIFE_DUEL_FIGHTER_ASSETS = {
 const KNIFE_DUEL_EXPLOSION_ASSETS = Array.from({ length: 10 }, (_, index) => `/game-assets/knife-duel/explosion/Explosion_${index + 1}.png`);
 const KNIFE_DUEL_BACKGROUND_ASSET = '/game-assets/knife-duel/backgrounds/desert/set1-background.png';
 const SPRITE_FRAME_SIZE = 128;
-const THROW_ORIGIN_HEIGHT = 166;
+const THROW_ORIGIN_HEIGHT = 118;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const lerp = (from, to, amount) => from + (to - from) * amount;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
@@ -1218,8 +1218,8 @@ const drawArcher = (ctx, player, isCurrentTurn, time, shotProgress = 1, hitReact
     ctx.stroke();
   }
 
-  const handX = 92 - attackPulse * 22 + chargeRatio * 10;
-  const handY = -166 - attackPulse * 34 - chargeRatio * 8;
+  const handX = 82 - attackPulse * 18 + chargeRatio * 8;
+  const handY = -116 - attackPulse * 22 - chargeRatio * 6;
   ctx.save();
   ctx.translate(handX, handY);
   ctx.rotate(-0.16 - attackPulse * 0.9 + Math.sin(time / 120) * 0.03);
@@ -1242,15 +1242,15 @@ const drawArcher = (ctx, player, isCurrentTurn, time, shotProgress = 1, hitReact
     ctx.globalAlpha = releaseFlash;
     ctx.fillStyle = '#facc15';
     ctx.beginPath();
-    ctx.arc(78, -104, 12 + releaseFlash * 20, 0, Math.PI * 2);
+    ctx.arc(72, -102, 12 + releaseFlash * 20, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#fff7ed';
     ctx.lineWidth = 3;
     for (let ray = 0; ray < 6; ray += 1) {
       const angle = -0.95 + ray * 0.28;
       ctx.beginPath();
-      ctx.moveTo(68, -104);
-      ctx.lineTo(98 + Math.cos(angle) * 28, -104 + Math.sin(angle) * 24);
+      ctx.moveTo(62, -102);
+      ctx.lineTo(92 + Math.cos(angle) * 28, -102 + Math.sin(angle) * 24);
       ctx.stroke();
     }
     ctx.restore();
@@ -1762,6 +1762,22 @@ const getRenderableShots = (state) => {
   return shots;
 };
 
+const getPlayersForShotFrame = (players, activeShot, time) => {
+  const shot = activeShot?.shot;
+  if (!shot?.targetUserId) return players;
+  if (!Number.isFinite(Number(shot.targetHpBefore)) || !Number.isFinite(Number(shot.targetHpAfter))) return players;
+  const progress = getShotProgress(activeShot.start, time, shot);
+  if (progress >= 1) return players;
+  const impactProgress = clamp((progress - 0.84) / 0.16, 0, 1);
+  return players.map(player => {
+    if (player.userId !== shot.targetUserId) return player;
+    return {
+      ...player,
+      hp: Math.round(lerp(Number(shot.targetHpBefore), Number(shot.targetHpAfter), impactProgress))
+    };
+  });
+};
+
 const getCameraForFrame = ({ width, height, shots, shotAnimations, time }) => {
   const fullCamera = getFullCamera(width, height);
   const activeShot = shots
@@ -1781,7 +1797,7 @@ const getCameraForFrame = ({ width, height, shots, shotAnimations, time }) => {
   const direction = activeShot.shot.side === 'left' ? 1 : -1;
   const arrow = getShotPoint(activeShot.shot, shotProgress);
   const impact = activeShot.shot.impact || arrow;
-  const followZoom = clamp(Math.min(width / 500, height / 320), fullCamera.zoom * 2.25, 1.28);
+  const followZoom = clamp(Math.min(width / 960, height / 540), fullCamera.zoom * 1.04, 1.04);
   let camera = {
     x: fullCamera.x,
     y: fullCamera.y,
@@ -1793,17 +1809,19 @@ const getCameraForFrame = ({ width, height, shots, shotAnimations, time }) => {
 
   if (rawProgress < 0.15) {
     camera = {
-      x: lerp(fullCamera.x, shooter.x + direction * 92, releaseEase),
-      y: lerp(fullCamera.y, shooter.y - 150, releaseEase),
-      zoom: lerp(fullCamera.zoom, followZoom * 1.1, releaseEase),
+      x: lerp(fullCamera.x, shooter.x + direction * 220, releaseEase * 0.45),
+      y: lerp(fullCamera.y, shooter.y - 118, releaseEase * 0.45),
+      zoom: lerp(fullCamera.zoom, followZoom, releaseEase * 0.5),
       shakeX: Math.sin(time / 24) * 2 * releaseEase,
       shakeY: Math.cos(time / 31) * 1.4 * releaseEase,
       mode: 'release'
     };
   } else if (rawProgress < 0.85) {
+    const midpointX = lerp(shooter.x, impact.x, 0.5);
+    const midpointY = Math.min(shooter.y, impact.y) - 92;
     camera = {
-      x: arrow.x + direction * 84,
-      y: arrow.y - 28,
+      x: lerp(arrow.x + direction * 84, midpointX, 0.65),
+      y: lerp(arrow.y - 28, midpointY, 0.6),
       zoom: followZoom,
       shakeX: 0,
       shakeY: 0,
@@ -1812,9 +1830,9 @@ const getCameraForFrame = ({ width, height, shots, shotAnimations, time }) => {
   } else if (rawProgress < 1) {
     const landEase = easeOutCubic((rawProgress - 0.85) / 0.15);
     camera = {
-      x: lerp(arrow.x, impact.x, landEase),
-      y: lerp(arrow.y - 28, impact.y - 66, landEase),
-      zoom: lerp(followZoom, followZoom * 1.02, landEase),
+      x: lerp(lerp(fullCamera.x, impact.x, activeShot.shot.headshot ? 0.38 : 0.28), impact.x, landEase * 0.22),
+      y: lerp(lerp(fullCamera.y, impact.y - 46, activeShot.shot.headshot ? 0.34 : 0.24), impact.y - 56, landEase * 0.22),
+      zoom: lerp(followZoom, followZoom * (activeShot.shot.headshot ? 1.03 : 1), landEase),
       shakeX: 0,
       shakeY: 0,
       mode: 'impact'
@@ -1822,9 +1840,9 @@ const getCameraForFrame = ({ width, height, shots, shotAnimations, time }) => {
   } else {
     const shake = Math.max(0, 1 - (elapsed - shotDuration) / 280);
     camera = {
-      x: lerp(impact.x, fullCamera.x, returnEase),
-      y: lerp(impact.y - 66, fullCamera.y, returnEase),
-      zoom: lerp(followZoom * 1.02, fullCamera.zoom, returnEase),
+      x: lerp(lerp(fullCamera.x, impact.x, activeShot.shot.headshot ? 0.38 : 0.28), fullCamera.x, returnEase),
+      y: lerp(lerp(fullCamera.y, impact.y - 56, activeShot.shot.headshot ? 0.34 : 0.24), fullCamera.y, returnEase),
+      zoom: lerp(followZoom * (activeShot.shot.headshot ? 1.03 : 1), fullCamera.zoom, returnEase),
       shakeX: Math.sin(time / 18) * 12 * shake,
       shakeY: Math.cos(time / 23) * 9 * shake,
       mode: returnEase >= 1 ? 'wide' : 'recover'
@@ -2115,7 +2133,7 @@ const drawCanvas = ({ canvas, state, userId, previewUser, shotAnimations, aim, t
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const players = getRenderablePlayers(state, userId, previewUser);
+  const basePlayers = getRenderablePlayers(state, userId, previewUser);
   const turnUserId = state?.turnUserId || '';
   const shots = getRenderableShots(state);
   const obstacles = state?.obstacles?.length ? state.obstacles : DEFAULT_OBSTACLES;
@@ -2124,6 +2142,7 @@ const drawCanvas = ({ canvas, state, userId, previewUser, shotAnimations, aim, t
     .map(shot => ({ shot, start: shotAnimations?.get(getShotKey(shot)) }))
     .filter(item => item.start && time - item.start < getShotDuration(item.shot) + CAMERA_RETURN_MS)
     .sort((a, b) => b.start - a.start)[0];
+  const players = getPlayersForShotFrame(basePlayers, activeShot, time);
   let camera = getCameraForFrame({ width, height, shots, shotAnimations, time });
   if (!activeShot && state?.status === 'finished') {
     camera = getFinishCamera({ width, height, state, players, userId, time, finishStartedAt }) || camera;
@@ -2133,12 +2152,16 @@ const drawCanvas = ({ canvas, state, userId, previewUser, shotAnimations, aim, t
     const point = aimingPlayer ? getArcherPoint(aimingPlayer.side) : null;
     const direction = aimingPlayer?.side === 'right' ? -1 : 1;
     const chargeRatio = clamp((aim.power || 0) / 100, 0, 1);
-    const focusZoom = clamp(Math.min(width / 560, height / 350), camera.zoom * 1.65, 1.12);
+    const opponent = players.find(player => player.userId !== userId);
+    const opponentPoint = opponent ? getArcherPoint(opponent.side) : null;
+    const focusX = point && opponentPoint ? lerp(point.x, opponentPoint.x, 0.5) : point?.x + direction * 360;
+    const focusY = point && opponentPoint ? Math.min(point.y, opponentPoint.y) - 96 : point?.y - 112;
+    const focusZoom = clamp(Math.min(width / 1040, height / 560), camera.zoom * 1.02, 1.02);
     camera = normalizeCamera({
       ...camera,
-      x: point ? lerp(camera.x, point.x + direction * 150, 0.44 + chargeRatio * 0.16) : camera.x,
-      y: point ? lerp(camera.y, point.y - 150, 0.44 + chargeRatio * 0.16) : camera.y,
-      zoom: lerp(camera.zoom, focusZoom, 0.5 + chargeRatio * 0.16),
+      x: point ? lerp(camera.x, focusX, 0.48 + chargeRatio * 0.08) : camera.x,
+      y: point ? lerp(camera.y, focusY, 0.48 + chargeRatio * 0.08) : camera.y,
+      zoom: lerp(camera.zoom, focusZoom, 0.42 + chargeRatio * 0.08),
       shakeX: (camera.shakeX || 0) + Math.sin(time / 24) * chargeRatio * 3.5,
       shakeY: (camera.shakeY || 0) + Math.cos(time / 31) * chargeRatio * 2.4,
       mode: 'charge'
@@ -2314,7 +2337,7 @@ export default function BowDuelGame({ stats, onScoreSaved, onExit, isFullscreen 
     audio?.playShoot();
     const impactTimer = window.setTimeout(() => {
       audioTimersRef.current.delete(impactTimer);
-      const damaged = shot.hit || shot.hitZone === 'graze' || shot.damage > 0;
+      const damaged = shot.hit || shot.damage > 0;
       if (damaged) {
         vibrate(shot.headshot ? [35, 25, 55] : shot.hitZone === 'leg' ? [24, 18, 34] : 28);
       } else {
@@ -2703,7 +2726,7 @@ export default function BowDuelGame({ stats, onScoreSaved, onExit, isFullscreen 
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="grid gap-4 p-4 sm:p-5 2xl:grid-cols-[minmax(0,1fr)_21rem]">
         <main className="min-w-0 space-y-4">
           <div className="bow-duel-canvas-shell rounded-3xl border border-gray-200 bg-gray-950 p-2 shadow-2xl shadow-sky-500/10 dark:border-gray-700">
             <canvas
@@ -2735,8 +2758,8 @@ export default function BowDuelGame({ stats, onScoreSaved, onExit, isFullscreen 
           </div>
         </main>
 
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+        <aside className="grid gap-4 lg:grid-cols-2 2xl:block 2xl:space-y-4">
+          <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:col-span-2 2xl:col-span-1">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Match</p>

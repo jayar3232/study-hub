@@ -64,6 +64,7 @@ import VideoThumbnail from './VideoThumbnail';
 import NativeMediaLibrarySheet from './NativeMediaLibrarySheet';
 import { isNativeMediaLibraryAvailable, nativeMediaAssetToFile } from '../utils/nativeMediaLibrary';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
+import AnimatedEmojiText from './AnimatedEmojiText';
 
 let socket;
 
@@ -3198,11 +3199,14 @@ export default function Messages() {
   const callIsActive = callState !== 'idle';
   const callPartnerName = getDisplayName(callPartner, selectedDisplayName);
   const canStartCall = Boolean(selectedUserId && currentUserId && socketConnected && selectedIsOnline && !sharedCallIsActive && canStartSharedCallWith(selectedUser));
-  const selectedCallHistory = useMemo(() => (
+  const selectedConversationCallHistory = useMemo(() => (
     sharedCallHistory
       .filter(entry => getEntityId(entry.partnerId || entry.partner) === selectedUserId)
-      .slice(0, 5)
   ), [selectedUserId, sharedCallHistory]);
+  const selectedCallHistory = useMemo(() => (
+    selectedConversationCallHistory
+      .slice(0, 5)
+  ), [selectedConversationCallHistory]);
   const callDurationText = callStartedAt ? formatCallDuration(Math.floor((callClock - callStartedAt) / 1000)) : '';
   const selectedAttachmentItems = getSelectedAttachmentItems(selectedAttachment);
   const canAddMoreMedia = selectedAttachmentItems.length > 0 && selectedAttachmentItems.length < MAX_MESSAGE_MEDIA_SELECTION && !sending && !recording && !editingMessage;
@@ -3341,6 +3345,16 @@ export default function Messages() {
     return items;
   }, [currentUserId, myNote, user, userNotes]);
 
+  const activeConversationUsers = useMemo(() => (
+    conversations
+      .map(conversation => conversation.user)
+      .filter(person => {
+        const id = getEntityId(person);
+        return id && id !== currentUserId && onlineUsers.has(id);
+      })
+      .slice(0, 10)
+  ), [conversations, currentUserId, onlineUsers]);
+
   const messageSearchMatches = useMemo(() => {
     const query = messageSearch.trim().toLowerCase();
     if (!query) return [];
@@ -3456,12 +3470,46 @@ export default function Messages() {
 
   const sharedFileItems = useMemo(() => (
     messages
-      .filter(message => !message.unsent && getMessageAttachments(message).some(attachment => !['image', 'video'].includes(attachment.fileType)))
-      .slice(-5)
+      .filter(message => !message.unsent)
+      .flatMap(message => {
+        const messageId = getEntityId(message);
+        return getMessageAttachments(message)
+          .map((attachment, index) => ({ attachment, index }))
+          .filter(item => !['image', 'video'].includes(item.attachment.fileType))
+          .map(({ attachment, index }) => ({
+            id: `${messageId}-file-${index}`,
+            fileUrl: attachment.fileUrl,
+            fileType: attachment.fileType,
+            fileName: attachment.fileName,
+            fileSize: attachment.fileSize,
+            createdAt: message.createdAt
+          }));
+      })
+      .slice(-8)
       .reverse()
   ), [messages]);
 
   const renderedMessages = useMemo(() => messages, [messages]);
+  const renderedTimelineItems = useMemo(() => {
+    const messageItems = renderedMessages.map(message => ({
+      id: `message-${getEntityId(message)}`,
+      type: 'message',
+      timestamp: new Date(message.createdAt || 0).getTime() || 0,
+      message
+    }));
+    const callItems = selectedConversationCallHistory.map(entry => ({
+      id: `call-${entry.id || entry.callId || entry.endedAt || entry.startedAt}`,
+      type: 'call',
+      timestamp: new Date(entry.endedAt || entry.startedAt || 0).getTime() || 0,
+      entry
+    }));
+
+    return [...messageItems, ...callItems].sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+      if (a.type === b.type) return 0;
+      return a.type === 'call' ? 1 : -1;
+    });
+  }, [renderedMessages, selectedConversationCallHistory]);
   const hiddenMessageCount = hasOlderMessages ? 1 : 0;
 
   useEffect(() => {
@@ -3515,6 +3563,23 @@ export default function Messages() {
         </div>
       </DeveloperAvatarFrame>
     );
+  };
+
+  const getMessageSender = (message, isMe) => {
+    const fromObject = message?.from && typeof message.from === 'object' ? message.from : null;
+    if (isMe) {
+      return {
+        ...(user || {}),
+        ...(fromObject || {}),
+        isDeveloper: Boolean(fromObject?.isDeveloper ?? user?.isDeveloper)
+      };
+    }
+
+    return {
+      ...(selectedUser || {}),
+      ...(fromObject || {}),
+      isDeveloper: Boolean(fromObject?.isDeveloper ?? selectedUser?.isDeveloper)
+    };
   };
 
   const MessageStatus = ({ message, isLatestOwn }) => {
@@ -3725,7 +3790,7 @@ export default function Messages() {
   };
 
   const ChatDetailsContent = ({ compact = false }) => (
-    <div className={`${compact ? 'max-h-[76svh] overflow-y-auto px-4 pb-4 lg:max-h-[calc(100svh-5rem)]' : ''}`}>
+    <div className={`${compact ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-6 lg:max-h-[calc(90svh-4.5rem)]' : ''}`}>
       <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
         <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
           <span className="relative block">
@@ -3757,7 +3822,7 @@ export default function Messages() {
         )}
       </div>
 
-      <div className={`${compact ? 'pt-4' : 'p-4'} space-y-4`}>
+        <div className={`${compact ? 'pt-4' : 'p-4'} space-y-4`}>
         <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
@@ -3923,20 +3988,20 @@ export default function Messages() {
             <span className="text-xs font-bold text-slate-400">{sharedFileItems.length}</span>
           </div>
           <div className="space-y-2">
-            {sharedFileItems.length > 0 ? sharedFileItems.map(message => (
+            {sharedFileItems.length > 0 ? sharedFileItems.map(item => (
               <a
-                key={getEntityId(message)}
-                href={resolveMediaUrl(message.fileUrl)}
+                key={item.id}
+                href={resolveMediaUrl(item.fileUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
               >
-                {message.fileType === 'audio' ? <Mic size={18} className="text-pink-500" /> : <FileText size={18} className="text-pink-500" />}
-                <span className="min-w-0 flex-1 truncate">{message.fileName || (message.fileType === 'audio' ? 'Voice message' : 'Attachment')}</span>
+                {item.fileType === 'audio' ? <Mic size={18} className="text-[#1877f2]" /> : <FileText size={18} className="text-[#1877f2]" />}
+                <span className="min-w-0 flex-1 truncate">{item.fileName || (item.fileType === 'audio' ? 'Voice message' : 'Attachment')}</span>
                 <Download size={15} className="text-slate-400" />
               </a>
             )) : (
-              <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">No files shared yet.</p>
+              <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">No files or voice messages shared yet.</p>
             )}
           </div>
         </section>
@@ -4036,34 +4101,38 @@ export default function Messages() {
               </div>
             </div>
 
-            <div className="mb-3 hidden grid-cols-3 gap-2 md:grid">
-              <button
-                type="button"
-                onClick={() => setConversationFilter('unread')}
-                className="rounded-2xl bg-blue-50 p-3 text-left ring-1 ring-blue-100 transition hover:bg-white dark:bg-blue-950/25 dark:ring-blue-900/45"
-              >
-                <MessageCircle size={16} className="text-[#1877f2] dark:text-sky-300" />
-                <p className="mt-1 text-lg font-black text-gray-950 dark:text-white">{unreadTotal}</p>
-                <p className="truncate text-[10px] font-black uppercase text-slate-400">Unread</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowNoteComposer(value => !value)}
-                className="rounded-2xl bg-slate-50 p-3 text-left ring-1 ring-slate-200 transition hover:bg-white dark:bg-gray-900 dark:ring-gray-800"
-              >
-                <StickyNote size={16} className="text-[#1877f2] dark:text-sky-300" />
-                <p className="mt-1 text-lg font-black text-gray-950 dark:text-white">{noteTrayItems.filter(item => item.hasNote).length}</p>
-                <p className="truncate text-[10px] font-black uppercase text-slate-400">Notes</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setConversationFilter('favorites')}
-                className="rounded-2xl bg-amber-50 p-3 text-left ring-1 ring-amber-100 transition hover:bg-white dark:bg-amber-950/20 dark:ring-amber-900/45"
-              >
-                <Flame size={16} className="text-amber-600 dark:text-amber-300" />
-                <p className="mt-1 text-lg font-black text-gray-950 dark:text-white">{favoriteConversationIds.size}</p>
-                <p className="truncate text-[10px] font-black uppercase text-slate-400">Favorites</p>
-              </button>
+            <div className="messages-active-users mb-3 hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-zinc-950 md:block">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-black uppercase text-slate-500 dark:text-zinc-400">Active users</p>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20">
+                  {activeConversationUsers.length || onlineUsers.size} online
+                </span>
+              </div>
+              {activeConversationUsers.length > 0 ? (
+                <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {activeConversationUsers.map(person => {
+                    const personId = getEntityId(person);
+                    return (
+                      <button
+                        key={personId}
+                        type="button"
+                        onClick={() => setSelectedUser(person)}
+                        className="group w-[4.25rem] shrink-0 text-center"
+                      >
+                        <span className="relative mx-auto block w-fit rounded-full ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-50 transition group-hover:ring-[#1877f2] dark:ring-offset-zinc-950">
+                          {renderAvatar(person, 'h-12 w-12', 20)}
+                          <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-zinc-950" />
+                        </span>
+                        <span className="mt-1 block truncate text-[11px] font-black text-slate-700 dark:text-zinc-200">{person?.name || 'User'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-white/10">
+                  No active chat users yet.
+                </p>
+              )}
             </div>
 
             <div className="relative">
@@ -4148,16 +4217,16 @@ export default function Messages() {
               </form>
             )}
 
-            <div className="mobile-fixed-tabbar mobile-fixed-tabbar--chat mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="mobile-fixed-tabbar mobile-fixed-tabbar--chat messages-filter-tabs mt-3 flex gap-2 overflow-x-auto pb-1">
               {conversationFilters.map(filter => (
                 <button
                   key={filter.id}
                   type="button"
                   onClick={() => setConversationFilter(filter.id)}
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-black ${
+                  className={`messages-filter-tab inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-black ring-1 ${
                     conversationFilter === filter.id
-                      ? 'bg-[#1877f2] text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                      ? 'is-active bg-[#1877f2] text-white ring-[#1877f2]'
+                      : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/10 dark:hover:bg-zinc-800'
                   }`}
                 >
                   {filter.label}
@@ -4408,7 +4477,7 @@ export default function Messages() {
                     <div className="flex gap-2 overflow-x-auto pb-1">
                       {pinnedMessages.map(message => {
                         const isMe = getEntityId(message.from) === currentUserId;
-                        const sender = isMe ? user : selectedUser;
+                        const sender = getMessageSender(message, isMe);
                         const messageId = getEntityId(message);
 
                         return (
@@ -4452,10 +4521,41 @@ export default function Messages() {
                         </div>
                       )}
 
-                      {renderedMessages.map((message) => {
+                      {renderedTimelineItems.map((item) => {
+                        if (item.type === 'call') {
+                          const entry = item.entry || {};
+                          const CallIcon = entry.mode === 'video' ? Video : Phone;
+                          const statusLabel = getSharedCallStatusLabel(entry);
+                          const durationText = entry.durationSeconds > 0 ? formatSharedCallDuration(entry.durationSeconds) : '';
+                          const endedLabel = entry.status === 'completed' ? 'ended' : statusLabel;
+                          const callTitle = [
+                            entry.direction === 'incoming' ? 'Incoming' : 'Outgoing',
+                            entry.mode === 'video' ? 'video call' : 'voice call',
+                            endedLabel
+                          ].filter(Boolean).join(' ');
+
+                          return (
+                            <div key={item.id} className="message-call-event my-4 flex justify-center">
+                              <div className="inline-flex max-w-[min(92%,28rem)] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-200">
+                                <CallIcon size={14} className="shrink-0 text-[#1877f2] dark:text-sky-300" />
+                                <span className="min-w-0 truncate">{callTitle}</span>
+                                {durationText && (
+                                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-zinc-800 dark:text-zinc-300">
+                                    {durationText}
+                                  </span>
+                                )}
+                                <span className="hidden shrink-0 text-[11px] text-slate-400 sm:inline">
+                                  {formatMessageTime(entry.endedAt || entry.startedAt)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        const message = item.message;
                         const messageId = getEntityId(message);
                         const isMe = getEntityId(message.from) === currentUserId;
-                        const sender = isMe ? user : selectedUser;
+                        const sender = getMessageSender(message, isMe);
                         const reactions = message.reactions || [];
                         const isLatestOwn = messageId === latestOwnMessageId;
                         const isSearchMatch = messageSearchMatchSet.has(messageId);
@@ -4475,8 +4575,8 @@ export default function Messages() {
                                 : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
                             } ${isMe && isLatestOwn ? 'ring-2 ring-blue-300/40 shadow-xl shadow-blue-500/20' : ''}`;
 
-                        return (
-                          <React.Fragment key={messageId}>
+	                        return (
+	                          <React.Fragment key={item.id}>
                             {showUnreadDivider && (
                               <div className="my-4 flex items-center gap-3">
                                 <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
@@ -4539,11 +4639,13 @@ export default function Messages() {
                                       <div className="rounded-2xl bg-gray-50 px-3 py-2.5 text-left ring-1 ring-gray-100 dark:bg-gray-950/60 dark:ring-gray-800">
                                         <p className="text-[11px] font-black uppercase tracking-normal text-gray-400 dark:text-gray-500">{contextReplyLabel}</p>
                                         <p className="mt-1 whitespace-pre-wrap break-words text-[15px] font-semibold leading-relaxed text-gray-950 dark:text-white">
-                                          {contextReplyBody || 'Reply'}
+                                          <AnimatedEmojiText text={contextReplyBody || 'Reply'} />
                                         </p>
                                       </div>
                                     ) : (
-                                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{message.text}</p>
+                                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+                                        <AnimatedEmojiText text={message.text} />
+                                      </p>
                                     )
                                   )}
                                   {message.editedAt && !message.unsent && (
@@ -4573,7 +4675,7 @@ export default function Messages() {
                                         onClick={() => handleRemoveReaction(messageId, reaction.emoji)}
                                         className="emoji-pop-button reaction-motion-zone rounded-full px-0.5 hover:opacity-80"
                                       >
-                                        {reaction.emoji}
+                                        <AnimatedEmojiText text={reaction.emoji} />
                                       </button>
                                     ))}
                                   </div>
@@ -5122,20 +5224,20 @@ export default function Messages() {
                     <span className="text-xs font-bold text-slate-400">{sharedFileItems.length}</span>
                   </div>
                   <div className="space-y-2">
-                    {sharedFileItems.length > 0 ? sharedFileItems.map(message => (
+                    {sharedFileItems.length > 0 ? sharedFileItems.map(item => (
                       <a
-                        key={getEntityId(message)}
-                        href={resolveMediaUrl(message.fileUrl)}
+                        key={item.id}
+                        href={resolveMediaUrl(item.fileUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
                       >
-                        {message.fileType === 'audio' ? <Mic size={18} className="text-pink-500" /> : <FileText size={18} className="text-pink-500" />}
-                        <span className="min-w-0 flex-1 truncate">{message.fileName || (message.fileType === 'audio' ? 'Voice message' : 'Attachment')}</span>
+                        {item.fileType === 'audio' ? <Mic size={18} className="text-[#1877f2]" /> : <FileText size={18} className="text-[#1877f2]" />}
+                        <span className="min-w-0 flex-1 truncate">{item.fileName || (item.fileType === 'audio' ? 'Voice message' : 'Attachment')}</span>
                         <Download size={15} className="text-slate-400" />
                       </a>
                     )) : (
-                      <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">No files shared yet.</p>
+                      <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-gray-900 dark:text-gray-400">No files or voice messages shared yet.</p>
                     )}
                   </div>
                 </section>
@@ -5323,8 +5425,8 @@ export default function Messages() {
       />
 
       {selectedUser && showChatDetails && (
-        <div className="fixed inset-0 z-[88] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4 lg:items-stretch lg:justify-end">
-          <div className="mobile-bottom-sheet w-full max-w-lg overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 sm:rounded-3xl lg:h-full lg:max-h-none lg:w-[24rem]">
+        <div className="fixed inset-0 z-[88] flex items-center justify-center bg-black/55 p-3 backdrop-blur-sm sm:p-4">
+          <div className="chat-details-modal flex max-h-[90svh] w-full max-w-2xl flex-col overflow-hidden rounded-[1.55rem] border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-950">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-gray-800">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Chat details</p>

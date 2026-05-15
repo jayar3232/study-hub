@@ -695,7 +695,7 @@ export default function GameRankBadge({ stats, compact = false, showProgress = t
             />
           </div>
           <p className="mt-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-            Season reset: current ranking score is softened every 2-month season.
+            Season reset: current ranking score is softened each 1-month season.
           </p>
         </div>
       )}

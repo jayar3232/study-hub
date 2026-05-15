@@ -10,6 +10,7 @@ import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
 import AppUpdatePrompt from './components/AppUpdatePrompt';
 import WebUpdatePrompt from './components/WebUpdatePrompt';
+import FloatingAIAssistant from './components/FloatingAIAssistant';
 
 const Login = lazy(() => import('./components/Login'));
 const Register = lazy(() => import('./components/Register'));
@@ -347,6 +348,7 @@ function App() {
                     <div className="relative z-10">
                       <AppRoutes />
                     </div>
+                    <FloatingAIAssistant />
                   </div>
                 </CallProvider>
               </BrowserRouter>

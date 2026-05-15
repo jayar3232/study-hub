@@ -38,9 +38,9 @@ import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
-import RankBadge, { RankEmblem } from './RankBadge';
-import GameRankBadge, { getProfileFrameClass } from './GameRankBadge';
+import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
+import { RELEASE_VERSION_NAME } from '../generated/releaseInfo';
 import LoadingSpinner from './LoadingSpinner';
 import StoryViewer from './StoryViewer';
 import VideoThumbnail from './VideoThumbnail';
@@ -79,7 +79,9 @@ const formatProfileTime = (value) => {
   }
 };
 
-const buildAchievementBadges = ({ completion, user, rankStats, gameStats, storyItems, myStoryCount }) => ([
+const buildAchievementBadges = ({ completion, user, rankStats, gameStats, storyItems, myStoryCount }) => {
+  const marketplaceUnlocked = Boolean(user?.isDeveloper || user?.studentVerificationStatus === 'approved');
+  return ([
   {
     id: 'profile-pro',
     title: 'Profile Pro',
@@ -91,10 +93,10 @@ const buildAchievementBadges = ({ completion, user, rankStats, gameStats, storyI
   {
     id: 'marketplace-ready',
     title: 'Marketplace Ready',
-    helper: 'Verify campus buy and sell access',
+    helper: user?.isDeveloper ? 'Developer marketplace access' : 'Verify campus buy and sell access',
     icon: Store,
-    unlocked: user?.studentVerificationStatus === 'approved',
-    progress: user?.studentVerificationStatus === 'approved' ? 100 : user?.studentVerificationStatus === 'pending' ? 60 : user?.studentVerificationStatus === 'rejected' ? 25 : 10
+    unlocked: marketplaceUnlocked,
+    progress: marketplaceUnlocked ? 100 : user?.studentVerificationStatus === 'pending' ? 60 : user?.studentVerificationStatus === 'rejected' ? 25 : 10
   },
   {
     id: 'task-finisher',
@@ -128,7 +130,8 @@ const buildAchievementBadges = ({ completion, user, rankStats, gameStats, storyI
     unlocked: (rankStats?.xp || 0) >= 250,
     progress: Math.min(100, ((rankStats?.xp || 0) / 250) * 100)
   }
-]);
+  ]);
+};
 
 export default function Profile() {
   const { user, login, logout } = useAuth();
@@ -490,8 +493,10 @@ export default function Profile() {
   const resolvedCoverSrc = resolveMediaUrl(coverPhoto || user.coverPhoto);
   const coverSrc = coverPreview || resolvedCoverSrc;
   const memberSince = formatMonthYear(user.createdAt);
-  const marketplaceStatus = user?.studentVerificationStatus === 'approved' ? 'Verified student' : user?.studentVerificationStatus === 'pending' ? 'Under review' : user?.studentVerificationStatus === 'rejected' ? 'Needs resubmission' : 'Verification needed';
-  const marketplaceStatusClass = user?.studentVerificationStatus === 'approved'
+  const isDeveloperAccount = Boolean(user?.isDeveloper);
+  const hasMarketplaceAccess = isDeveloperAccount || user?.studentVerificationStatus === 'approved';
+  const marketplaceStatus = isDeveloperAccount ? 'Developer access' : user?.studentVerificationStatus === 'approved' ? 'Verified student' : user?.studentVerificationStatus === 'pending' ? 'Under review' : user?.studentVerificationStatus === 'rejected' ? 'Needs resubmission' : 'Verification needed';
+  const marketplaceStatusClass = hasMarketplaceAccess
     ? 'bg-emerald-400/18 text-emerald-100 ring-emerald-300/25'
     : user?.studentVerificationStatus === 'pending'
       ? 'bg-amber-400/18 text-amber-100 ring-amber-300/25'
@@ -503,8 +508,9 @@ export default function Profile() {
       : 'Public preview';
   const rankStats = rankData?.me;
   const gameStats = gameData?.stats || gameData?.typingStats;
-  const leaderboard = rankData?.leaderboard || [];
-  const currentPosition = rankData?.currentUserRank?.position;
+  const currentGameRank = gameStats?.rank;
+  const highestGameRank = gameStats?.highestRank || currentGameRank;
+  const currentPosition = gameData?.myRank?.position;
   const storyGroups = groupActiveStoriesByOwner(stories);
   const storyItems = storyGroups.flatMap(group => group.stories);
   const profileMediaItems = [
@@ -541,16 +547,16 @@ export default function Profile() {
     {
       id: 'marketplace-status',
       icon: Store,
-      title: user?.studentVerificationStatus === 'approved' ? 'Campus marketplace verified' : 'Marketplace verification available',
-      detail: user?.studentVerificationStatus === 'approved' ? 'Buy and sell access is unlocked' : 'Submit campus ID or COR to unlock buy and sell',
+      title: hasMarketplaceAccess ? 'Campus marketplace unlocked' : 'Marketplace verification available',
+      detail: isDeveloperAccount ? 'Developer access is active without student verification' : user?.studentVerificationStatus === 'approved' ? 'Buy and sell access is unlocked' : 'Submit campus ID or COR to unlock buy and sell',
       time: user.studentVerifiedAt || user.updatedAt || user.createdAt,
       href: '/marketplace'
     },
     {
       id: 'rank-progress',
       icon: Award,
-      title: rankStats?.rank?.name || 'Network rank ready',
-      detail: `${rankStats?.xp || 0} XP from ${rankStats?.completedTasks || 0} completed tasks`,
+      title: currentGameRank?.name || 'Game Hub rank ready',
+      detail: `Current ${currentGameRank?.shortName || 'Unranked'} - highest ${highestGameRank?.shortName || 'Unranked'}`,
       time: user.updatedAt || user.createdAt
     },
     {
@@ -568,7 +574,7 @@ export default function Profile() {
   const profileTabs = [
     { id: 'posts', label: 'Timeline', mobileLabel: 'Feed', icon: Activity, count: profileTimeline.length },
     { id: 'about', label: 'About', icon: User, count: completion },
-    { id: 'marketplace', label: 'Marketplace', mobileLabel: 'Market', icon: Store, count: user?.studentVerificationStatus === 'approved' ? 1 : 0 },
+    { id: 'marketplace', label: 'Marketplace', mobileLabel: 'Market', icon: Store, count: hasMarketplaceAccess ? 1 : 0 },
     { id: 'ranks', label: 'Achievements', mobileLabel: 'Awards', icon: Trophy, count: unlockedAchievements },
     { id: 'myday', label: 'My Day', icon: PlayCircle, count: myStoryCount },
     { id: 'settings', label: 'Settings', icon: Settings, count: null }
@@ -624,7 +630,7 @@ export default function Profile() {
               onError={() => setCoverLoadFailed(true)}
             />
           ) : (
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.32),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_52%,#172554)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.24),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.24),transparent_34%),linear-gradient(135deg,#050505,#151517_52%,#241b25)]" />
           )}
           <div className="profile-hero-overlay absolute inset-0 bg-gradient-to-t from-black/88 via-black/50 to-black/18" />
           <label className="absolute right-4 top-4 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs font-black uppercase text-white shadow-xl backdrop-blur transition hover:border-blue-200 hover:bg-[#1877f2]/85">
@@ -665,14 +671,14 @@ export default function Profile() {
 
               <div className="profile-hero-copy min-w-0 pb-1">
                 <div className="profile-hero-eyebrow-row flex flex-wrap items-center gap-2">
-                  <span className="profile-hero-eyebrow text-xs font-black uppercase tracking-normal text-blue-100">Student profile</span>
+                  <span className="profile-hero-eyebrow text-xs font-black uppercase tracking-normal text-blue-100">{isDeveloperAccount ? 'Developer profile' : 'Student profile'}</span>
                   <span className={`profile-hero-chip rounded-full px-2.5 py-1 text-[11px] font-black uppercase ring-1 ${marketplaceStatusClass}`}>
                     {marketplaceStatus}
                   </span>
                 </div>
                 <h1 className="mt-1 flex min-w-0 flex-wrap items-center gap-2 break-words text-3xl font-black leading-tight md:text-4xl">
                   <span>{user.name}</span>
-                  {user?.studentVerificationStatus === 'approved' && (
+                  {hasMarketplaceAccess && !isDeveloperAccount && (
                     <BadgeCheck size={22} className="shrink-0 fill-[#1877f2] text-white drop-shadow" aria-label="Official campus student" />
                   )}
                   <DeveloperBadge user={user} />
@@ -701,11 +707,21 @@ export default function Profile() {
             <div className="grid w-full gap-3 md:w-80">
               <div className="profile-hero-glass-card rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
                 <div className="flex items-center gap-3">
-                  <RankEmblem rank={rankStats?.rank} size="sm" animated />
+                  <GameRankEmblem rank={currentGameRank} size="sm" animated stars={gameStats?.apexStars} />
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase text-pink-100/80">Current rank</p>
-                    <p className="truncate text-lg font-black">{rankStats?.rank?.name || 'Rookie Operator'}</p>
-                    <p className="text-xs text-white/65">{rankStats?.xp || 0} XP - #{currentPosition || '-'} network rank</p>
+                    <p className="truncate text-lg font-black">{currentGameRank?.name || 'Unranked'}</p>
+                    <p className="text-xs text-white/65">{gameStats?.xp || 0} XP - #{currentPosition || '-'} season rank</p>
+                  </div>
+                </div>
+              </div>
+              <div className="profile-hero-glass-card rounded-2xl border border-white/15 bg-black/45 p-4 text-white shadow-xl backdrop-blur">
+                <div className="flex items-center gap-3">
+                  <GameRankEmblem rank={highestGameRank} size="sm" animated stars={highestGameRank?.apexStars || gameStats?.apexStars} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase text-cyan-100/80">Highest rank</p>
+                    <p className="truncate text-lg font-black">{highestGameRank?.name || 'Unranked'}</p>
+                    <p className="text-xs text-white/65">{gameStats?.highestScore || 0} lifetime best score</p>
                   </div>
                 </div>
               </div>
@@ -729,12 +745,12 @@ export default function Profile() {
             <p className="mt-1 font-semibold text-gray-950 dark:text-white">{memberSince}</p>
           </div>
           <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Marketplace</p>
-            <p className="mt-1 font-semibold text-gray-950 dark:text-white">{user?.studentVerificationStatus === 'approved' ? 'Verified' : 'Needs ID'}</p>
+            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Current rank</p>
+            <p className="mt-1 font-semibold text-gray-950 dark:text-white">{currentGameRank?.name || 'Unranked'}</p>
           </div>
           <div className="bg-white p-4 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Security</p>
-            <p className="mt-1 font-semibold text-emerald-600 dark:text-emerald-300">Protected</p>
+            <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Highest rank</p>
+            <p className="mt-1 font-semibold text-emerald-600 dark:text-emerald-300">{highestGameRank?.name || 'Unranked'}</p>
           </div>
         </div>
       </section>
@@ -964,12 +980,12 @@ export default function Profile() {
                 <p className="mt-1 text-xs font-semibold text-blue-700/75 dark:text-blue-200/75">Stories, reactions, replies, and viewers stay connected to Messenger.</p>
               </div>
               <div className="rounded-2xl bg-gray-50 p-3 dark:bg-gray-950">
-                <p className="text-sm font-black text-gray-950 dark:text-white">{user?.studentVerificationStatus === 'approved' ? 'Marketplace verified' : 'Marketplace not verified'}</p>
+                <p className="text-sm font-black text-gray-950 dark:text-white">{hasMarketplaceAccess ? 'Marketplace unlocked' : 'Marketplace not verified'}</p>
                 <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{createdGroups.length} owned by you.</p>
               </div>
               <div className="rounded-2xl bg-gray-50 p-3 dark:bg-gray-950">
-                <p className="text-sm font-black text-gray-950 dark:text-white">Rank progress</p>
-                <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{rankStats?.xp || 0} XP and {rankStats?.completedTasks || 0} completed tasks.</p>
+                <p className="text-sm font-black text-gray-950 dark:text-white">Game rank progress</p>
+                <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">Current {currentGameRank?.shortName || 'Unranked'} and highest {highestGameRank?.shortName || 'Unranked'}.</p>
               </div>
             </div>
 
@@ -1013,10 +1029,10 @@ export default function Profile() {
       {(activeProfileTab === 'posts' || activeProfileTab === 'ranks') && (
       <>
       <div className="mobile-metric-strip grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard icon={Store} label="Marketplace" value={user?.studentVerificationStatus === 'approved' ? 'Verified' : 'Verify'} helper="Campus buy and sell" />
-        <StatCard icon={TrendingUp} label="Campus Rank" value={rankStats?.rank?.shortName || 'New'} helper="Across your campus network" />
-        <StatCard icon={Award} label="Student Status" value={user?.studentVerificationStatus === 'approved' ? 'Official' : 'Pending'} helper="ID/COR verification" />
-        <StatCard icon={Trophy} label="Completed Tasks" value={rankStats?.completedTasks || 0} helper={`${rankStats?.xp || 0} career XP`} />
+        <StatCard icon={Store} label="Marketplace" value={hasMarketplaceAccess ? 'Unlocked' : 'Verify'} helper={isDeveloperAccount ? 'Developer access' : 'Campus buy and sell'} />
+        <StatCard icon={TrendingUp} label="Current Rank" value={currentGameRank?.shortName || 'Unranked'} helper={gameStats?.season?.label || 'Monthly season'} />
+        <StatCard icon={Award} label="Highest Rank" value={highestGameRank?.shortName || 'Unranked'} helper="Lifetime best rank" />
+        <StatCard icon={Trophy} label="Season XP" value={gameStats?.xp || 0} helper="Current season score" />
         <StatCard icon={Trophy} label="Game Hub High Score" value={gameStats?.highScore || 0} helper={`${gameStats?.totalPlays || 0} ranked runs`} />
       </div>
 
@@ -1056,42 +1072,33 @@ export default function Profile() {
         </section>
       )}
 
-      <section className="mobile-content-stack grid gap-4 lg:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
-        <RankBadge stats={rankStats} />
+      <section className="mobile-content-stack grid gap-4 lg:grid-cols-2">
         <GameRankBadge stats={gameStats} />
         <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-black text-gray-950 dark:text-white">Network Leaderboard</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Top contributors from your campus network.</p>
+              <h2 className="text-lg font-black text-gray-950 dark:text-white">Rank Record</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Current season rank can reset monthly; highest rank stays as your lifetime record.</p>
             </div>
             <Trophy className="text-yellow-500" size={24} />
           </div>
-          <div className="space-y-2">
-            {leaderboard.slice(0, 5).map(entry => {
-              const itemAvatar = resolveMediaUrl(entry.user?.avatar);
-              const isMe = getEntityId(entry.user) === getEntityId(user);
-
-              return (
-                <div key={entry.user?._id || entry.position} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${isMe ? 'border-pink-200 bg-pink-50 dark:border-pink-900/60 dark:bg-pink-950/20' : 'border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50'}`}>
-                  <div className="w-7 text-center text-sm font-black text-gray-500 dark:text-gray-400">#{entry.position}</div>
-                  <RankEmblem rank={entry.stats?.rank} size="sm" animated />
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-indigo-500 text-sm font-bold text-white">
-                    {itemAvatar ? <img src={itemAvatar} alt={entry.user?.name || 'User'} className="h-full w-full object-cover" /> : entry.user?.name?.charAt(0)?.toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-gray-950 dark:text-white">{entry.user?.name || 'User'}</p>
-                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">{entry.stats?.rank?.shortName || 'Rookie'} · {entry.stats?.completedTasks || 0} tasks</p>
-                  </div>
-                  <div className="text-right text-sm font-black text-gray-950 dark:text-white">{entry.stats?.xp || 0}</div>
-                </div>
-              );
-            })}
-            {leaderboard.length === 0 && (
-              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-5 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400">
-                Complete assigned tasks to start the leaderboard.
+          <div className="grid gap-3">
+            <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/50">
+              <GameRankEmblem rank={currentGameRank} size="sm" animated stars={gameStats?.apexStars} />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Current Rank</p>
+                <p className="truncate text-lg font-black text-gray-950 dark:text-white">{currentGameRank?.name || 'Unranked'}</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{gameStats?.season?.label || 'Monthly season'} ends {gameStats?.season?.endsAt ? formatProfileTime(gameStats.season.endsAt) : 'soon'}</p>
               </div>
-            )}
+            </div>
+            <div className="flex items-center gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20">
+              <GameRankEmblem rank={highestGameRank} size="sm" animated stars={highestGameRank?.apexStars || gameStats?.apexStars} />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-cyan-700 dark:text-cyan-200">Highest Rank</p>
+                <p className="truncate text-lg font-black text-gray-950 dark:text-white">{highestGameRank?.name || 'Unranked'}</p>
+                <p className="text-xs font-semibold text-cyan-700/80 dark:text-cyan-200/75">Only updates when you beat your lifetime record.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1116,12 +1123,12 @@ export default function Profile() {
             <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
               <Store className="text-[#1877f2]" size={24} />
               <p className="mt-3 text-xs font-black uppercase text-gray-500 dark:text-gray-400">Student marketplace</p>
-              <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{user?.studentVerificationStatus === 'approved' ? 'Unlocked' : 'Locked'}</p>
+              <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{hasMarketplaceAccess ? 'Unlocked' : 'Locked'}</p>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
               <Shield className="text-emerald-600" size={24} />
               <p className="mt-3 text-xs font-black uppercase text-gray-500 dark:text-gray-400">Verification</p>
-              <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{user?.studentVerificationStatus || 'not_submitted'}</p>
+              <p className="mt-1 text-xl font-black text-gray-950 dark:text-white">{isDeveloperAccount ? 'developer_access' : user?.studentVerificationStatus || 'not_submitted'}</p>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
               <MessageCircle className="text-pink-500" size={24} />
@@ -1373,7 +1380,7 @@ export default function Profile() {
               <h3 className="font-black text-gray-950 dark:text-white">Mobile app</h3>
               <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">Syncrova checks for Android updates automatically after the app opens.</p>
               <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm font-bold text-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
-                Current build target: 3.3.2
+                Current build target: {RELEASE_VERSION_NAME}
               </div>
             </div>
             <div className="rounded-2xl border border-white/70 bg-white p-5 shadow-lg shadow-gray-200/60 dark:border-gray-700/60 dark:bg-gray-900 dark:shadow-black/10">

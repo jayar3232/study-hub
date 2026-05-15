@@ -1,20 +1,46 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { formatDistanceToNow } from 'date-fns';
-import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Loader2, Mail, MessageCircle, PlayCircle, User, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { ArrowLeft, Briefcase, Building2, Calendar, Clock, Globe2, Image as ImageIcon, Loader2, Mail, MessageCircle, PlayCircle, User, UserCheck, UserPlus, Users, UserX, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import { useNavigate } from 'react-router-dom';
-import RankBadge, { RankEmblem } from './RankBadge';
 import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
 import { useAuth } from '../context/AuthContext';
 import StoryViewer from './StoryViewer';
 import VideoThumbnail from './VideoThumbnail';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
+import AnimatedEmojiText from './AnimatedEmojiText';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+
+const getPostAttachments = (post = {}) => {
+  const attachments = Array.isArray(post.attachments)
+    ? post.attachments.filter(item => item?.fileUrl)
+    : [];
+  if (attachments.length) return attachments;
+  if (post.fileUrl) {
+    return [{
+      fileUrl: post.fileUrl,
+      fileType: post.fileType || 'file',
+      fileName: post.fileName || post.title || 'Post media'
+    }];
+  }
+  return [];
+};
+
+const formatPostTime = (value) => {
+  if (!value) return 'Recently';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Recently';
+  return formatDistanceToNow(date, { addSuffix: true });
+};
+
+const getReactionCount = (post = {}) => (
+  (post.reactions?.length || 0) + (post.likes?.length || 0)
+);
 
 const formatMemberSince = (value) => {
   if (!value) return 'Recently joined';
@@ -78,6 +104,38 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   const avatar = resolveMediaUrl(profile?.avatar);
   const coverPhoto = resolveMediaUrl(profile?.coverPhoto);
   const storyGroups = groupActiveStoriesByOwner(stories);
+  const profilePosts = Array.isArray(profile?.posts) ? profile.posts : [];
+  const mutualFriends = Array.isArray(profile?.mutualFriends) ? profile.mutualFriends : [];
+  const highlightItems = useMemo(() => {
+    const storyHighlights = storyGroups.map(group => ({
+      id: `story-${group.ownerId}`,
+      type: 'story',
+      title: group.count > 1 ? 'Collection' : group.preview?.caption || 'Story',
+      count: group.count,
+      story: group.preview,
+      fileType: group.preview?.fileType,
+      fileUrl: group.preview?.fileUrl,
+      age: formatStoryAge(group.preview)
+    }));
+
+    const postHighlights = profilePosts.flatMap(post => (
+      getPostAttachments(post)
+        .filter(attachment => ['image', 'video'].includes(attachment.fileType))
+        .slice(0, 1)
+        .map(attachment => ({
+          id: `post-${getEntityId(post)}-${attachment.fileUrl}`,
+          type: 'post',
+          title: post.title || 'Post',
+          count: getPostAttachments(post).length,
+          post,
+          fileType: attachment.fileType,
+          fileUrl: attachment.fileUrl,
+          age: formatPostTime(post.createdAt)
+        }))
+    ));
+
+    return [...storyHighlights, ...postHighlights].slice(0, 8);
+  }, [profilePosts, storyGroups]);
   const activeStoryList = getStoryListForActiveStory(storyGroups, activeStory);
   const initials = useMemo(() => {
     const name = profile?.name || 'User';
@@ -87,6 +145,8 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
   const lastSeen = profile?.lastSeen
     ? `Last active ${formatDistanceToNow(new Date(profile.lastSeen), { addSuffix: true })}`
     : 'Activity not available';
+  const currentGameRank = profile?.gameStats?.rank;
+  const highestGameRank = profile?.gameStats?.highestRank || currentGameRank;
 
   const openMessages = () => {
     onClose?.();
@@ -293,15 +353,15 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
           onMouseDown={closeModal}
         >
           <div
-            className="mobile-profile-modal h-auto max-h-[88svh] w-full max-w-[520px] overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            className="mobile-profile-modal h-auto max-h-[90svh] w-full max-w-[58rem] overflow-hidden rounded-[1.75rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
             onMouseDown={event => event.stopPropagation()}
           >
-            <div className="max-h-[88svh] overflow-y-auto">
+            <div className="max-h-[90svh] overflow-y-auto">
               <div className="relative overflow-hidden bg-gray-950 p-4 text-white sm:p-5">
               {coverPhoto ? (
                 <img src={coverPhoto} alt="Profile cover" className="absolute inset-0 h-full w-full object-cover" />
               ) : (
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.28),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.28),transparent_34%),linear-gradient(135deg,#020617,#111827_58%,#172554)]" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(34,211,238,0.22),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.24),transparent_34%),linear-gradient(135deg,#050505,#151517_58%,#241b25)]" />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/45 to-black/15" />
               <button
@@ -333,14 +393,14 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
               </div>
               </div>
 
-              <div className="space-y-3 p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 p-4 lg:grid-cols-2 lg:items-start">
+              <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2">
                 <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
                   <p className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
                     <Briefcase size={14} />
                     Campus status
                   </p>
-                  <p className="mt-2 text-2xl font-bold text-gray-950 dark:text-white">{profile?.studentVerificationStatus === 'approved' ? 'Verified' : 'Unverified'}</p>
+                  <p className="mt-2 text-2xl font-bold text-gray-950 dark:text-white">{profile?.isDeveloper ? 'Developer' : profile?.studentVerificationStatus === 'approved' ? 'Verified' : 'Unverified'}</p>
                 </div>
                 <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
                   <p className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
@@ -351,41 +411,75 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 </div>
               </div>
 
-              {storyGroups.length > 0 && (
+              <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800 lg:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-sm font-black text-gray-950 dark:text-white">
+                    <Users size={16} className="text-[#1877f2] dark:text-sky-300" />
+                    Mutual friends
+                  </p>
+                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-black text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+                    {profile?.mutualFriendCount || mutualFriends.length}
+                  </span>
+                </div>
+                {mutualFriends.length > 0 ? (
+                  <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {mutualFriends.map(friend => {
+                      const friendAvatar = resolveMediaUrl(friend.avatar);
+                      return (
+                        <div
+                          key={getEntityId(friend)}
+                          className="w-16 shrink-0 text-center"
+                        >
+                          <span className="mx-auto grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-gray-100 text-sm font-black text-gray-600 ring-1 ring-gray-200 dark:bg-gray-950 dark:text-gray-200 dark:ring-gray-800">
+                            {friendAvatar ? <img src={friendAvatar} alt={friend.name || 'Friend'} className="h-full w-full object-cover" /> : (friend.name || 'M').charAt(0).toUpperCase()}
+                          </span>
+                          <span className="mt-1 block truncate text-[11px] font-black text-gray-600 dark:text-gray-300">{friend.name || 'Friend'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm font-semibold text-gray-500 dark:text-gray-400">No mutual friends to show yet.</p>
+                )}
+              </div>
+
+              {highlightItems.length > 0 && (
                 <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                   <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-sm font-black text-gray-950 dark:text-white">My Day</p>
-                    <span className="rounded-full bg-pink-50 px-2 py-1 text-xs font-black text-pink-600 dark:bg-pink-950/30 dark:text-pink-200">{stories.length}</span>
+                    <p className="flex items-center gap-2 text-sm font-black text-gray-950 dark:text-white">
+                      <ImageIcon size={16} className="text-[#1877f2] dark:text-sky-300" />
+                      Highlights
+                    </p>
+                    <span className="rounded-full bg-pink-50 px-2 py-1 text-xs font-black text-pink-600 dark:bg-pink-950/30 dark:text-pink-200">{highlightItems.length}</span>
                   </div>
                   <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {storyGroups.map(group => {
-                      const story = group.preview;
-                      const storyUrl = resolveMediaUrl(story.fileUrl);
+                    {highlightItems.map(item => {
+                      const mediaUrl = resolveMediaUrl(item.fileUrl);
                       return (
                         <button
-                          key={group.ownerId}
+                          key={item.id}
                           type="button"
-                          onClick={() => openStory(story)}
+                          onClick={() => item.type === 'story' && item.story ? openStory(item.story) : null}
                           className="relative h-36 w-24 shrink-0 overflow-hidden rounded-2xl bg-gray-950"
                         >
-                          {story.fileType === 'image' ? (
-                            <img src={storyUrl} alt={story.caption || 'My Day'} className="h-full w-full object-cover" />
+                          {item.fileType === 'image' ? (
+                            <img src={mediaUrl} alt={item.title || 'Highlight'} className="h-full w-full object-cover" />
                           ) : (
-                            <VideoThumbnail src={storyUrl} className="h-full w-full" iconSize={20} label={`${profile?.name || 'Member'} story video`} />
+                            <VideoThumbnail src={mediaUrl} className="h-full w-full" iconSize={20} label={`${profile?.name || 'Member'} highlight video`} />
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                          {group.count > 1 && (
+                          {item.count > 1 && (
                             <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
-                              {group.count}
+                              +{item.count - 1}
                             </span>
                           )}
-                          {formatStoryAge(story) && (
+                          {item.age && (
                             <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
-                              {formatStoryAge(story)}
+                              {item.age}
                             </span>
                           )}
-                          {story.fileType === 'video' && <PlayCircle className={`absolute right-2 text-white ${group.count > 1 ? 'top-9' : 'top-2'}`} size={20} />}
-                          <p className="absolute inset-x-2 bottom-2 line-clamp-2 text-left text-xs font-black text-white">{story.caption || 'View story'}</p>
+                          {item.fileType === 'video' && <PlayCircle className={`absolute right-2 text-white ${item.count > 1 ? 'top-9' : 'top-2'}`} size={20} />}
+                          <p className="absolute inset-x-2 bottom-2 line-clamp-2 text-left text-xs font-black text-white">{item.title || 'Highlight'}</p>
                         </button>
                       );
                     })}
@@ -395,25 +489,24 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
 
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <div className="flex items-center gap-3">
-                  <RankEmblem rank={profile?.rankStats?.rank} size="sm" animated />
+                  <GameRankEmblem rank={currentGameRank} size="sm" animated stars={profile?.gameStats?.apexStars} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Work Rank</p>
-                    <p className="truncate text-sm font-black text-gray-950 dark:text-white">{profile?.rankStats?.rank?.name || 'Rookie Operator'}</p>
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.rankStats?.xp || 0} XP - {profile?.rankStats?.completedTasks || 0} completed tasks</p>
-                  </div>
-                  <RankBadge stats={profile?.rankStats} compact />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
-                <div className="flex items-center gap-3">
-                  <GameRankEmblem rank={profile?.gameStats?.rank} size="sm" animated />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Division Rank</p>
-                    <p className="truncate text-sm font-black text-gray-950 dark:text-white">{profile?.gameStats?.rank?.name || 'Game Hub Recruit'}</p>
+                    <p className="text-xs font-black uppercase text-gray-500 dark:text-gray-400">Current Rank</p>
+                    <p className="truncate text-sm font-black text-gray-950 dark:text-white">{currentGameRank?.name || 'Unranked'}</p>
                     <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{profile?.gameStats?.highScore || 0} high score - {profile?.gameStats?.totalPlays || 0} runs</p>
                   </div>
                   <GameRankBadge stats={profile?.gameStats} compact />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-cyan-100 bg-cyan-50/65 p-3 dark:border-cyan-900/50 dark:bg-cyan-950/15">
+                <div className="flex items-center gap-3">
+                  <GameRankEmblem rank={highestGameRank} size="sm" animated stars={highestGameRank?.apexStars || profile?.gameStats?.apexStars} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-black uppercase text-cyan-700 dark:text-cyan-200">Highest Rank</p>
+                    <p className="truncate text-sm font-black text-gray-950 dark:text-white">{highestGameRank?.name || 'Unranked'}</p>
+                    <p className="text-xs font-semibold text-cyan-700/80 dark:text-cyan-200/75">{profile?.gameStats?.highestScore || 0} lifetime best score</p>
+                  </div>
                 </div>
               </div>
 
@@ -423,6 +516,60 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                   About
                 </p>
                 <p className="text-sm leading-6 text-gray-600 dark:text-gray-300">{profile?.bio || 'No bio added yet.'}</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-sm font-black text-gray-950 dark:text-white">
+                    <Globe2 size={16} className="text-[#1877f2] dark:text-sky-300" />
+                    Posts
+                  </p>
+                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-black text-gray-600 dark:bg-gray-950 dark:text-gray-300">{profilePosts.length}</span>
+                </div>
+                {profilePosts.length > 0 ? (
+                  <div className="space-y-3">
+                    {profilePosts.slice(0, 5).map(post => {
+                      const attachments = getPostAttachments(post).filter(attachment => ['image', 'video'].includes(attachment.fileType));
+                      const firstAttachment = attachments[0];
+                      const firstUrl = resolveMediaUrl(firstAttachment?.fileUrl);
+                      return (
+                        <article key={getEntityId(post)} className="rounded-2xl bg-gray-50 p-3 ring-1 ring-gray-100 dark:bg-gray-950 dark:ring-gray-800">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="min-w-0 truncate text-sm font-black text-gray-950 dark:text-white">
+                              <AnimatedEmojiText text={post.title || 'Timeline post'} />
+                            </p>
+                            <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:ring-gray-800">
+                              {post.privacy || 'public'}
+                            </span>
+                          </div>
+                          {post.content && (
+                            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-gray-600 dark:text-gray-300">
+                              <AnimatedEmojiText text={post.content} />
+                            </p>
+                          )}
+                          {firstAttachment && (
+                            <div className="mt-3 overflow-hidden rounded-2xl bg-gray-950">
+                              {firstAttachment.fileType === 'image' ? (
+                                <img src={firstUrl} alt={firstAttachment.fileName || post.title || 'Post media'} className="max-h-64 w-full object-cover" loading="lazy" decoding="async" />
+                              ) : (
+                                <VideoThumbnail src={firstUrl} className="h-48 w-full" iconSize={24} label={firstAttachment.fileName || post.title || 'Post video'} />
+                              )}
+                            </div>
+                          )}
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase text-gray-400">
+                            <span>{formatPostTime(post.createdAt)}</span>
+                            <span>{getReactionCount(post)} reactions</span>
+                            <span>{post.comments?.length || 0} comments</span>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-2xl bg-gray-50 p-3 text-sm font-semibold text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+                    No visible posts from this profile yet.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2 text-sm">
@@ -435,7 +582,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
                 </div>
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-2 lg:col-span-2">
                 {renderFriendAction()}
                 <button
                   type="button"

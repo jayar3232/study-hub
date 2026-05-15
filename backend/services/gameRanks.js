@@ -13,7 +13,7 @@ const GAME_RANKS = [
 
 const getId = (value) => String(value?._id || value?.id || value || '');
 
-const SEASON_LENGTH_MONTHS = 2;
+const SEASON_LENGTH_MONTHS = 1;
 const APEX_STAR_STEP = 25000;
 const SEASON_SCORE_MULTIPLIER = 0.72;
 const SEASON_RESET_FLOOR_MULTIPLIER = 0.72;
