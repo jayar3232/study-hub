@@ -15,7 +15,7 @@ const StudentVerificationSchema = new mongoose.Schema({
   },
   documentUrl: { type: String, required: true },
   documentStoragePath: { type: String, default: '' },
-  documentStorageProvider: { type: String, enum: ['local', 'supabase'], default: 'local' },
+  documentStorageProvider: { type: String, enum: ['local', 'supabase', 'r2'], default: 'local' },
   originalName: { type: String, default: '' },
   mimeType: { type: String, default: '' },
   size: { type: Number, default: 0 },

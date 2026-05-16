@@ -441,7 +441,7 @@ function FeedVideoPlayer({
   }
 
   return (
-    <div className={`overflow-hidden rounded-2xl bg-black ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
+    <div className={`feed-video-player overflow-hidden rounded-2xl bg-black ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
       <video
         ref={videoRef}
         src={previewSrc}
@@ -454,7 +454,7 @@ function FeedVideoPlayer({
         onLoadedData={revealPreviewFrame}
         onPlay={() => onVideoPlay(ownVideoKey)}
         onError={() => setFailed(true)}
-        className={`block max-h-[32rem] w-full bg-black object-contain ${videoClassName}`}
+        className={`feed-video-element block max-h-[32rem] w-full bg-black object-contain ${videoClassName}`}
       />
     </div>
   );
@@ -483,7 +483,7 @@ function FeedMediaGrid({
   }).filter(item => item.url);
 
   return (
-    <div className="feed-media-grid space-y-2">
+    <div className={`feed-media-grid space-y-2 ${isSingle ? 'feed-media-grid--single' : 'feed-media-grid--multi'}`}>
       {attachments.length > 1 && (
         <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50">
           <ImageIcon size={14} />
@@ -500,7 +500,7 @@ function FeedMediaGrid({
           return (
             <div
               key={`${attachment.fileUrl}-${index}`}
-              className={`relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-200 dark:ring-slate-800 ${fileType === 'image' ? 'cursor-pointer' : ''} ${tileClass}`}
+              className={`feed-media-tile relative overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-200 dark:ring-slate-800 ${fileType === 'image' ? 'cursor-pointer' : ''} ${tileClass}`}
               onClick={() => fileType === 'image' && onOpenMedia(index, viewerItems)}
             >
               {fileType === 'video' ? (
@@ -520,7 +520,7 @@ function FeedMediaGrid({
                   alt={label}
                   loading="lazy"
                   decoding="async"
-                  className={`${isSingle ? 'max-h-[34rem] object-contain' : 'h-full object-cover'} w-full bg-slate-950`}
+                  className={`feed-media-image ${isSingle ? 'max-h-[34rem] object-contain' : 'h-full object-cover'} w-full bg-slate-950`}
                 />
               )}
               {showHiddenOverlay && (
@@ -1422,7 +1422,7 @@ export default function HomeFeed({
       </form>
 
       {mobileComposerOpen && (
-        <div className="fixed inset-0 z-[92] flex items-end bg-slate-950/45 backdrop-blur-sm md:hidden" onClick={() => setMobileComposerOpen(false)}>
+        <div className="home-mobile-composer-backdrop fixed inset-0 z-[92] flex items-end bg-slate-950/45 md:hidden" onClick={() => setMobileComposerOpen(false)}>
           <form
             onSubmit={createPost}
             className="mobile-post-composer-sheet w-full rounded-t-[1.7rem] border border-slate-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl dark:border-slate-800 dark:bg-slate-950"
@@ -1458,7 +1458,7 @@ export default function HomeFeed({
               <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
                 <div className={`grid gap-2 ${mediaItems.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                   {mediaItems.slice(0, 4).map((item, index) => (
-                    <div key={item.id} className="relative h-28 overflow-hidden rounded-xl bg-slate-950">
+                    <div key={item.id} className="feed-media-tile relative h-28 overflow-hidden rounded-xl bg-slate-950">
                       {item.fileType === 'video' ? (
                         <FeedVideoPlayer
                           src={item.previewUrl}
@@ -1470,7 +1470,7 @@ export default function HomeFeed({
                           videoClassName="h-full max-h-none object-cover"
                         />
                       ) : (
-                        <img src={item.previewUrl} alt={item.file.name} className="h-full w-full object-cover" />
+                        <img src={item.previewUrl} alt={item.file.name} className="feed-media-image h-full w-full object-cover" />
                       )}
                       {mediaItems.length > 4 && index === 3 && (
                         <span className="absolute inset-0 grid place-items-center bg-black/55 text-xl font-black text-white">+{mediaItems.length - 4}</span>
@@ -1612,7 +1612,7 @@ export default function HomeFeed({
             const taggedNames = (post.taggedUsers || []).map(person => person?.name).filter(Boolean);
 
             return (
-              <article id={`post-${postId}`} key={postId} className="feed-card mobile-facebook-post overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+              <article id={`post-${postId}`} key={postId} className={`feed-card mobile-facebook-post ${attachments.length ? 'feed-card--has-media' : ''} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20`}>
                 <header className="feed-card-header flex items-start gap-3 p-4">
                   <Avatar user={author} />
                   <div className="min-w-0 flex-1">

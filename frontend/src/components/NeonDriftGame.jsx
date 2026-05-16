@@ -167,6 +167,8 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [hitFlash, setHitFlash] = useState(0);
+  const [renderWarning, setRenderWarning] = useState('');
+  const [rendererResetKey, setRendererResetKey] = useState(0);
 
   const syncHud = useCallback(() => {
     setScore(scoreRef.current);
@@ -275,6 +277,24 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
     const canvas = canvasRef.current;
     const wrapper = wrapRef.current;
     if (!canvas || !wrapper) return undefined;
+    const isTouchViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+    let contextLost = false;
+
+    const handleContextLost = (event) => {
+      event.preventDefault();
+      contextLost = true;
+      setRenderWarning('Graphics paused');
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+    const handleContextRestored = () => {
+      contextLost = false;
+      setRenderWarning('');
+      setRendererResetKey(value => value + 1);
+    };
+    canvas.addEventListener('webglcontextlost', handleContextLost, false);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
+    setRenderWarning('');
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#020617');
@@ -284,8 +304,13 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
     camera.position.set(0, 5.2, 9.6);
     camera.lookAt(0, 0.35, -18);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: !isTouchViewport,
+      powerPreference: isTouchViewport ? 'default' : 'high-performance'
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouchViewport ? 1.35 : 2));
+    renderer.setClearColor('#020617', 1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -380,6 +405,7 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
     observer.observe(wrapper);
 
     const animate = () => {
+      if (contextLost) return;
       const dt = Math.min(0.05, clock.getDelta());
       const now = performance.now();
       const level = levelRef.current;
@@ -503,7 +529,13 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
         syncHud();
       }
 
-      renderer.render(scene, camera);
+      try {
+        renderer.render(scene, camera);
+      } catch {
+        setRenderWarning('Graphics reset');
+        setRendererResetKey(value => value + 1);
+        return;
+      }
       rafRef.current = requestAnimationFrame(animate);
     };
 
@@ -511,12 +543,14 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
 
     return () => {
       observer.disconnect();
+      canvas.removeEventListener('webglcontextlost', handleContextLost, false);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored, false);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       disposeObject(scene);
       renderer.dispose();
       worldRef.current = null;
     };
-  }, [endGame, syncHud]);
+  }, [endGame, rendererResetKey, syncHud]);
 
   const highScore = stats?.neonDriftStats?.highScore || 0;
 
@@ -568,6 +602,11 @@ export default function NeonDriftGame({ stats, onScoreSaved, onExit }) {
             <p>Distance {distance}m</p>
             <p className="text-white/55">Dodges {dodgesRef.current}</p>
           </div>
+          {renderWarning && (
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-2xl border border-cyan-200/30 bg-slate-950/86 px-4 py-3 text-sm font-black text-cyan-50 shadow-2xl">
+              {renderWarning}. Tap the stage to continue.
+            </div>
+          )}
           {hitFlash > 0 && <div key={hitFlash} className="absolute inset-0 animate-pulse bg-rose-500/18" />}
           {!running && !gameOver && (
             <div className="absolute inset-0 grid place-items-center bg-slate-950/25 p-5 text-center backdrop-blur-[1px]">

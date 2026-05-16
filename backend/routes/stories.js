@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Story = require('../models/Story');
 const Message = require('../models/Message');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification } = require('../services/notifications');
 const router = express.Router();
 
@@ -195,7 +195,7 @@ router.post('/', auth, uploadStory, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local'),
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local'),
       expiresAt: new Date(Date.now() + STORY_DURATION_MS)
     });
 
@@ -205,7 +205,7 @@ router.post('/', auth, uploadStory, async (req, res) => {
     res.status(201).json(story);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {
-      await deleteObject(uploadedFile.path).catch(() => {});
+      await deleteObject(uploadedFile.path, { provider: uploadedFile.provider }).catch(() => {});
     }
     res.status(err.status || 500).json({ msg: err.message });
   }
@@ -352,8 +352,8 @@ router.delete('/:storyId', auth, async (req, res) => {
     }
 
     await story.deleteOne();
-    if (story.storageProvider === 'supabase' && story.storagePath) {
-      await deleteObject(story.storagePath).catch(() => {});
+    if (['supabase', 'r2'].includes(story.storageProvider) && story.storagePath) {
+      await deleteObject(story.storagePath, { provider: story.storageProvider }).catch(() => {});
     } else if (story.fileUrl?.startsWith('/uploads/stories/')) {
       const localPath = path.join(__dirname, '..', story.fileUrl);
       fs.unlink(localPath, () => {});

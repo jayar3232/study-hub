@@ -433,7 +433,8 @@ export default function JetFighterGame({ stats, onScoreSaved, onExit }) {
     const context = canvas?.getContext('2d');
     if (!context) return;
 
-    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    const isTouchViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+    const pixelRatio = Math.min(isTouchViewport ? 1.6 : 2, window.devicePixelRatio || 1);
     if (canvas.width !== WIDTH * pixelRatio || canvas.height !== HEIGHT * pixelRatio) {
       canvas.width = WIDTH * pixelRatio;
       canvas.height = HEIGHT * pixelRatio;

@@ -10,7 +10,7 @@ const StorySchema = new mongoose.Schema({
   mimeType: { type: String, default: '' },
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
-  storageProvider: { type: String, enum: ['local', 'supabase'], default: 'local' },
+  storageProvider: { type: String, enum: ['local', 'supabase', 'r2'], default: 'local' },
   reactions: [{
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     emoji: { type: String, required: true },

@@ -542,7 +542,8 @@ export default function BlockStackGame({ stats, onScoreSaved, onExit }) {
     const rect = host.getBoundingClientRect();
     const width = clamp(rect.width, 290, 640);
     const height = clamp(Math.round(width * (width < 430 ? 1.18 : 1.26)), 340, 620);
-    const dpr = clamp(window.devicePixelRatio || 1, 1, 2.4);
+    const isTouchViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+    const dpr = clamp(window.devicePixelRatio || 1, 1, isTouchViewport ? 1.6 : 2.4);
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     canvas.width = Math.floor(width * dpr);

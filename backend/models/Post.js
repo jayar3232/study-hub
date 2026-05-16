@@ -17,7 +17,7 @@ const PostSchema = new mongoose.Schema({
   mimeType: { type: String, default: '' },
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
-  storageProvider: { type: String, enum: ['local', 'supabase', ''], default: '' },
+  storageProvider: { type: String, enum: ['local', 'supabase', 'r2', ''], default: '' },
   attachments: [{
     fileUrl: { type: String, required: true },
     fileType: { type: String, enum: ['image', 'video', 'file'], default: 'file' },
@@ -25,7 +25,7 @@ const PostSchema = new mongoose.Schema({
     mimeType: { type: String, default: '' },
     fileSize: { type: Number, default: 0 },
     storagePath: { type: String, default: '' },
-    storageProvider: { type: String, enum: ['local', 'supabase', ''], default: '' }
+    storageProvider: { type: String, enum: ['local', 'supabase', 'r2', ''], default: '' }
   }],
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   savedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

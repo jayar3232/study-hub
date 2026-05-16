@@ -5,7 +5,7 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const GalleryItem = require('../models/GalleryItem');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 
 const router = express.Router();
 
@@ -209,7 +209,7 @@ router.post('/', auth, uploadGallery, async (req, res) => {
       mimeType,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local'),
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local'),
       uploadedBy: req.user
     });
 
@@ -218,7 +218,7 @@ router.post('/', auth, uploadGallery, async (req, res) => {
     res.status(201).json({ reel: toPayload(item, req.user), galleryItem: toPayload(item, req.user) });
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {
-      await deleteObject(uploadedFile.path).catch(() => {});
+      await deleteObject(uploadedFile.path, { provider: uploadedFile.provider }).catch(() => {});
     }
     res.status(err.status || 500).json({ msg: err.message || 'Gallery upload failed' });
   } finally {
@@ -237,8 +237,8 @@ router.delete('/:itemId', auth, async (req, res) => {
       return res.status(403).json({ msg: 'Only the uploader can delete this item' });
     }
 
-    if (item.storageProvider === 'supabase' && item.storagePath) {
-      await deleteObject(item.storagePath).catch(() => {});
+    if (['supabase', 'r2'].includes(item.storageProvider) && item.storagePath) {
+      await deleteObject(item.storagePath, { provider: item.storageProvider }).catch(() => {});
     } else {
       await deleteLocalGalleryFile(item);
     }

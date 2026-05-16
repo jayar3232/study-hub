@@ -74,6 +74,7 @@ export default function GamePlayPage() {
   const navigate = useNavigate();
   const game = gameRegistry[gameKey];
   const shellRef = useRef(null);
+  const mobileFocusAppliedRef = useRef('');
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
@@ -106,9 +107,16 @@ export default function GamePlayPage() {
   useEffect(() => {
     if (!game || typeof window === 'undefined') return;
     const isMobileGameViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+    if (isMobileGameViewport && mobileFocusAppliedRef.current !== gameKey) {
+      mobileFocusAppliedRef.current = gameKey;
+      setShowFullscreenPrompt(false);
+      setFocusMode(true);
+      return;
+    }
+
     const alreadyDismissed = window.localStorage.getItem(fullscreenPromptKey) === 'dismissed';
     setShowFullscreenPrompt(Boolean(isMobileGameViewport && !alreadyDismissed));
-  }, [fullscreenPromptKey, game]);
+  }, [fullscreenPromptKey, game, gameKey]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {

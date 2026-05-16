@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "data:reset": "node scripts/reset-user-data.js",
     "admin:set": "node scripts/set-developer-access.js",
-    "storage:check": "node scripts/check-storage.js"
+    "storage:check": "node scripts/check-storage.js",
+    "storage:migrate:r2": "node scripts/migrate-supabase-to-r2.js"
   },
   "keywords": [],
   "author": "",

@@ -6,7 +6,7 @@ const GroupSchema = new mongoose.Schema({
   subject: { type: String, default: '' },
   photo: { type: String, default: '' },
   photoStoragePath: { type: String, default: '' },
-  photoStorageProvider: { type: String, enum: ['', 'local', 'supabase'], default: '' },
+  photoStorageProvider: { type: String, enum: ['', 'local', 'supabase', 'r2'], default: '' },
   creator: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   coCreators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // 👈 add this line

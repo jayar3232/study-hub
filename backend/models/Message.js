@@ -7,7 +7,7 @@ const MessageAttachmentSchema = new mongoose.Schema({
   mimeType: { type: String, default: '' },
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
-  storageProvider: { type: String, enum: ['', 'local', 'supabase'], default: '' }
+  storageProvider: { type: String, enum: ['', 'local', 'supabase', 'r2'], default: '' }
 }, { _id: false });
 
 const MessageSchema = new mongoose.Schema({
@@ -21,7 +21,7 @@ const MessageSchema = new mongoose.Schema({
   mimeType: { type: String, default: '' },
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
-  storageProvider: { type: String, enum: ['', 'local', 'supabase'], default: '' },
+  storageProvider: { type: String, enum: ['', 'local', 'supabase', 'r2'], default: '' },
   attachments: { type: [MessageAttachmentSchema], default: [] },
   read: { type: Boolean, default: false },
   readAt: { type: Date, default: null },

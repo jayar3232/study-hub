@@ -7716,3 +7716,178 @@ html.syncrova-native-app .mobile-message-actions button {
     max-height: min(88svh, 42rem);
   }
 }
+
+@media (max-width: 767px) {
+  .home-mobile-composer-backdrop {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .feed-card--has-media,
+  .mobile-page .feed-card--has-media,
+  .dashboard-facebook-mobile .feed-card--has-media,
+  .home-feed--facebook-mobile .feed-card--has-media {
+    content-visibility: visible !important;
+    contain: none !important;
+    contain-intrinsic-size: auto !important;
+    transform: none !important;
+  }
+
+  .feed-card--has-media .feed-media-grid,
+  .feed-card--has-media .feed-media-tile,
+  .feed-card--has-media .feed-video-player,
+  .feed-card--has-media .feed-video-element,
+  .feed-card--has-media .feed-media-image,
+  .mobile-post-composer-sheet .feed-media-tile,
+  .mobile-post-composer-sheet .feed-video-player,
+  .mobile-post-composer-sheet .feed-video-element,
+  .mobile-post-composer-sheet .feed-media-image {
+    content-visibility: visible !important;
+    contain: none !important;
+    transform: none !important;
+    backface-visibility: visible !important;
+    will-change: auto !important;
+  }
+
+  .feed-card--has-media .feed-video-element,
+  .mobile-post-composer-sheet .feed-video-element {
+    min-height: 8rem;
+    background: #020617;
+  }
+
+  .feed-card--has-media .feed-media-grid--single .feed-video-element,
+  .feed-card--has-media .feed-media-grid--single .feed-media-image {
+    max-height: min(68svh, 34rem);
+  }
+
+  .dark .mobile-upload-queue {
+    border-color: rgba(39, 39, 42, 0.96);
+    background: rgba(15, 15, 18, 0.98);
+    color: #f8fafc;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+  }
+
+  .dark .mobile-upload-queue :where(p) {
+    color: inherit;
+  }
+}
+
+.game-play-page.is-game-fullscreen {
+  z-index: 180;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.game-play-page.is-game-fullscreen .game-play-layout,
+.game-play-page.is-game-fullscreen .game-play-frame,
+.game-play-page.is-game-fullscreen .game-play-frame > section,
+.game-play-page.is-game-fullscreen .three-game-panel,
+.game-play-page.is-game-fullscreen .swipe-ninja-game,
+.game-play-page.is-game-fullscreen .bow-duel-game {
+  min-height: 0;
+}
+
+.game-play-page.is-game-fullscreen .game-play-layout,
+.game-play-page.is-game-fullscreen .game-play-frame {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.game-play-page.is-game-fullscreen .game-play-frame > section,
+.game-play-page.is-game-fullscreen .three-game-panel,
+.game-play-page.is-game-fullscreen .swipe-ninja-game,
+.game-play-page.is-game-fullscreen .bow-duel-game {
+  height: 100%;
+  overflow: hidden;
+}
+
+.game-play-page.is-game-fullscreen .three-game-body,
+.game-play-page.is-game-fullscreen .swipe-ninja-shell,
+.game-play-page.is-game-fullscreen .bow-duel-game > .grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.game-play-page.is-game-fullscreen .three-game-body > aside,
+.game-play-page.is-game-fullscreen .swipe-ninja-side,
+.game-play-page.is-game-fullscreen .bow-duel-game > .grid > aside {
+  display: none !important;
+}
+
+.game-play-page.is-game-fullscreen .three-game-stage,
+.game-play-page.is-game-fullscreen .bow-duel-canvas-shell {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.game-play-page.is-game-fullscreen .bow-duel-canvas {
+  height: 100% !important;
+}
+
+.game-play-page.is-game-fullscreen .swipe-ninja-canvas-frame {
+  display: grid;
+  min-height: 0;
+}
+
+.game-play-page.is-game-fullscreen .swipe-ninja-canvas-wrap {
+  align-self: center;
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  .game-play-page.is-game-fullscreen {
+    padding: calc(0.25rem + env(safe-area-inset-top, 0px)) 0.35rem calc(0.35rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .game-play-page.is-game-fullscreen .game-fullscreen-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 2.75rem;
+    margin-bottom: 0.35rem;
+    border-radius: 0.85rem;
+    padding: 0.25rem;
+  }
+
+  .game-play-page.is-game-fullscreen .game-fullscreen-bar button {
+    min-height: 2.25rem;
+    border-radius: 0.75rem;
+    padding-inline: 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  .game-play-page.is-game-fullscreen .game-play-layout {
+    height: calc(100dvh - 3.35rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .game-play-page.is-game-fullscreen .three-game-panel > .relative,
+  .game-play-page.is-game-fullscreen .swipe-ninja-header,
+  .game-play-page.is-game-fullscreen .bow-duel-game > .bg-gradient-to-r,
+  .game-play-page.is-game-fullscreen .game-play-frame > section > .relative:first-child {
+    display: none !important;
+  }
+
+  .game-play-page.is-game-fullscreen .three-game-body,
+  .game-play-page.is-game-fullscreen .swipe-ninja-shell,
+  .game-play-page.is-game-fullscreen .bow-duel-game > .grid {
+    height: 100% !important;
+    padding: 0.35rem !important;
+  }
+
+  .game-play-page.is-game-fullscreen .three-game-stage,
+  .game-play-page.is-game-fullscreen .bow-duel-canvas-shell {
+    height: 100% !important;
+    min-height: calc(100dvh - 3.95rem) !important;
+  }
+
+  .game-play-page.is-game-fullscreen .jet-arena-stage {
+    width: min(100%, calc((100dvh - 3.95rem) * 0.696)) !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 3.95rem) !important;
+  }
+
+  .game-play-page.is-game-fullscreen .swipe-ninja-stats,
+  .game-play-page.is-game-fullscreen .bow-duel-game main > .grid {
+    display: none !important;
+  }
+}

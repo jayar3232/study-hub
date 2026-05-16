@@ -39,6 +39,8 @@ const validateRuntimeEnv = () => {
 
 validateRuntimeEnv();
 
+const { serveR2Object } = require('./services/storage');
+
 const app = express();
 app.set('trust proxy', 1);
 
@@ -160,6 +162,8 @@ app.use('/api/auth/admin/password-reset', sensitiveAccountRateLimiter);
 app.use('/api/users/password', sensitiveAccountRateLimiter);
 app.use('/api/games/developers/access', developerAccessRateLimiter);
 
+app.head(/^\/uploads\/r2\/(.+)$/, serveR2Object);
+app.get(/^\/uploads\/r2\/(.+)$/, serveR2Object);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   etag: true,
   maxAge: '7d'

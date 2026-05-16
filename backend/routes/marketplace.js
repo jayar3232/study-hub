@@ -8,7 +8,7 @@ const User = require('../models/User');
 const StudentVerification = require('../models/StudentVerification');
 const MarketplaceListing = require('../models/MarketplaceListing');
 const { createNotification } = require('../services/notifications');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { normalizeCampus } = require('../utils/academics');
 
 const router = express.Router();
@@ -101,8 +101,8 @@ const uploadListingPhotos = runUpload(
 
 const removeStoredFile = async ({ storageProvider, storagePath, url }) => {
   if (!storagePath && !url) return;
-  if (storageProvider === 'supabase' || (storagePath && isCloudStorageEnabled)) {
-    await deleteObject(storagePath).catch(() => {});
+  if ((['supabase', 'r2'].includes(storageProvider) || (storagePath && isCloudStorageEnabled && storageProvider !== 'local')) && storagePath) {
+    await deleteObject(storagePath, { provider: storageProvider }).catch(() => {});
     return;
   }
 
@@ -123,7 +123,7 @@ const storeUploadedFile = async (file, folder, localPrefix) => {
       filename: uploaded.filename,
       url: uploaded.url,
       storagePath: uploaded.path,
-      storageProvider: uploaded.provider || 'supabase'
+      storageProvider: uploaded.provider || cloudStorageProvider
     };
   }
 

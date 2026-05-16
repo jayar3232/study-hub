@@ -12,7 +12,7 @@ const Memory = require('../models/Memory');
 const GroupNote = require('../models/GroupNote');
 const GroupInvite = require('../models/GroupInvite');
 const User = require('../models/User');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification, createNotifications } = require('../services/notifications');
 const { createGroupActivity } = require('../services/activity');
 const router = express.Router();
@@ -59,8 +59,8 @@ const removeLocalFile = async (targetPath) => {
 };
 
 const removeStoredAsset = async ({ storageProvider, storagePath, filename, fileUrl, localDir }) => {
-  if ((storageProvider === 'supabase' || storagePath) && storagePath) {
-    await deleteObject(storagePath).catch(() => {});
+  if ((['supabase', 'r2'].includes(storageProvider) || (storagePath && isCloudStorageEnabled && storageProvider !== 'local')) && storagePath) {
+    await deleteObject(storagePath, { provider: storageProvider }).catch(() => {});
     return;
   }
 
@@ -484,7 +484,7 @@ router.post('/:id/photo', auth, uploadGroupPhoto, async (req, res) => {
     const previousPhoto = group.photo;
     group.photo = uploadedPhoto.url;
     group.photoStoragePath = uploadedPhoto.path;
-    group.photoStorageProvider = uploadedPhoto.provider || (isCloudStorageEnabled ? 'supabase' : 'local');
+    group.photoStorageProvider = uploadedPhoto.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local');
     await group.save();
 
     await createGroupActivity({
@@ -510,7 +510,7 @@ router.post('/:id/photo', auth, uploadGroupPhoto, async (req, res) => {
     res.json(group);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedPhoto?.path) {
-      await deleteObject(uploadedPhoto.path).catch(() => {});
+      await deleteObject(uploadedPhoto.path, { provider: uploadedPhoto.provider }).catch(() => {});
     } else if (req.file?.path) {
       await removeLocalFile(req.file.path).catch(() => {});
     }

@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Message = require('../models/Message');
 const User = require('../models/User');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification } = require('../services/notifications');
 const router = express.Router();
 
@@ -97,10 +97,10 @@ const sanitizeAttachment = (attachment = {}, userId = '') => {
   if (!fileUrl) return null;
 
   const fileType = ['image', 'video', 'audio', 'file'].includes(attachment.fileType) ? attachment.fileType : 'file';
-  const storageProvider = ['local', 'supabase'].includes(attachment.storageProvider) ? attachment.storageProvider : '';
+  const storageProvider = ['local', 'supabase', 'r2'].includes(attachment.storageProvider) ? attachment.storageProvider : '';
   const userMessageFolder = `messages/${userId}/`;
   const rawStoragePath = String(attachment.storagePath || '').trim();
-  const storagePath = storageProvider === 'supabase'
+  const storagePath = ['supabase', 'r2'].includes(storageProvider)
     && typeof attachment.storagePath === 'string'
     && attachment.storagePath.startsWith(userMessageFolder)
     ? attachment.storagePath
@@ -174,7 +174,7 @@ router.post('/upload', auth, uploadSingleFile, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local')
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -637,13 +637,19 @@ router.delete('/:messageId/everyone', auth, async (req, res) => {
     if (normalizeId(message.from) !== req.user) return res.status(403).json({ msg: 'Only the sender can unsend this message' });
 
     const storagePaths = new Set();
-    if (message.storageProvider === 'supabase' && message.storagePath) storagePaths.add(message.storagePath);
+    if (['supabase', 'r2'].includes(message.storageProvider) && message.storagePath) {
+      storagePaths.add(`${message.storageProvider}:${message.storagePath}`);
+    }
     getMessageAttachments(message).forEach(attachment => {
-      if (attachment.storageProvider === 'supabase' && attachment.storagePath) storagePaths.add(attachment.storagePath);
+      if (['supabase', 'r2'].includes(attachment.storageProvider) && attachment.storagePath) {
+        storagePaths.add(`${attachment.storageProvider}:${attachment.storagePath}`);
+      }
     });
-    await Promise.all([...storagePaths].map(storagePath => (
-      deleteObject(storagePath).catch(err => console.error('Message attachment delete failed:', err.message))
-    )));
+    await Promise.all([...storagePaths].map(storageReference => {
+      const [provider, ...pathParts] = storageReference.split(':');
+      return deleteObject(pathParts.join(':'), { provider })
+        .catch(err => console.error('Message attachment delete failed:', err.message));
+    }));
 
     message.unsent = true;
     message.unsentAt = new Date();

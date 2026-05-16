@@ -10,7 +10,7 @@ const Friendship = require('../models/Friendship');
 const { createNotification, createNotifications } = require('../services/notifications');
 const { createGroupActivity } = require('../services/activity');
 const { getMentionedMemberIds } = require('../services/mentions');
-const { isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const router = express.Router();
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -79,7 +79,7 @@ const normalizeAttachment = (value = {}) => {
   const fileUrl = String(value.fileUrl || '').trim();
   if (!fileUrl) return null;
   const fileType = ['image', 'video', 'file'].includes(value.fileType) ? value.fileType : 'file';
-  const storageProvider = ['local', 'supabase'].includes(value.storageProvider) ? value.storageProvider : '';
+  const storageProvider = ['local', 'supabase', 'r2'].includes(value.storageProvider) ? value.storageProvider : '';
   return {
     fileUrl,
     fileType,
@@ -187,7 +187,7 @@ router.post('/upload', auth, uploadPostMedia, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local')
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

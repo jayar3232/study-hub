@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const File = require('../models/File');
 const Group = require('../models/Group');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotifications } = require('../services/notifications');
 const { createGroupActivity } = require('../services/activity');
 const router = express.Router();
@@ -95,7 +95,7 @@ router.post('/upload/:groupId', auth, ensureGroupMember, uploadSingleFile, async
       originalName: req.file.originalname,
       url: uploadedFile.url,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local'),
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local'),
       mimeType: req.file.mimetype,
       size: req.file.size,
       uploadedBy: req.user
@@ -124,7 +124,7 @@ router.post('/upload/:groupId', auth, ensureGroupMember, uploadSingleFile, async
     res.status(201).json(file);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {
-      await deleteObject(uploadedFile.path).catch(() => {});
+      await deleteObject(uploadedFile.path, { provider: uploadedFile.provider }).catch(() => {});
     }
     res.status(500).json({ msg: err.message });
   }
@@ -156,8 +156,8 @@ router.delete('/:fileId', auth, async (req, res) => {
       return res.status(403).json({ msg: 'Not authorized to delete this file' });
     }
 
-    if (file.storageProvider === 'supabase' || file.storagePath) {
-      await deleteObject(file.storagePath);
+    if (['supabase', 'r2'].includes(file.storageProvider) || file.storagePath) {
+      await deleteObject(file.storagePath, { provider: file.storageProvider });
     } else {
       await fs.promises.unlink(path.join(uploadDir, file.filename)).catch(err => {
         if (err.code !== 'ENOENT') throw err;

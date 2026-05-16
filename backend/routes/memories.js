@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Group = require('../models/Group');
 const Memory = require('../models/Memory');
-const { deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotifications } = require('../services/notifications');
 const { createGroupActivity } = require('../services/activity');
 const router = express.Router();
@@ -108,7 +108,7 @@ router.post('/group/:groupId', auth, uploadMemory, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? 'supabase' : 'local')
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
     });
     await memory.save();
     await memory.populate('userId', 'name avatar isDeveloper');
@@ -134,7 +134,7 @@ router.post('/group/:groupId', auth, uploadMemory, async (req, res) => {
     res.status(201).json(memory);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {
-      await deleteObject(uploadedFile.path).catch(() => {});
+      await deleteObject(uploadedFile.path, { provider: uploadedFile.provider }).catch(() => {});
     }
     res.status(err.status || 500).json({ msg: err.message });
   }
@@ -155,8 +155,8 @@ router.delete('/:memoryId', auth, async (req, res) => {
       return res.status(403).json({ msg: 'Not authorized to delete this memory' });
     }
 
-    if (memory.storageProvider === 'supabase' && memory.storagePath) {
-      await deleteObject(memory.storagePath).catch(() => {});
+    if (['supabase', 'r2'].includes(memory.storageProvider) && memory.storagePath) {
+      await deleteObject(memory.storagePath, { provider: memory.storageProvider }).catch(() => {});
     } else if (memory.fileUrl?.startsWith('/uploads/memories/')) {
       await fs.promises.unlink(path.join(memoryUploadDir, path.basename(memory.fileUrl))).catch(err => {
         if (err.code !== 'ENOENT') throw err;

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env'), quiet: true });
 
 const { deleteObject, isCloudStorageEnabled } = require('../services/storage');
 
@@ -79,6 +79,7 @@ Default mode is dry-run. The reset deletes MongoDB users, timeline/home posts,
 groups, messages, tasks, notifications, marketplace listings, verification docs,
 gallery items, memories, files, stories, and other user-linked records.
 Reels are kept, but user-linked reel reactions/saves/import ownership are cleared.
+Storage cleanup supports local uploads, Supabase objects, and R2 objects.
 `);
 };
 
@@ -143,17 +144,22 @@ const getSupabaseObjectPath = (url = '') => {
   }
 };
 
-const addMediaReference = ({ supabasePaths, localFiles }, item = {}) => {
+const addRemoteReference = (remoteObjects, provider, storagePath) => {
+  if (!provider || !storagePath) return;
+  remoteObjects.add(`${provider}:${storagePath}`);
+};
+
+const addMediaReference = ({ remoteObjects, localFiles }, item = {}) => {
   const storagePath = cleanPath(item.storagePath || item.photoStoragePath || item.documentStoragePath);
   const storageProvider = String(item.storageProvider || item.photoStorageProvider || item.documentStorageProvider || '').trim();
   const url = item.fileUrl || item.url || item.photo || item.documentUrl || '';
   const filename = item.filename || '';
 
-  if (storageProvider === 'supabase' && storagePath) {
-    supabasePaths.add(storagePath);
+  if (['supabase', 'r2'].includes(storageProvider) && storagePath) {
+    addRemoteReference(remoteObjects, storageProvider, storagePath);
   } else {
     const derivedObjectPath = getSupabaseObjectPath(url);
-    if (derivedObjectPath) supabasePaths.add(derivedObjectPath);
+    if (derivedObjectPath) addRemoteReference(remoteObjects, 'supabase', derivedObjectPath);
   }
 
   if (storageProvider === 'local') {
@@ -168,7 +174,7 @@ const addMediaReference = ({ supabasePaths, localFiles }, item = {}) => {
 
 const collectMediaReferences = async () => {
   const media = {
-    supabasePaths: new Set(),
+    remoteObjects: new Set(),
     localFiles: new Set()
   };
 
@@ -240,21 +246,23 @@ const collectMediaReferences = async () => {
   return media;
 };
 
-const deleteStorageObjects = async ({ supabasePaths, localFiles }) => {
-  const remotePaths = [...supabasePaths];
+const deleteStorageObjects = async ({ remoteObjects, localFiles }) => {
+  const remotePaths = [...remoteObjects];
   const localPaths = [...localFiles];
   let remoteDeleted = 0;
   let localDeleted = 0;
 
   if (remotePaths.length && !isCloudStorageEnabled) {
-    console.warn('Skipping Supabase object deletion because Supabase storage is not configured.');
+    console.warn('Skipping remote object deletion because cloud storage is not configured.');
   } else {
-    for (const objectPath of remotePaths) {
+    for (const reference of remotePaths) {
+      const [provider, ...pathParts] = reference.split(':');
+      const objectPath = pathParts.join(':');
       try {
-        await deleteObject(objectPath);
+        await deleteObject(objectPath, { provider });
         remoteDeleted += 1;
       } catch (err) {
-        console.warn(`Could not delete Supabase object "${objectPath}": ${err.message}`);
+        console.warn(`Could not delete ${provider} object "${objectPath}": ${err.message}`);
       }
     }
   }
@@ -306,18 +314,18 @@ const main = async () => {
   const media = await collectMediaReferences();
 
   logCounts('Current MongoDB record counts:', beforeCounts);
-  console.log(`Media references found: Supabase=${media.supabasePaths.size}, local=${media.localFiles.size}`);
+  console.log(`Media references found: remote=${media.remoteObjects.size}, local=${media.localFiles.size}`);
 
   if (dryRun) {
     console.log('\nDry-run only. No records or files were deleted.');
     console.log(`Run with --confirm ${CONFIRMATION} to reset MongoDB user data.`);
-    console.log(`Add --delete-storage only if you also want to delete Supabase/local media objects.`);
+    console.log(`Add --delete-storage only if you also want to delete cloud/local media objects.`);
     return;
   }
 
   if (deleteStorage) {
     const storageResult = await deleteStorageObjects(media);
-    console.log(`Storage cleanup: Supabase deleted=${storageResult.remoteDeleted}, local deleted=${storageResult.localDeleted}`);
+    console.log(`Storage cleanup: remote deleted=${storageResult.remoteDeleted}, local deleted=${storageResult.localDeleted}`);
   } else {
     console.log('Storage cleanup skipped. Add --delete-storage if cloud/local media objects should also be removed.');
   }

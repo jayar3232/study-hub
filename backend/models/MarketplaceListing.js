@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const MarketplacePhotoSchema = new mongoose.Schema({
   url: { type: String, required: true },
   storagePath: { type: String, default: '' },
-  storageProvider: { type: String, enum: ['local', 'supabase'], default: 'local' },
+  storageProvider: { type: String, enum: ['local', 'supabase', 'r2'], default: 'local' },
   filename: { type: String, default: '' },
   originalName: { type: String, default: '' },
   mimeType: { type: String, default: '' },
