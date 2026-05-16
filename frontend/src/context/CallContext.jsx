@@ -12,6 +12,8 @@ import { playUiSound } from '../utils/sound';
 const CallContext = createContext(null);
 const CALL_HISTORY_KEY = 'syncrova-call-history';
 const CALL_HISTORY_LIMIT = 40;
+const CALL_SIGNAL_TIMEOUT_MS = 7000;
+const CALL_SOCKET_READY_RETRIES = 3;
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '').trim();
 const getDisplayName = (entity, fallback = 'User') => entity?.name || entity?.email || fallback;
@@ -49,6 +51,86 @@ const writeCallHistory = (history) => {
     window.localStorage.setItem(CALL_HISTORY_KEY, JSON.stringify(history.slice(0, CALL_HISTORY_LIMIT)));
   } catch {
     // Call history is nice to have; storage failures should not affect calls.
+  }
+};
+
+const delay = (ms) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+const waitForSocketConnection = (socket) => new Promise((resolve, reject) => {
+  if (socket.connected) {
+    resolve(socket);
+    return;
+  }
+
+  let settled = false;
+  let timer = null;
+  const cleanup = () => {
+    if (timer) window.clearTimeout(timer);
+    socket.off('connect', handleConnect);
+    socket.off('connect_error', handleError);
+  };
+  const finish = (callback) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    callback();
+  };
+  const handleConnect = () => finish(() => resolve(socket));
+  const handleError = (err) => finish(() => reject(err || new Error('Socket connection failed.')));
+
+  timer = window.setTimeout(() => handleError(new Error('Call signaling timed out.')), CALL_SIGNAL_TIMEOUT_MS);
+  socket.once('connect', handleConnect);
+  socket.once('connect_error', handleError);
+  socket.connect();
+});
+
+const announceSocketOnline = (socket, currentUserId) => new Promise(resolve => {
+  if (!currentUserId) {
+    resolve(false);
+    return;
+  }
+
+  const handleAck = (err, response) => {
+    if (err) {
+      resolve(false);
+      return;
+    }
+
+    const users = Array.isArray(response)
+      ? response
+      : Array.isArray(response?.users)
+        ? response.users
+        : [];
+    resolve(users.map(String).includes(String(currentUserId)));
+  };
+
+  if (typeof socket.timeout === 'function') {
+    socket.timeout(CALL_SIGNAL_TIMEOUT_MS).emit('user-online', currentUserId, handleAck);
+    return;
+  }
+
+  let settled = false;
+  const timer = window.setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    resolve(false);
+  }, CALL_SIGNAL_TIMEOUT_MS);
+
+  socket.emit('user-online', currentUserId, (response = []) => {
+    if (settled) return;
+    settled = true;
+    window.clearTimeout(timer);
+    const users = Array.isArray(response) ? response : response?.users || [];
+    resolve(users.map(String).includes(String(currentUserId)));
+  });
+});
+
+const playAttachedMedia = (element) => {
+  try {
+    const result = element?.play?.();
+    if (result?.catch) result.catch(() => {});
+  } catch {
+    // Autoplay may be deferred by the WebView/browser until the next user gesture.
   }
 };
 
@@ -202,11 +284,24 @@ export function CallProvider({ children }) {
     });
   }, [callPartner, callPartnerName, saveHistoryEntry]);
 
-  const emitCallSignal = useCallback((eventName, payload = {}) => {
+  const ensureCallSocketReady = useCallback(async () => {
     const activeSocket = getSocket();
-    if (!activeSocket.connected) activeSocket.connect();
+    await waitForSocketConnection(activeSocket);
+
+    for (let attempt = 0; attempt < CALL_SOCKET_READY_RETRIES; attempt += 1) {
+      const registered = await announceSocketOnline(activeSocket, currentUserId);
+      if (registered) return activeSocket;
+      await delay(180 * (attempt + 1));
+    }
+
+    throw new Error('Call signaling is still reconnecting. Please try again.');
+  }, [currentUserId]);
+
+  const emitCallSignal = useCallback(async (eventName, payload = {}) => {
+    const activeSocket = await ensureCallSocketReady();
     activeSocket.emit(eventName, payload);
-  }, []);
+    return true;
+  }, [ensureCallSocketReady]);
 
   const clearLiveKitTracks = useCallback(() => {
     Object.values(liveKitTracksRef.current || {}).forEach(track => {
@@ -225,14 +320,17 @@ export function CallProvider({ children }) {
       localVideo.attach(localVideoRef.current);
       localVideoRef.current.muted = true;
       localVideoRef.current.playsInline = true;
+      playAttachedMedia(localVideoRef.current);
     }
     if (remoteVideoRef.current && remoteVideo) {
       remoteVideo.attach(remoteVideoRef.current);
       remoteVideoRef.current.playsInline = true;
+      playAttachedMedia(remoteVideoRef.current);
     }
     if (remoteAudioRef.current && remoteAudio) {
       remoteAudio.attach(remoteAudioRef.current);
       remoteAudioRef.current.autoplay = true;
+      playAttachedMedia(remoteAudioRef.current);
     }
   }, []);
 
@@ -412,9 +510,10 @@ export function CallProvider({ children }) {
     setMinimized(false);
 
     try {
+      await ensureCallSocketReady();
       const roomName = `syncrova-call-${nextCallId}`;
       const livekit = await connectLiveKitCall({ mode, partnerId, callId: nextCallId, roomName });
-      emitCallSignal('call:start', {
+      await emitCallSignal('call:start', {
         callId: nextCallId,
         from: currentUserId,
         to: partnerId,
@@ -433,7 +532,7 @@ export function CallProvider({ children }) {
       toast.error(message);
       return false;
     }
-  }, [connectLiveKitCall, currentUserId, emitCallSignal, finishHistoryForActiveCall, isAuthenticated, resetCall, user]);
+  }, [connectLiveKitCall, currentUserId, emitCallSignal, ensureCallSocketReady, finishHistoryForActiveCall, isAuthenticated, resetCall, user]);
 
   const acceptCall = useCallback(async () => {
     const pendingCall = incomingCall;
@@ -452,13 +551,14 @@ export function CallProvider({ children }) {
     setMinimized(false);
 
     try {
+      await ensureCallSocketReady();
       const livekit = await connectLiveKitCall({
         mode,
         partnerId: callerId,
         callId: nextCallId,
         roomName: pendingCall.roomName || `syncrova-call-${nextCallId}`
       });
-      emitCallSignal('call:answer', {
+      await emitCallSignal('call:answer', {
         callId: nextCallId,
         from: currentUserId,
         to: callerId,
@@ -472,29 +572,29 @@ export function CallProvider({ children }) {
       markCallConnected();
     } catch (err) {
       const message = getCallSetupErrorMessage(err, 'Could not join the call.');
-      emitCallSignal('call:reject', {
+      void emitCallSignal('call:reject', {
         callId: nextCallId,
         from: currentUserId,
         to: callerId,
         type: mode,
         reason: 'media-error'
-      });
+      }).catch(() => {});
       finishHistoryForActiveCall('failed', message);
       resetCall(message);
       toast.error(message);
     }
-  }, [connectLiveKitCall, currentUserId, emitCallSignal, finishHistoryForActiveCall, incomingCall, markCallConnected, resetCall]);
+  }, [connectLiveKitCall, currentUserId, emitCallSignal, ensureCallSocketReady, finishHistoryForActiveCall, incomingCall, markCallConnected, resetCall]);
 
   const endCall = useCallback((reason = 'ended', notify = true) => {
     const active = activeCallRef.current;
     if (notify && active.callId && active.partnerId && currentUserId) {
-      emitCallSignal('call:end', {
+      void emitCallSignal('call:end', {
         callId: active.callId,
         from: currentUserId,
         to: active.partnerId,
         type: active.mode,
         reason
-      });
+      }).catch(() => {});
     }
     finishHistoryForActiveCall(reason === 'timeout' ? 'missed' : 'completed', reason);
     resetCall();
@@ -506,13 +606,13 @@ export function CallProvider({ children }) {
     const nextCallId = pending.callId;
     const mode = pending.type || pending.mode || callMode;
     if (nextCallId && partnerId && currentUserId) {
-      emitCallSignal('call:reject', {
+      void emitCallSignal('call:reject', {
         callId: nextCallId,
         from: currentUserId,
         to: partnerId,
         type: mode,
         reason
-      });
+      }).catch(() => {});
     }
     finishHistoryForActiveCall(reason === 'declined' ? 'declined' : 'canceled', reason);
     resetCall();
@@ -558,13 +658,13 @@ export function CallProvider({ children }) {
     if (!fromId || fromId === currentUserId || (toId && toId !== currentUserId)) return;
 
     if (activeCallRef.current.state !== 'idle') {
-      emitCallSignal('call:busy', {
+      void emitCallSignal('call:busy', {
         callId: payload.callId,
         from: currentUserId,
         to: fromId,
         type: payload.type || 'audio',
         reason: 'busy'
-      });
+      }).catch(() => {});
       return;
     }
 

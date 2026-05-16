@@ -14,7 +14,7 @@ const mongoStates = {
 };
 
 const getReleaseApkPath = () => {
-  const versionName = String(process.env.APP_VERSION_NAME || '4.2.1').trim() || '4.2.1';
+  const versionName = String(process.env.APP_VERSION_NAME || '4.2.2').trim() || '4.2.2';
   const safeVersion = versionName.replace(/[^a-zA-Z0-9._-]/g, '-');
   return `/releases/syncrova-${safeVersion}.apk`;
 };
