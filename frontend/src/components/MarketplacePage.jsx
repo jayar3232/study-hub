@@ -32,6 +32,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
+import { PageSkeleton } from './SkeletonLoader';
 
 const categories = [
   { value: 'books', label: 'Books' },
@@ -870,14 +871,7 @@ export default function MarketplacePage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-[65vh] items-center justify-center">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <Loader2 className="mx-auto animate-spin text-[#0b57d0]" size={34} />
-          <p className="mt-3 text-sm font-black text-slate-600 dark:text-slate-300">Loading Student Marketplace</p>
-        </div>
-      </div>
-    );
+    return <PageSkeleton variant="marketplace" rows={6} />;
   }
 
   return (

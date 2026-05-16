@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
+import { ListSkeleton } from './SkeletonLoader';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -172,7 +173,7 @@ export default function GlobalSearchPage() {
         </section>
       ) : (
         <div className="space-y-5">
-          {loading && <p className="rounded-2xl bg-white p-4 text-sm font-black text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-400">Searching...</p>}
+          {loading && <ListSkeleton count={4} />}
 
           {show('users') && counts.users > 0 && (
             <section className="space-y-2">

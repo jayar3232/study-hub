@@ -41,7 +41,7 @@ import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner }
 import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
 import { RELEASE_VERSION_NAME } from '../generated/releaseInfo';
-import LoadingSpinner from './LoadingSpinner';
+import { PageSkeleton } from './SkeletonLoader';
 import StoryViewer from './StoryViewer';
 import VideoThumbnail from './VideoThumbnail';
 import { IconBadge, Panel } from './ui/Primitives';
@@ -486,7 +486,7 @@ export default function Profile() {
   }, [avatar, coverPhoto, user]);
 
   if (!user) {
-    return <LoadingSpinner label="Loading profile" />;
+    return <PageSkeleton variant="profile" rows={5} />;
   }
 
   const avatarSrc = resolveMediaUrl(avatar || user.avatar);
@@ -617,7 +617,7 @@ export default function Profile() {
 
   return (
     <div className="mobile-page profile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-6 sm:px-6 sm:py-4 lg:px-8">
-      {renderProfileTabs('profile-tab-bar--mobile mobile-fixed-tabbar md:hidden')}
+      {renderProfileTabs('profile-tab-bar--mobile profile-tabs-inline-mobile md:hidden')}
 
       <section className="mobile-profile-hero profile-hero-card overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="profile-hero-cover relative min-h-[300px] overflow-hidden bg-gray-950 p-6 text-white md:p-8">

@@ -806,7 +806,19 @@ export default function Layout({ children }) {
           </div>
           <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-2">
             {notificationsLoading ? (
-              <p className="rounded-xl p-4 text-center text-sm font-semibold text-gray-500">Loading...</p>
+              <div className="space-y-2" aria-hidden="true">
+                {[0, 1, 2].map(item => (
+                  <div key={item} className="mobile-skeleton-card rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+                    <div className="flex items-center gap-3">
+                      <span className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-800" />
+                      <span className="min-w-0 flex-1 space-y-2">
+                        <span className="block h-3 w-2/3 rounded-full bg-slate-200 dark:bg-slate-800" />
+                        <span className="block h-3 w-4/5 rounded-full bg-slate-200 dark:bg-slate-800" />
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : notificationPanelItems.length ? notificationPanelItems.map(row => {
               if (row.kind === 'message-thread') {
                 const actor = row.actor || {};

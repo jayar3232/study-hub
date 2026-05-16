@@ -47,12 +47,17 @@ const sanitizeHistory = (history = []) => (
     : []
 );
 
+const getOpenAiStatus = () => ({
+  configured: Boolean(process.env.OPENAI_API_KEY),
+  model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+});
+
 const buildAccountContext = (user = {}) => ({
   now: new Date().toISOString(),
   app: {
     name: 'Syncrova',
-    currentVersion: process.env.APP_VERSION_NAME || '4.2.0',
-    androidVersionCode: Number(process.env.APP_VERSION_CODE || 43)
+    currentVersion: process.env.APP_VERSION_NAME || '4.2.1',
+    androidVersionCode: Number(process.env.APP_VERSION_CODE || 44)
   },
   account: {
     name: user.name || '',
@@ -66,16 +71,18 @@ const buildAccountContext = (user = {}) => ({
 
 const getOpenAiAnswer = async ({ message, user, history }) => {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || typeof fetch !== 'function') return '';
+  if (!apiKey || typeof fetch !== 'function') return { answer: '', error: 'not_configured' };
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 9000);
+  const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS || 12000);
+  const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) ? timeoutMs : 12000);
   const cleanHistory = sanitizeHistory(history)
     .filter(item => item.content !== message)
     .slice(-6);
+  const apiBaseUrl = String(process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(`${apiBaseUrl}/chat/completions`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -110,15 +117,29 @@ const getOpenAiAnswer = async ({ message, user, history }) => {
       })
     });
 
-    if (!response.ok) return '';
+    if (!response.ok) {
+      return { answer: '', error: `openai_${response.status}` };
+    }
     const payload = await response.json();
-    return String(payload?.choices?.[0]?.message?.content || '').trim().slice(0, 1200);
-  } catch {
-    return '';
+    return {
+      answer: String(payload?.choices?.[0]?.message?.content || '').trim().slice(0, 1200),
+      error: ''
+    };
+  } catch (err) {
+    return { answer: '', error: err?.name === 'AbortError' ? 'openai_timeout' : 'openai_error' };
   } finally {
     clearTimeout(timeout);
   }
 };
+
+router.get('/status', auth, (req, res) => {
+  const status = getOpenAiStatus();
+  res.json({
+    configured: status.configured,
+    model: status.model,
+    source: status.configured ? 'openai' : 'syncrova'
+  });
+});
 
 router.post('/message', auth, async (req, res) => {
   const message = String(req.body?.message || '').trim().slice(0, 1200);
@@ -130,10 +151,13 @@ router.post('/message', auth, async (req, res) => {
     .catch(() => null);
   const profile = user || {};
   const aiAnswer = await getOpenAiAnswer({ message, user: profile, history: req.body?.history });
+  const fallbackAnswer = buildFallbackAnswer(message, profile);
 
   res.json({
-    answer: aiAnswer || buildFallbackAnswer(message, profile),
-    source: aiAnswer ? 'openai' : 'syncrova'
+    answer: aiAnswer.answer || fallbackAnswer,
+    source: aiAnswer.answer ? 'openai' : 'syncrova',
+    aiConfigured: getOpenAiStatus().configured,
+    fallbackReason: aiAnswer.answer ? '' : aiAnswer.error
   });
 });
 

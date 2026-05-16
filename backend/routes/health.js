@@ -14,7 +14,7 @@ const mongoStates = {
 };
 
 const getReleaseApkPath = () => {
-  const versionName = String(process.env.APP_VERSION_NAME || '4.2.0').trim() || '4.2.0';
+  const versionName = String(process.env.APP_VERSION_NAME || '4.2.1').trim() || '4.2.1';
   const safeVersion = versionName.replace(/[^a-zA-Z0-9._-]/g, '-');
   return `/releases/syncrova-${safeVersion}.apk`;
 };
@@ -55,11 +55,17 @@ router.get('/', auth, async (req, res) => {
       turnCount: turnUrls.length,
       livekitConfigured,
       livekitMissing: livekitStatus.livekitMissing,
+      livekitWarnings: livekitStatus.livekitWarnings,
+      livekitSourceKeys: livekitStatus.livekitSourceKeys,
       relayMode: relayForced
         ? 'relay preferred'
         : livekitConfigured
           ? 'livekit'
           : 'auto'
+    },
+    assistant: {
+      openAiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
     },
     app: {
       releaseUrl: process.env.APP_APK_URL || getReleaseApkPath()

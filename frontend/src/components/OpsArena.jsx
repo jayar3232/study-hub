@@ -34,6 +34,7 @@ import { resolveMediaUrl } from '../utils/media';
 import GameRankBadge, { GameRankEmblem } from './GameRankBadge';
 import UserProfileModal from './UserProfileModal';
 import LoadingSpinner from './LoadingSpinner';
+import { PageSkeleton } from './SkeletonLoader';
 
 const BlockStackGame = lazy(() => import('./BlockStackGame'));
 const FocusFlowGame = lazy(() => import('./FocusFlowGame'));
@@ -859,11 +860,7 @@ export default function OpsArena({ initialView = 'home', consoleOnly = false }) 
   }[arenaView] || {};
 
   if (loading) {
-    return (
-      <div className="mobile-page mx-auto max-w-7xl space-y-4 px-0 py-1 sm:space-y-5 sm:px-6 sm:py-4 lg:px-8">
-        <LoadingSpinner label="Loading Game Hub" />
-      </div>
-    );
+    return <PageSkeleton variant="cards" rows={6} />;
   }
 
   return (

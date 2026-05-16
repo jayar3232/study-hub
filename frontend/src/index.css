@@ -267,6 +267,15 @@
     transform: translateZ(0);
   }
 
+  .mobile-skeleton-card {
+    animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .mobile-skeleton-card :where(.bg-slate-200, .dark\:bg-slate-800) {
+    position: relative;
+    overflow: hidden;
+  }
+
   .app-stable-render,
   .mobile-message-thread,
   .messages-conversation-column,
@@ -1127,12 +1136,20 @@
       max-width: 84% !important;
     }
 
-    .mobile-message-thread .message-bubble {
-      border-radius: 1.25rem !important;
-      box-shadow: none !important;
-      user-select: none;
-      -webkit-user-select: none;
-    }
+  .mobile-message-thread .message-bubble {
+    border-radius: 1.25rem !important;
+    box-shadow: none !important;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .mobile-message-thread .message-bubble-has-reactions {
+    margin-bottom: 0.85rem;
+  }
+
+  .mobile-message-actions.message-actions-has-reactions {
+    margin-top: 0.35rem !important;
+  }
 
     .mobile-message-thread .own-message-bubble {
       background: linear-gradient(135deg, #0b57d0, #2387a8) !important;
@@ -7184,15 +7201,17 @@ html.syncrova-native-app .mobile-message-actions button {
 
 .syncrova-ai-assistant {
   position: fixed;
-  right: clamp(1rem, 2vw, 1.5rem);
-  bottom: clamp(1rem, 2vw, 1.5rem);
   z-index: 70;
+  width: 3.625rem;
+  height: 3.625rem;
+  touch-action: none;
+  user-select: none;
 }
 
 .syncrova-ai-fab {
   display: inline-flex;
-  min-height: 3.25rem;
-  width: 3.25rem;
+  min-height: 3.625rem;
+  width: 3.625rem;
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
@@ -7202,6 +7221,12 @@ html.syncrova-native-app .mobile-message-actions button {
   font-weight: 900;
   box-shadow: 0 1rem 2rem rgba(11, 87, 208, 0.24), 0 0 1.5rem rgba(14, 165, 233, 0.24);
   transition: transform 180ms ease, filter 180ms ease;
+  touch-action: none;
+  cursor: grab;
+}
+
+.syncrova-ai-fab:active {
+  cursor: grabbing;
 }
 
 .syncrova-ai-fab img {
@@ -7222,8 +7247,6 @@ html.syncrova-native-app .mobile-message-actions button {
 
 .syncrova-ai-panel {
   position: absolute;
-  right: 0;
-  bottom: 4rem;
   display: grid;
   width: min(22rem, calc(100vw - 2rem));
   max-height: min(34rem, calc(100svh - 7rem));
@@ -7233,6 +7256,22 @@ html.syncrova-native-app .mobile-message-actions button {
   background: rgba(255, 255, 255, 0.98);
   color: #0f172a;
   box-shadow: 0 1.25rem 3rem rgba(15, 23, 42, 0.22);
+}
+
+.syncrova-ai-assistant.is-left .syncrova-ai-panel {
+  right: 0;
+}
+
+.syncrova-ai-assistant.is-right .syncrova-ai-panel {
+  left: 0;
+}
+
+.syncrova-ai-assistant.is-top .syncrova-ai-panel {
+  bottom: calc(100% + 0.75rem);
+}
+
+.syncrova-ai-assistant.is-bottom .syncrova-ai-panel {
+  top: calc(100% + 0.75rem);
 }
 
 .dark .syncrova-ai-panel {
@@ -7305,6 +7344,16 @@ html.syncrova-native-app .mobile-message-actions button {
   font-size: 0.85rem;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.syncrova-ai-source {
+  margin-top: 0.4rem;
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.58;
 }
 
 .syncrova-ai-message.assistant {
@@ -7417,6 +7466,7 @@ html.syncrova-native-app .mobile-message-actions button {
 
 .profile-page .profile-tab-bar,
 .profile-page .profile-tab-bar--mobile,
+.profile-page .profile-tabs-inline-mobile,
 .app-main--mobile-top-tabs .profile-page .profile-tab-bar--mobile {
   position: relative !important;
   top: auto !important;
@@ -7431,7 +7481,11 @@ html.syncrova-native-app .mobile-message-actions button {
 @media (max-width: 767px) {
   .profile-page,
   .app-main--mobile-top-tabs .profile-page {
-    padding-top: 0.35rem !important;
+    padding-top: 0.05rem !important;
+  }
+
+  .profile-page .profile-tabs-inline-mobile {
+    margin-bottom: 0.5rem !important;
   }
 }
 
@@ -7639,9 +7693,5 @@ html.syncrova-native-app .mobile-message-actions button {
 @media (max-width: 767px) {
   .chat-details-modal {
     max-height: min(88svh, 42rem);
-  }
-
-  .syncrova-ai-assistant {
-    bottom: calc(5.5rem + env(safe-area-inset-bottom));
   }
 }

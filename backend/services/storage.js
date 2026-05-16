@@ -11,8 +11,15 @@ const supabaseBucket = (
   || process.env.SUPABASE_BUCKET_NAME
   || ''
 ).trim();
+const requestedStorageProvider = String(
+  process.env.STORAGE_PROVIDER
+  || process.env.STORAGE_DRIVER
+  || process.env.UPLOAD_STORAGE_PROVIDER
+  || ''
+).trim().toLowerCase();
+const forceLocalStorage = ['local', 'disk', 'filesystem', 'file'].includes(requestedStorageProvider);
 
-const isCloudStorageEnabled = Boolean(supabaseUrl && supabaseServiceKey && supabaseBucket);
+const isCloudStorageEnabled = !forceLocalStorage && Boolean(supabaseUrl && supabaseServiceKey && supabaseBucket);
 const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
 const allowLocalFallback = String(process.env.STORAGE_LOCAL_FALLBACK || 'true').toLowerCase() !== 'false';
 const serviceKeyLooksLikeJwt = Boolean(
@@ -51,9 +58,21 @@ const createObjectPath = (folder, originalName) => {
 };
 
 const isRecoverableCloudStorageError = (error = {}) => {
-  const message = String(error.message || error.error || error.name || error || '').toLowerCase();
+  const message = [
+    error.message,
+    error.error,
+    error.name,
+    error.code,
+    error.statusCode,
+    error.status,
+    error.details,
+    error.hint,
+    typeof error === 'string' ? error : ''
+  ].filter(Boolean).join(' ').toLowerCase();
   return [
     'exceed_cached_egress_quota',
+    'exceeded_cached_egress_quota',
+    'cached egress',
     'egress quota',
     'quota',
     'limit exceeded',
@@ -159,6 +178,8 @@ const deleteObject = async (objectPath) => {
 
 const getStorageConfigStatus = () => ({
   provider: isCloudStorageEnabled ? 'supabase' : 'local',
+  requestedProvider: requestedStorageProvider || 'auto',
+  forceLocalStorage,
   enabled: isCloudStorageEnabled,
   localFallbackEnabled: allowLocalFallback,
   bucket: supabaseBucket || '',

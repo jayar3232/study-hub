@@ -20,6 +20,7 @@ import {
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
+import { ListSkeleton } from './SkeletonLoader';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -439,9 +440,7 @@ export default function NotificationsPage() {
 
       <section className="space-y-3">
         {loading ? (
-          <div className="rounded-[1.25rem] border border-slate-200 bg-white/92 p-8 text-center text-sm font-bold text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-            Loading notifications...
-          </div>
+          <ListSkeleton count={6} />
         ) : filteredNotifications.length ? groupedNotifications.map(group => {
           const GroupIcon = group.meta.icon;
           return (

@@ -58,7 +58,7 @@ import UserProfileModal from './UserProfileModal';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
 import { playUiSound } from '../utils/sound';
-import LoadingSpinner from './LoadingSpinner';
+import { ListSkeleton } from './SkeletonLoader';
 import MediaViewer from './MediaViewer';
 import VideoThumbnail from './VideoThumbnail';
 import NativeMediaLibrarySheet from './NativeMediaLibrarySheet';
@@ -4011,8 +4011,13 @@ export default function Messages() {
 
   if (initialLoading) {
     return (
-      <div className="flex h-[70vh] items-center justify-center">
-        <LoadingSpinner compact label="Loading messages" />
+      <div className="messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20">
+        <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+          <ListSkeleton count={5} />
+          <div className="hidden lg:block">
+            <ListSkeleton count={4} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -4565,11 +4570,12 @@ export default function Messages() {
                         const isContextReply = isMyDayReply || isNoteReply;
                         const contextReplyLabel = isNoteReply ? getNoteReplyLabel(message, isMe) : getMyDayReplyLabel(message, isMe);
                         const contextReplyBody = isNoteReply ? getNoteReplyBody(message.text) : getMyDayReplyBody(message.text);
+                        const hasReactions = reactions.length > 0 && !message.unsent;
                         const bubbleClassName = isContextReply
-                          ? `my-day-reply-bubble relative rounded-3xl border border-gray-200 bg-white px-3 py-3 text-gray-950 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white ${
+                          ? `my-day-reply-bubble relative rounded-3xl border border-gray-200 bg-white px-3 py-3 text-gray-950 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white ${hasReactions ? 'message-bubble-has-reactions' : ''} ${
                               isMe ? 'rounded-br-xl' : 'rounded-bl-xl'
                             }`
-                          : `message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${
+                          : `message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${hasReactions ? 'message-bubble-has-reactions' : ''} ${
                               isMe
                                 ? `own-message-bubble rounded-br-lg bg-gradient-to-br ${selectedTheme.own} text-white shadow-blue-500/15`
                                 : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
@@ -4667,7 +4673,7 @@ export default function Messages() {
                                   </span>
                                 )}
 
-                                {reactions.length > 0 && !message.unsent && (
+                                {hasReactions && (
                                   <div className={`message-reaction-pill reaction-motion-zone absolute -bottom-4 ${isMe ? 'right-2' : 'left-2'} flex gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0.5 text-xs shadow-md dark:border-gray-700 dark:bg-gray-800`}>
                                     {reactions.map((reaction, index) => (
                                       <button
@@ -4682,7 +4688,7 @@ export default function Messages() {
                                 )}
                               </div>
 
-                              <div className={`mobile-message-actions mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`mobile-message-actions ${hasReactions ? 'message-actions-has-reactions' : ''} mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <span className="text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
                                 <MessageStatus message={message} isLatestOwn={isLatestOwn} />
                                 {!message.unsent && (

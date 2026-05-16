@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, FileText, Image as ImageIcon, Loader2, MessageCircle, PlayCircle, Search } from 'lucide-react';
+import { Bookmark, FileText, Image as ImageIcon, MessageCircle, PlayCircle, Search } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { resolveMediaUrl } from '../utils/media';
+import { CardGridSkeleton } from './SkeletonLoader';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -148,10 +149,7 @@ export default function SavedItemsPage() {
       </section>
 
       {loading ? (
-        <div className="rounded-2xl bg-white p-8 text-center text-slate-500 dark:bg-slate-900">
-          <Loader2 className="mx-auto animate-spin text-[#0b57d0]" size={30} />
-          <p className="mt-3 text-sm font-black">Loading saved items...</p>
-        </div>
+        <CardGridSkeleton count={6} media />
       ) : normalizedItems.length ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {normalizedItems.map(item => <SavedCard key={item.id} {...item} />)}

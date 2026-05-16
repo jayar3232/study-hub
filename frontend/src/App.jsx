@@ -7,10 +7,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { PresenceProvider } from './context/PresenceContext';
 import { CallProvider } from './context/CallContext';
 import Layout from './components/Layout';
-import LoadingSpinner from './components/LoadingSpinner';
 import AppUpdatePrompt from './components/AppUpdatePrompt';
 import WebUpdatePrompt from './components/WebUpdatePrompt';
 import FloatingAIAssistant from './components/FloatingAIAssistant';
+import { PageSkeleton } from './components/SkeletonLoader';
 
 const Login = lazy(() => import('./components/Login'));
 const Register = lazy(() => import('./components/Register'));
@@ -220,10 +220,10 @@ function NativeAppEnvironment() {
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) return <LoadingSpinner fullScreen label="Preparing Syncrova" />;
+  if (loading) return <PageSkeleton variant="dashboard" rows={4} />;
   const protectedLayout = isAuthenticated ? <Layout /> : <Navigate to="/login" replace />;
   return (
-    <Suspense fallback={<LoadingSpinner fullScreen label="Loading Syncrova" />}>
+    <Suspense fallback={<PageSkeleton variant="dashboard" rows={4} />}>
       <Routes>
         <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
         <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />} />
@@ -306,6 +306,16 @@ class AppErrorBoundary extends React.Component {
 
   componentDidCatch(error) {
     console.error('Syncrova render failed', error);
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem('syncrova:last-render-error', JSON.stringify({
+          message: error?.message || String(error),
+          stack: error?.stack || ''
+        }));
+      } catch {
+        // Dev-only diagnostics should never affect recovery rendering.
+      }
+    }
   }
 
   render() {

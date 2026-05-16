@@ -33,7 +33,7 @@ import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPrevie
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import { GameRankEmblem } from './GameRankBadge';
 import OnlineRoster from './OnlineRoster';
-import LoadingSpinner from './LoadingSpinner';
+import { PageSkeleton } from './SkeletonLoader';
 import { playUiSound } from '../utils/sound';
 import StoryViewer from './StoryViewer';
 import VideoThumbnail from './VideoThumbnail';
@@ -878,11 +878,7 @@ export default function Dashboard() {
   const activeStoryDraftItem = storyDraftItems[activeStoryDraftIndex] || null;
 
   if (loading) {
-    return (
-      <div className="mobile-page mx-auto max-w-7xl px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
-        <LoadingSpinner label="Loading home" />
-      </div>
-    );
+    return <PageSkeleton variant="dashboard" rows={5} />;
   }
 
   return (

@@ -32,8 +32,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.2.0').trim() || '4.2.0';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 43);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.2.1').trim() || '4.2.1';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 44);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -123,7 +123,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.2.0 release metadata and Android update reliability fixes|APK downloads now avoid stale cache and use versioned filenames|Update APKs download through the public Downloads folder|Google and Facebook auth buttons are hidden until OAuth keys are configured'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.2.1 mobile layout, assistant, storage, calls, and skeleton loading fixes|APK downloads use versioned filenames and no-store cache headers|Uploads can fall back locally when Supabase quota errors occur|LiveKit diagnostics now show missing call configuration without exposing secrets'
   });
 });
 

@@ -23,7 +23,7 @@ import { getSocket } from '../services/socket';
 import { resolveMediaUrl } from '../utils/media';
 import UserProfileModal from './UserProfileModal';
 import { CAMPUS_OPTIONS } from '../utils/academics';
-import LoadingSpinner from './LoadingSpinner';
+import { ListSkeleton } from './SkeletonLoader';
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -453,7 +453,7 @@ export default function Friends() {
       </section>
 
       {loading ? (
-        <LoadingSpinner label="Loading friends" />
+        <ListSkeleton count={6} />
       ) : (
         <>
           {activeTab === 'friends' && (

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Cloud, Database, Loader2, Phone, Server, ShieldCheck, Wifi } from 'lucide-react';
+import { Activity, Bot, Cloud, Database, Loader2, Phone, Server, ShieldCheck, Wifi } from 'lucide-react';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
+import { RELEASE_VERSION_NAME } from '../generated/releaseInfo';
 
 const StatusCard = ({ icon: Icon, title, status, helper, good = true }) => (
   <div className="rounded-[1.2rem] border border-slate-200 bg-white/92 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
@@ -57,10 +58,12 @@ export default function AppHealthPage() {
   const callGood = liveKitGood || turnGood;
   const callStatus = liveKitGood ? 'LiveKit ready' : turnGood ? 'TURN ready' : 'Relay missing';
   const callHelper = liveKitGood
-    ? `Cloud calling enabled, mode ${health?.calls?.relayMode || 'livekit'}`
+    ? `${health?.calls?.livekitWarnings?.[0] || 'Cloud calling enabled'}, mode ${health?.calls?.relayMode || 'livekit'}`
     : turnGood
       ? `${health?.calls?.turnCount || 0} relay URL(s), mode ${health?.calls?.relayMode}`
-      : 'Calls may fail across different networks without LiveKit or TURN';
+      : health?.calls?.livekitMissing?.length
+        ? `Missing ${health.calls.livekitMissing.join(', ')}`
+        : 'Calls may fail across different networks without LiveKit or TURN';
 
   return (
     <div className="mobile-page app-health-page mx-auto max-w-6xl space-y-4 px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
@@ -86,7 +89,8 @@ export default function AppHealthPage() {
         <StatusCard icon={Wifi} title="Realtime socket" status={socketConnected ? 'Connected' : health?.socket?.status || 'Disconnected'} helper={`${health?.socket?.connectedClients ?? 0} backend clients, browser ${socketConnected ? 'connected' : 'not connected'}`} good={socketConnected || health?.socket?.status === 'online'} />
         <StatusCard icon={Cloud} title="Storage" status={health?.storage?.provider || 'Unknown'} helper={health?.storage?.status || 'Upload provider unavailable'} good={Boolean(health?.storage)} />
         <StatusCard icon={Phone} title="Calls" status={callStatus} helper={callHelper} good={callGood} />
-        <StatusCard icon={ShieldCheck} title="Release updater" status="Ready" helper={health?.app?.releaseUrl || '/releases/syncrova-4.2.0.apk'} good />
+        <StatusCard icon={Bot} title="AI Assistant" status={health?.assistant?.openAiConfigured ? 'OpenAI ready' : 'Fallback mode'} helper={health?.assistant?.openAiConfigured ? `Model: ${health?.assistant?.model}` : 'Set OPENAI_API_KEY on the backend for ChatGPT-like replies'} good={Boolean(health?.assistant?.openAiConfigured)} />
+        <StatusCard icon={ShieldCheck} title="Release updater" status="Ready" helper={health?.app?.releaseUrl || `/releases/syncrova-${RELEASE_VERSION_NAME}.apk`} good />
       </section>
 
       <section className="rounded-[1.25rem] border border-blue-100 bg-blue-50/80 p-5 text-sm font-semibold leading-6 text-slate-600 shadow-sm shadow-blue-200/35 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-slate-300">
