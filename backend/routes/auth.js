@@ -11,6 +11,7 @@ const {
   isValidAdminRegistrationCode,
   syncDeveloperAccess
 } = require('../services/roles');
+const { serializeMediaUser } = require('../utils/mediaUrls');
 const router = express.Router();
 
 const isBcryptHash = (value = '') => /^\$2[aby]\$\d{2}\$/.test(value);
@@ -97,23 +98,26 @@ const providerConfig = {
   }
 };
 
-const toClientUser = (user) => ({
-  _id: user._id,
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  course: normalizeCourse(user.course),
-  campus: normalizeCampus(user.campus),
-  bio: user.bio,
-  avatar: user.avatar,
-  coverPhoto: user.coverPhoto,
-  lastSeen: user.lastSeen,
-  isDeveloper: user.isDeveloper,
-  studentVerificationStatus: user.studentVerificationStatus || 'not_submitted',
-  studentVerifiedAt: user.studentVerifiedAt || null,
-  studentVerificationReviewedAt: user.studentVerificationReviewedAt || null,
-  createdAt: user.createdAt
-});
+const toClientUser = (user) => {
+  const object = serializeMediaUser(user);
+  return {
+    _id: object._id,
+    id: object._id,
+    name: object.name,
+    email: object.email,
+    course: normalizeCourse(object.course),
+    campus: normalizeCampus(object.campus),
+    bio: object.bio,
+    avatar: object.avatar,
+    coverPhoto: object.coverPhoto,
+    lastSeen: object.lastSeen,
+    isDeveloper: object.isDeveloper,
+    studentVerificationStatus: object.studentVerificationStatus || 'not_submitted',
+    studentVerifiedAt: object.studentVerifiedAt || null,
+    studentVerificationReviewedAt: object.studentVerificationReviewedAt || null,
+    createdAt: object.createdAt
+  };
+};
 
 const issueToken = (user) => jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
 

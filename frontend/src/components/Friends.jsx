@@ -367,19 +367,24 @@ export default function Friends() {
   };
 
   const tabs = [
-    { key: 'friends', label: 'Friends', count: summary.counts?.friends || 0 },
-    { key: 'add', label: 'Add Friend', count: summary.counts?.people || people.length },
-    { key: 'requests', label: 'Requests', count: (summary.counts?.incoming || 0) + (summary.counts?.outgoing || 0) }
+    { key: 'friends', label: 'All Friends', count: summary.counts?.friends || 0, icon: Users },
+    { key: 'add', label: 'Add Friend', count: summary.counts?.people || people.length, icon: UserPlus },
+    { key: 'requests', label: 'Requests', count: (summary.counts?.incoming || 0) + (summary.counts?.outgoing || 0), icon: UserCheck }
+  ];
+  const statCards = [
+    { label: 'Friends', value: summary.counts?.friends || 0, helper: 'Total Connections', icon: Users, tone: 'blue' },
+    { label: 'Requests', value: summary.counts?.incoming || 0, helper: 'Received Requests', icon: UserCheck, tone: 'green' },
+    { label: 'Pending', value: summary.counts?.outgoing || 0, helper: 'Sent Requests', icon: Clock, tone: 'orange' }
   ];
 
   return (
-    <div className="mobile-page mobile-tab-dock-page mx-auto max-w-7xl space-y-4 sm:space-y-6">
-      <section className="friends-overview-panel mobile-hero-panel overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+    <div className="friends-page mobile-page mobile-tab-dock-page mx-auto max-w-6xl space-y-3 sm:space-y-5">
+      <section className="friends-overview-panel friends-pro-hero mobile-hero-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-zinc-950">
         <div className="p-5 sm:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
+            <div className="friends-hero-copy flex min-w-0 items-center gap-4">
               <div
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/40"
+                className="friends-hero-mark flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/40"
               >
                 <Users size={30} />
               </div>
@@ -392,7 +397,11 @@ export default function Friends() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
+            <div className="friends-hero-art" aria-hidden="true">
+              <Users size={96} strokeWidth={1.7} />
+            </div>
+
+            <div className="friends-hero-stats grid grid-cols-3 gap-2 sm:min-w-[360px]">
               {[
                 ['Friends', summary.counts?.friends || 0],
                 ['Requests', summary.counts?.incoming || 0],
@@ -408,47 +417,69 @@ export default function Friends() {
         </div>
       </section>
 
-      <section className="mobile-control-panel rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="mobile-fixed-tabbar flex gap-2 overflow-x-auto pb-1">
-            {tabs.map(tab => (
+      <section className="friends-tab-panel mobile-control-panel rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+        <div className="friends-tab-grid mobile-fixed-tabbar grid gap-2 overflow-x-auto pb-1 sm:grid-cols-3">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`inline-flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition ${
+                className={`friends-tab-button ${activeTab === tab.key ? 'is-active' : ''} inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition ${
                   activeTab === tab.key
                     ? 'bg-[#0b57d0] text-white shadow-lg shadow-blue-600/15'
                     : 'bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-[#0b57d0] dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
                 }`}
               >
+                <Icon size={18} />
                 {tab.label}
                 <span className={`rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-white/15' : 'bg-white dark:bg-slate-900'}`}>
                   {tab.count}
                 </span>
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </div>
+      </section>
 
-          <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_210px] lg:max-w-xl">
-            <div className="relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                placeholder="Search people, course, campus"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500"
-              />
+      <section className="friends-stat-grid grid gap-2 sm:grid-cols-3">
+        {statCards.map(card => {
+          const Icon = card.icon;
+          return (
+            <div key={card.label} className={`friends-stat-card friends-stat-card--${card.tone} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900`}>
+              <span className="friends-stat-icon">
+                <Icon size={22} />
+              </span>
+              <div>
+                <p className="text-sm font-black text-slate-700 dark:text-slate-200">{card.label}</p>
+                <p className="mt-1 text-2xl font-black text-[#0b57d0]">{card.value}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{card.helper}</p>
+              </div>
             </div>
-            <select
-              value={campusFilter}
-              onChange={event => setCampusFilter(event.target.value)}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-blue-500"
-            >
-              <option value="">All campuses</option>
-              {CAMPUS_OPTIONS.map(campus => <option key={campus} value={campus}>{campus}</option>)}
-            </select>
+          );
+        })}
+      </section>
+
+      <section className="friends-search-panel mobile-control-panel rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+        <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_210px]">
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Search by name, course, or campus..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500"
+            />
           </div>
+          <select
+            value={campusFilter}
+            onChange={event => setCampusFilter(event.target.value)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-blue-500"
+          >
+            <option value="">All campuses</option>
+            {CAMPUS_OPTIONS.map(campus => <option key={campus} value={campus}>{campus}</option>)}
+          </select>
         </div>
       </section>
 
@@ -484,13 +515,13 @@ export default function Friends() {
               {friends.length === 0 ? (
                 <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing Syncrova users." />
               ) : (
-                <div className="mobile-card-list grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="mobile-card-list grid gap-3 lg:grid-cols-2">
                   {friends.map(item => (
                     <motion.article
                       key={item._id}
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-500/10 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60"
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/30 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/10"
                     >
                       <div className="flex items-start gap-3">
                         <button type="button" onClick={() => setProfileUser(item.user)} className="shrink-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20">
@@ -536,7 +567,7 @@ export default function Friends() {
           )}
 
           {activeTab === 'add' && (
-            <section className="mobile-card-list space-y-3">
+            <section className="mobile-card-list grid gap-3 lg:grid-cols-2">
               {people.length === 0 ? (
                 <EmptyPanel icon={Sparkles} title="Everyone is connected" message="No new people to add right now. New users will appear here automatically." />
               ) : (
@@ -545,7 +576,7 @@ export default function Friends() {
                     key={getEntityId(person)}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-lg hover:shadow-blue-500/10 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 sm:flex-row sm:items-center"
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/30 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/10 sm:flex-row sm:items-center"
                   >
                     <button type="button" onClick={() => setProfileUser(person)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <Avatar person={person} />
@@ -576,7 +607,7 @@ export default function Friends() {
                   <EmptyPanel icon={Inbox} title="No incoming requests" message="Friend requests from other users will appear here for confirmation." />
                 ) : (
                   incoming.map(item => (
-                    <article key={item._id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-start gap-3">
                         <button type="button" onClick={() => setProfileUser(item.requester)} className="shrink-0">
                           <Avatar person={item.requester} />
@@ -624,7 +655,7 @@ export default function Friends() {
                   <EmptyPanel icon={Clock} title="No pending sent requests" message="Requests you send from Add Friend will stay here until accepted or declined." />
                 ) : (
                   outgoing.map(item => (
-                    <article key={item._id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center gap-3">
                         <button type="button" onClick={() => setProfileUser(item.recipient)} className="shrink-0">
                           <Avatar person={item.recipient} />

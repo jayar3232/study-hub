@@ -10,6 +10,7 @@ const MarketplaceListing = require('../models/MarketplaceListing');
 const { createNotification } = require('../services/notifications');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { normalizeCampus } = require('../utils/academics');
+const { hydrateMediaAsset, serializeMediaUser } = require('../utils/mediaUrls');
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ fs.mkdirSync(listingsUploadDir, { recursive: true });
 const MAX_VERIFICATION_SIZE = 10 * 1024 * 1024;
 const MAX_LISTING_PHOTO_SIZE = 8 * 1024 * 1024;
 const LISTING_PHOTO_LIMIT = 5;
-const USER_SELECT = 'name email avatar campus course isDeveloper studentVerificationStatus studentVerifiedAt';
+const USER_SELECT = 'name email avatar avatarStoragePath avatarStorageProvider campus course isDeveloper studentVerificationStatus studentVerifiedAt';
 const VERIFIED_STATUS = 'approved';
 const CATEGORIES = new Set(['books', 'gadgets', 'school_supplies', 'uniforms', 'services', 'other']);
 const CONDITIONS = new Set(['new', 'like_new', 'good', 'fair', 'used']);
@@ -138,7 +139,7 @@ const storeUploadedFile = async (file, folder, localPrefix) => {
 
 const serializeUser = (user) => {
   if (!user) return null;
-  const object = typeof user.toObject === 'function' ? user.toObject() : user;
+  const object = serializeMediaUser(user);
   return {
     _id: object._id,
     id: object._id,
@@ -166,13 +167,18 @@ const serializeVerification = (verification) => {
   }
 
   const object = typeof verification.toObject === 'function' ? verification.toObject() : verification;
+  const document = hydrateMediaAsset({
+    fileUrl: object.documentUrl,
+    storagePath: object.documentStoragePath,
+    storageProvider: object.documentStorageProvider
+  }, 'fileUrl');
   return {
     _id: object._id,
     id: object._id,
     user: serializeUser(object.userId),
     status: object.status,
     documentType: object.documentType,
-    documentUrl: object.documentUrl,
+    documentUrl: document.fileUrl || object.documentUrl,
     originalName: object.originalName,
     mimeType: object.mimeType,
     size: object.size,
@@ -201,7 +207,10 @@ const serializeListing = (listing, viewerId = '', options = {}) => {
     condition: object.condition,
     meetupSpot: object.meetupSpot,
     campus: normalizeCampus(object.campus),
-    photos: object.photos || [],
+    photos: (object.photos || []).map(photo => {
+      const hydrated = hydrateMediaAsset({ ...photo, fileUrl: photo.url }, 'fileUrl');
+      return { ...photo, url: hydrated.fileUrl || photo.url };
+    }),
     status: object.status,
     saveCount: savedBy.length,
     reportCount: reports.length,
@@ -372,17 +381,31 @@ router.put('/verification/:id/review', auth, requireDeveloper, async (req, res) 
         : '';
     if (!nextStatus) return res.status(400).json({ msg: 'Review action must be approve or reject' });
 
-    const verification = await StudentVerification.findById(req.params.id);
-    if (!verification) return res.status(404).json({ msg: 'Submission not found' });
-
     const now = new Date();
-    verification.status = nextStatus;
-    verification.reviewedAt = now;
-    verification.reviewedBy = req.user;
-    verification.rejectionReason = nextStatus === 'rejected'
+    const rejectionReason = nextStatus === 'rejected'
       ? cleanText(req.body.rejectionReason || 'Please submit a clearer campus ID or COR.', 300)
       : '';
-    await verification.save();
+    const verification = await StudentVerification.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      {
+        status: nextStatus,
+        reviewedAt: now,
+        reviewedBy: req.user,
+        rejectionReason
+      },
+      { new: true }
+    );
+
+    if (!verification) {
+      const existing = await StudentVerification.findById(req.params.id)
+        .populate('userId', USER_SELECT)
+        .populate('reviewedBy', USER_SELECT);
+      if (!existing) return res.status(404).json({ msg: 'Submission not found' });
+      return res.status(409).json({
+        msg: `Submission was already ${existing.status}. Ask the student to resubmit before reviewing again.`,
+        verification: serializeVerification(existing)
+      });
+    }
 
     await User.findByIdAndUpdate(verification.userId, {
       studentVerificationStatus: nextStatus,

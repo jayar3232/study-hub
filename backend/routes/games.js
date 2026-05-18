@@ -192,6 +192,40 @@ const typingSentenceBank = [
   'Smooth collaboration feels quiet, fast, and clear even when the project is busy.'
 ];
 
+const typingRaceBanks = {
+  english: typingSentenceBank,
+  filipino: [
+    'Mabilis magbasa ang estudyante kapag malinaw ang aralin at maayos ang halimbawa.',
+    'Kapag may tanong sa klase, makinig muna, isipin ang sagot, at magsalita nang malinaw.',
+    'Ang maingat na pag-aaral ay nakakatulong sa proyekto, pagsusulit, at pang-araw-araw na gawain.',
+    'Magandang sistema ang nagbibigay ng malinaw na direksyon sa bawat estudyante.',
+    'Kapag nagtutulungan ang grupo, mas mabilis matapos ang mahirap na gawain.',
+    'Ang tamang oras, sipag, at malinaw na plano ay mahalaga sa tagumpay ng proyekto.',
+    'Basahin ang panuto bago magsimula para maiwasan ang paulit-ulit na pagkakamali.',
+    'Ang maayos na komunikasyon ay nagpapadali sa trabaho ng buong klase.'
+  ],
+  programming: [
+    'const total = items.filter(item => item.done).length;',
+    'function normalizeName(value) { return String(value).trim().toLowerCase(); }',
+    'if (!response.ok) throw new Error("Request failed");',
+    'await api.post("/posts", { content, privacy, attachments });',
+    'const usersById = new Map(users.map(user => [user.id, user]));',
+    'return array.reduce((sum, value) => sum + Number(value || 0), 0);',
+    'button.disabled = loading || selectedFiles.length === 0;',
+    'router.get("/health", async (req, res) => res.json({ ok: true }));'
+  ],
+  grammar: [
+    'The students are preparing their project before the final presentation.',
+    'She has already submitted the report, but the teacher requested one revision.',
+    'Clear instructions help every member understand what they need to do next.',
+    'A complete sentence needs a subject, a verb, and a clear thought.',
+    'The group was reviewing its notes while the developer fixed the issue.',
+    'Good grammar makes feedback easier to read and harder to misunderstand.',
+    'They were studying in the library when the announcement arrived.',
+    'The application works better when each screen uses consistent wording.'
+  ]
+};
+
 const quizBank = [
   { title: 'JavaScript scope', brief: 'Which keyword declares a block-scoped variable?', options: ['var', 'let', 'global', 'static'], correctAnswer: 'let', basePoints: 150 },
   { title: 'HTML document', brief: 'Which tag contains page metadata?', options: ['body', 'main', 'head', 'section'], correctAnswer: 'head', basePoints: 130 },
@@ -308,13 +342,19 @@ const generatedQuizBank = quizFactBank.flatMap((fact, factIndex) => (
   }))
 ));
 
-const createTypingSentences = (count = 18) => {
-  const pool = [...typingSentenceBank];
+const normalizeTypingMode = (mode = '') => {
+  const value = String(mode || '').trim().toLowerCase();
+  return ['english', 'filipino', 'programming', 'grammar'].includes(value) ? value : 'english';
+};
+
+const createTypingSentences = (count = 18, mode = 'english') => {
+  const pool = [...(typingRaceBanks[normalizeTypingMode(mode)] || typingSentenceBank)];
   for (let index = pool.length - 1; index > 0; index -= 1) {
     const swapIndex = crypto.randomInt(index + 1);
     [pool[index], pool[swapIndex]] = [pool[swapIndex], pool[index]];
   }
-  return pool.slice(0, Math.min(count, pool.length));
+  const target = Math.min(count, pool.length);
+  return pool.slice(0, target);
 };
 
 const sanitizeText = (value, maxLength) => String(value || '').trim().slice(0, maxLength);
@@ -674,8 +714,8 @@ router.get('/summary/me', auth, async (req, res) => {
       jetFighterLeaderboardSessions,
       myNeonDriftSessions,
       neonDriftLeaderboardSessions,
-      mySpaceRunnerSessions,
-      spaceRunnerLeaderboardSessions,
+      myReactionTapSessions,
+      reactionTapLeaderboardSessions,
       myBowDuelSessions,
       bowDuelLeaderboardSessions,
       myCodeQuizSessions,
@@ -716,8 +756,8 @@ router.get('/summary/me', auth, async (req, res) => {
         .populate('userId', 'name email course avatar isDeveloper')
         .sort({ score: -1 })
         .limit(300),
-      GameSession.find({ userId: req.user, gameKey: 'space-runner', completedAt: { $ne: null } }).lean(),
-      GameSession.find({ gameKey: 'space-runner', completedAt: { $ne: null } })
+      GameSession.find({ userId: req.user, gameKey: 'reaction-tap', completedAt: { $ne: null } }).lean(),
+      GameSession.find({ gameKey: 'reaction-tap', completedAt: { $ne: null } })
         .populate('userId', 'name email course avatar isDeveloper')
         .sort({ score: -1 })
         .limit(300),
@@ -740,7 +780,7 @@ router.get('/summary/me', auth, async (req, res) => {
     const focusFlowLeaderboard = buildGameLeaderboard(focusFlowLeaderboardSessions);
     const jetFighterLeaderboard = buildGameLeaderboard(jetFighterLeaderboardSessions);
     const neonDriftLeaderboard = buildGameLeaderboard(neonDriftLeaderboardSessions);
-    const spaceRunnerLeaderboard = buildGameLeaderboard(spaceRunnerLeaderboardSessions);
+    const reactionTapLeaderboard = buildGameLeaderboard(reactionTapLeaderboardSessions);
     const bowDuelLeaderboard = buildGameLeaderboard(bowDuelLeaderboardSessions);
     const codeQuizLeaderboard = buildGameLeaderboard(codeQuizLeaderboardSessions);
     const myRank = leaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
@@ -750,7 +790,7 @@ router.get('/summary/me', auth, async (req, res) => {
     const myFocusFlowRank = focusFlowLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myJetFighterRank = jetFighterLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myNeonDriftRank = neonDriftLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
-    const mySpaceRunnerRank = spaceRunnerLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
+    const myReactionTapRank = reactionTapLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myBowDuelRank = bowDuelLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
     const myCodeQuizRank = codeQuizLeaderboard.find(entry => String(entry.user._id) === String(req.user)) || null;
 
@@ -762,7 +802,7 @@ router.get('/summary/me', auth, async (req, res) => {
       focusFlowStats: buildGameStats(myFocusFlowSessions),
       jetFighterStats: buildGameStats(myJetFighterSessions),
       neonDriftStats: buildGameStats(myNeonDriftSessions),
-      spaceRunnerStats: buildGameStats(mySpaceRunnerSessions),
+      reactionTapStats: buildGameStats(myReactionTapSessions),
       bowDuelStats: buildGameStats(myBowDuelSessions),
       codeQuizStats: buildGameStats(myCodeQuizSessions),
       leaderboard: leaderboard.slice(0, 15),
@@ -772,7 +812,7 @@ router.get('/summary/me', auth, async (req, res) => {
       focusFlowLeaderboard: focusFlowLeaderboard.slice(0, 15),
       jetFighterLeaderboard: jetFighterLeaderboard.slice(0, 15),
       neonDriftLeaderboard: neonDriftLeaderboard.slice(0, 15),
-      spaceRunnerLeaderboard: spaceRunnerLeaderboard.slice(0, 15),
+      reactionTapLeaderboard: reactionTapLeaderboard.slice(0, 15),
       bowDuelLeaderboard: bowDuelLeaderboard.slice(0, 15),
       codeQuizLeaderboard: codeQuizLeaderboard.slice(0, 15),
       myRank,
@@ -782,7 +822,7 @@ router.get('/summary/me', auth, async (req, res) => {
       myFocusFlowRank,
       myJetFighterRank,
       myNeonDriftRank,
-      mySpaceRunnerRank,
+      myReactionTapRank,
       myBowDuelRank,
       myCodeQuizRank,
       ranks: GAME_RANKS,
@@ -971,12 +1011,15 @@ router.post('/fix-arena/issues/:issueId/messages', auth, async (req, res) => {
 router.post('/typing-sprint/start', auth, async (req, res) => {
   try {
     const startedAt = new Date();
-    const sentences = createTypingSentences();
+    const mode = normalizeTypingMode(req.body?.mode);
+    const requestedDuration = clampNumber(req.body?.durationSeconds, 30, 90, 60);
+    const sentenceCount = mode === 'programming' ? 10 : 12;
+    const sentences = createTypingSentences(sentenceCount, mode);
     const prompt = sentences.join('\n');
     const session = new GameSession({
       userId: req.user,
       gameKey: 'typing-sprint',
-      durationSeconds: 75,
+      durationSeconds: requestedDuration,
       challenges: [{
         challengeId: crypto.randomUUID(),
         title: 'Typing Sprint',
@@ -991,7 +1034,7 @@ router.post('/typing-sprint/start', auth, async (req, res) => {
       }],
       totalCount: 1,
       startedAt,
-      expiresAt: new Date(startedAt.getTime() + 85000)
+      expiresAt: new Date(startedAt.getTime() + ((requestedDuration + 10) * 1000))
     });
 
     await session.save();
@@ -1000,7 +1043,8 @@ router.post('/typing-sprint/start', auth, async (req, res) => {
       prompt,
       sentences,
       mode: 'sentence-stream',
-      durationSeconds: 75,
+      raceMode: mode,
+      durationSeconds: requestedDuration,
       startedAt: session.startedAt,
       expiresAt: session.expiresAt
     });
@@ -1430,6 +1474,67 @@ router.post('/space-runner/submit', auth, async (req, res) => {
       },
       stats: buildGameStats(mySessions),
       spaceRunnerStats: buildGameStats(mySpaceRunnerSessions)
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/reaction-tap/submit', auth, async (req, res) => {
+  try {
+    const playerPoints = clampNumber(req.body.playerPoints, 0, 50, 0);
+    const targetPoints = clampNumber(req.body.targetPoints, 1, 50, 20);
+    const taps = clampNumber(req.body.taps, 0, 250, 0);
+    const wins = clampNumber(req.body.wins, 0, 50, 0);
+    const rounds = clampNumber(req.body.rounds, 1, 250, 1);
+    const bestReactionMs = clampNumber(req.body.bestReactionMs, 90, 5000, 5000);
+    const averageReactionMs = clampNumber(req.body.averageReactionMs, 90, 5000, 5000);
+    const elapsedMs = clampNumber(req.body.elapsedMs, 1000, 10 * 60 * 1000, 1000);
+    const wonMatch = Boolean(req.body.wonMatch || playerPoints >= targetPoints);
+    const scoreCap = playerPoints * 420
+      + wins * 160
+      + Math.max(0, 900 - averageReactionMs)
+      + Math.max(0, 650 - bestReactionMs)
+      + (wonMatch ? 1500 : 0);
+    const score = clampNumber(Math.min(Number(req.body.score) || 0, scoreCap), 0, 1000000);
+    if (score <= 0) return res.status(400).json({ msg: 'Score must be greater than zero' });
+
+    const accuracy = clampNumber(Math.round((wins / Math.max(1, rounds)) * 100), 0, 100);
+    const session = await createCompletedGameSession({
+      userId: req.user,
+      gameKey: 'reaction-tap',
+      title: 'Reaction Tap',
+      brief: 'Won fast-tap rounds against campus racers by hitting the target first.',
+      signal: `Points ${playerPoints}/${targetPoints}. Best ${bestReactionMs}ms. Average ${averageReactionMs}ms.`,
+      score,
+      accuracy,
+      correctCount: wins,
+      totalCount: rounds,
+      maxStreak: playerPoints,
+      elapsedMs
+    });
+
+    const [mySessions, myReactionTapSessions] = await Promise.all([
+      GameSession.find({ userId: req.user, completedAt: { $ne: null } }).lean(),
+      GameSession.find({ userId: req.user, gameKey: 'reaction-tap', completedAt: { $ne: null } }).lean()
+    ]);
+
+    res.status(201).json({
+      result: {
+        sessionId: session._id,
+        score,
+        playerPoints,
+        targetPoints,
+        taps,
+        wins,
+        rounds,
+        bestReactionMs,
+        averageReactionMs,
+        elapsedMs,
+        wonMatch
+      },
+      stats: buildGameStats(mySessions),
+      reactionTapStats: buildGameStats(myReactionTapSessions)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

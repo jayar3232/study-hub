@@ -5,10 +5,11 @@ const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const { normalizeCampus, normalizeCourse } = require('../utils/academics');
 const { createNotification } = require('../services/notifications');
+const { serializeMediaUser } = require('../utils/mediaUrls');
 
 const router = express.Router();
 
-const userFields = 'name email course campus avatar coverPhoto bio lastSeen isDeveloper createdAt';
+const userFields = 'name email course campus avatar avatarStoragePath avatarStorageProvider coverPhoto coverPhotoStoragePath coverPhotoStorageProvider bio lastSeen isDeveloper createdAt';
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 const activeStatuses = ['pending', 'accepted'];
 const statusPriority = { accepted: 2, pending: 1, declined: 0 };
@@ -25,19 +26,20 @@ const sortRelationships = (relationships = []) => [...relationships].sort((a, b)
 
 const toClientUser = (user) => {
   if (!user) return null;
+  const object = serializeMediaUser(user);
   return {
-    _id: user._id,
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    course: normalizeCourse(user.course),
-    campus: normalizeCampus(user.campus),
-    bio: user.bio,
-    avatar: user.avatar,
-    coverPhoto: user.coverPhoto,
-    lastSeen: user.lastSeen,
-    isDeveloper: user.isDeveloper,
-    createdAt: user.createdAt
+    _id: object._id,
+    id: object._id,
+    name: object.name,
+    email: object.email,
+    course: normalizeCourse(object.course),
+    campus: normalizeCampus(object.campus),
+    bio: object.bio,
+    avatar: object.avatar,
+    coverPhoto: object.coverPhoto,
+    lastSeen: object.lastSeen,
+    isDeveloper: object.isDeveloper,
+    createdAt: object.createdAt
   };
 };
 
@@ -275,17 +277,20 @@ router.put('/requests/:requestId/accept', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Friend request not found' });
     }
 
-    const friendship = await Friendship.findOne({
-      _id: req.params.requestId,
-      recipient: req.user,
-      status: 'pending'
-    });
+    const friendship = await Friendship.findOneAndUpdate(
+      {
+        _id: req.params.requestId,
+        recipient: req.user,
+        status: 'pending'
+      },
+      {
+        status: 'accepted',
+        respondedAt: new Date()
+      },
+      { new: true }
+    );
 
     if (!friendship) return res.status(404).json({ msg: 'Friend request not found' });
-
-    friendship.status = 'accepted';
-    friendship.respondedAt = new Date();
-    await friendship.save();
     const relationships = await findRelationships(friendship.requester, friendship.recipient, activeStatuses);
     await cleanupDuplicateActiveRelationships(relationships, friendship._id);
     await cleanupPairActiveRelationships(friendship.requester, friendship.recipient, friendship._id);

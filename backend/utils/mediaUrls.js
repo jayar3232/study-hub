@@ -1,0 +1,95 @@
+const { getObjectUrl } = require('../services/storage');
+
+const cloneObject = (value) => {
+  if (!value) return value;
+  if (typeof value.toObject === 'function') return value.toObject();
+  return { ...value };
+};
+
+const resolveStoredMediaUrl = ({ url = '', storagePath = '', storageProvider = '' } = {}) => {
+  const provider = String(storageProvider || '').trim();
+  const path = String(storagePath || '').trim();
+  if (provider && path) return getObjectUrl(provider, path) || url || '';
+  return url || '';
+};
+
+const serializeMediaUser = (user) => {
+  const object = cloneObject(user);
+  if (!object) return object;
+
+  object.avatar = resolveStoredMediaUrl({
+    url: object.avatar,
+    storagePath: object.avatarStoragePath,
+    storageProvider: object.avatarStorageProvider
+  });
+  object.coverPhoto = resolveStoredMediaUrl({
+    url: object.coverPhoto,
+    storagePath: object.coverPhotoStoragePath,
+    storageProvider: object.coverPhotoStorageProvider
+  });
+  delete object.avatarStoragePath;
+  delete object.avatarStorageProvider;
+  delete object.coverPhotoStoragePath;
+  delete object.coverPhotoStorageProvider;
+
+  return object;
+};
+
+const hydrateMediaUserInPlace = (user) => {
+  if (!user || typeof user !== 'object') return user;
+  const serialized = serializeMediaUser(user);
+  Object.assign(user, serialized);
+  return user;
+};
+
+const hydrateMediaAsset = (asset = {}, urlField = 'fileUrl') => {
+  const object = cloneObject(asset);
+  if (!object) return object;
+  object[urlField] = resolveStoredMediaUrl({
+    url: object[urlField],
+    storagePath: object.storagePath,
+    storageProvider: object.storageProvider
+  });
+  return object;
+};
+
+const hydratePostMedia = (post) => {
+  const object = cloneObject(post);
+  if (!object) return object;
+
+  hydrateMediaUserInPlace(object.userId);
+  (object.comments || []).forEach(comment => {
+    hydrateMediaUserInPlace(comment.userId);
+    (comment.reactions || []).forEach(reaction => hydrateMediaUserInPlace(reaction.userId));
+  });
+  (object.reactions || []).forEach(reaction => hydrateMediaUserInPlace(reaction.userId));
+  (object.taggedUsers || []).forEach(hydrateMediaUserInPlace);
+
+  const hydratedPrimary = hydrateMediaAsset(object, 'fileUrl');
+  object.fileUrl = hydratedPrimary.fileUrl || '';
+  object.attachments = (object.attachments || []).map(attachment => hydrateMediaAsset(attachment, 'fileUrl'));
+  return object;
+};
+
+const hydrateStoryMedia = (story) => {
+  const object = cloneObject(story);
+  if (!object) return object;
+
+  hydrateMediaUserInPlace(object.userId);
+  (object.reactions || []).forEach(reaction => hydrateMediaUserInPlace(reaction.userId));
+  (object.viewers || []).forEach(viewer => hydrateMediaUserInPlace(viewer.userId));
+  (object.comments || []).forEach(comment => hydrateMediaUserInPlace(comment.userId));
+
+  const hydrated = hydrateMediaAsset(object, 'fileUrl');
+  object.fileUrl = hydrated.fileUrl || '';
+  return object;
+};
+
+module.exports = {
+  hydrateMediaAsset,
+  hydrateMediaUserInPlace,
+  hydratePostMedia,
+  hydrateStoryMedia,
+  resolveStoredMediaUrl,
+  serializeMediaUser
+};

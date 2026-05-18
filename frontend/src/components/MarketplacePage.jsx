@@ -614,6 +614,7 @@ export default function MarketplacePage() {
   const [reportStatusFilter, setReportStatusFilter] = useState('');
   const [queueLoading, setQueueLoading] = useState(false);
   const [reviewReasons, setReviewReasons] = useState({});
+  const [reviewingSubmissionId, setReviewingSubmissionId] = useState('');
 
   const isDeveloper = Boolean(statusData?.user?.isDeveloper || user?.isDeveloper);
   const verification = statusData?.verification || { status: user?.studentVerificationStatus || 'not_submitted' };
@@ -845,18 +846,24 @@ export default function MarketplacePage() {
   };
 
   const reviewSubmission = async (submission, action) => {
+    const submissionId = getId(submission);
+    if (!submissionId || reviewingSubmissionId) return;
     const reason = reviewReasons[getId(submission)] || '';
     if (action === 'reject' && !reason.trim()) {
       toast.error('Add a short reason before rejecting');
       return;
     }
 
+    setReviewingSubmissionId(submissionId);
     try {
-      await api.put(`/marketplace/verification/${getId(submission)}/review`, { action, rejectionReason: reason });
+      await api.put(`/marketplace/verification/${submissionId}/review`, { action, rejectionReason: reason });
       toast.success(action === 'approve' ? 'Student verified' : 'Submission rejected');
       await Promise.all([loadMarketplace({ silent: true }), loadReviewQueue()]);
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Review failed');
+      if (err.response?.status === 409) await loadReviewQueue();
+    } finally {
+      setReviewingSubmissionId('');
     }
   };
 
@@ -876,7 +883,7 @@ export default function MarketplacePage() {
 
   return (
     <div className="mobile-page marketplace-page mx-auto flex w-full max-w-7xl flex-col gap-3 px-0 py-1 sm:gap-5 sm:px-6 sm:py-5 lg:px-8">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section className="marketplace-pro-hero overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-3 p-3 sm:gap-5 sm:p-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:p-6">
           <div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -891,27 +898,32 @@ export default function MarketplacePage() {
             <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300 sm:mt-4 sm:text-base sm:leading-7">
               Buy and sell books, gadgets, uniforms, and school supplies with verified campus students only.
             </p>
-            <div className="mt-3 grid grid-cols-4 gap-1.5 sm:mt-5 sm:gap-3">
-              <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950 sm:p-3">
-                <p className="text-lg font-black text-slate-950 dark:text-white sm:text-2xl">{listingStats.active}</p>
-                <p className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 sm:text-xs">Active</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950 sm:p-3">
-                <p className="text-lg font-black text-slate-950 dark:text-white sm:text-2xl">{listingStats.saved}</p>
-                <p className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 sm:text-xs">Saved</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950 sm:p-3">
-                <p className="text-lg font-black text-slate-950 dark:text-white sm:text-2xl">{listingStats.mine}</p>
-                <p className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 sm:text-xs">Mine</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950 sm:p-3">
-                <p className="text-lg font-black text-slate-950 dark:text-white sm:text-2xl">{listingStats.photos}</p>
-                <p className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 sm:text-xs">Photos</p>
-              </div>
+            <div className="marketplace-hero-art" aria-hidden="true">
+              <span className="marketplace-bag" />
+              <span className="marketplace-book marketplace-book-a" />
+              <span className="marketplace-book marketplace-book-b" />
+              <span className="marketplace-plant" />
+            </div>
+            <div className="marketplace-stat-grid mt-3 grid grid-cols-4 gap-1.5 sm:mt-5 sm:gap-3">
+              {[
+                { label: 'Active', value: listingStats.active, icon: Store, tone: 'green' },
+                { label: 'Saved', value: listingStats.saved, icon: Star, tone: 'blue' },
+                { label: 'Mine', value: listingStats.mine, icon: Heart, tone: 'pink' },
+                { label: 'Photos', value: listingStats.photos, icon: ImageIcon, tone: 'orange' }
+              ].map(item => {
+                const Icon = item.icon;
+                return (
+                  <div key={item.label} className={`marketplace-stat-card marketplace-stat-card--${item.tone} rounded-xl bg-slate-50 p-2 dark:bg-slate-950 sm:p-3`}>
+                    <span><Icon size={18} /></span>
+                    <p className="text-lg font-black text-slate-950 dark:text-white sm:text-2xl">{item.value}</p>
+                    <p className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 sm:text-xs">{item.label}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+          <div className="marketplace-access-card rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 sm:p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-black text-slate-950 dark:text-white sm:text-sm">Official student access</p>
               <StatusPill status={currentStatus} />
@@ -1255,6 +1267,7 @@ export default function MarketplacePage() {
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 {reviewQueue.map(submission => {
                   const submissionId = getId(submission);
+                  const isReviewing = reviewingSubmissionId === submissionId;
                   return (
                     <article key={submissionId} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                       <div className="flex items-start justify-between gap-3">
@@ -1276,8 +1289,14 @@ export default function MarketplacePage() {
                         <div className="mt-4 space-y-3">
                           <textarea value={reviewReasons[submissionId] || ''} onChange={event => setReviewReasons(prev => ({ ...prev, [submissionId]: event.target.value }))} placeholder="Reason if rejected" rows={2} className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
                           <div className="grid grid-cols-2 gap-2">
-                            <button type="button" onClick={() => reviewSubmission(submission, 'reject')} className="h-10 rounded-xl bg-rose-50 text-sm font-black text-rose-700 dark:bg-rose-950/35 dark:text-rose-200">Reject</button>
-                            <button type="button" onClick={() => reviewSubmission(submission, 'approve')} className="h-10 rounded-xl bg-emerald-600 text-sm font-black text-white">Approve</button>
+                            <button type="button" onClick={() => reviewSubmission(submission, 'reject')} disabled={Boolean(reviewingSubmissionId)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-rose-50 text-sm font-black text-rose-700 transition disabled:cursor-not-allowed disabled:opacity-50 dark:bg-rose-950/35 dark:text-rose-200">
+                              {isReviewing ? <Loader2 size={15} className="animate-spin" /> : null}
+                              Reject
+                            </button>
+                            <button type="button" onClick={() => reviewSubmission(submission, 'approve')} disabled={Boolean(reviewingSubmissionId)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-black text-white transition disabled:cursor-not-allowed disabled:opacity-50">
+                              {isReviewing ? <Loader2 size={15} className="animate-spin" /> : null}
+                              Approve
+                            </button>
                           </div>
                         </div>
                       )}

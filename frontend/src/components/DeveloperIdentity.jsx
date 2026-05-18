@@ -25,15 +25,9 @@ export function DeveloperAvatarFrame({ user, children, className = '' }) {
     <span className={`developer-avatar-frame developer-motion-zone relative inline-grid shrink-0 place-items-center ${developer ? 'is-developer' : ''} ${className}`}>
       {children}
       {developer && (
-        <>
-          <span className="developer-supernova-ring" aria-hidden="true" />
-          <span className="developer-spark developer-spark-one" aria-hidden="true" />
-          <span className="developer-spark developer-spark-two" aria-hidden="true" />
-          <span className="developer-spark developer-spark-three" aria-hidden="true" />
-          <span className="developer-verified-node" aria-label="Verified developer">
-            <Code2 size={11} />
-          </span>
-        </>
+        <span className="developer-verified-node" aria-label="Verified developer">
+          <Code2 size={11} />
+        </span>
       )}
     </span>
   );

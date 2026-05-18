@@ -11,13 +11,12 @@ import {
   Code2,
   Copy,
   Crown,
-  Gauge,
   Gamepad2,
   KeyRound,
   Keyboard,
   Lightbulb,
   MessageCircle,
-  Orbit,
+  MousePointer2,
   Plane,
   Play,
   Search,
@@ -158,17 +157,10 @@ const JetFighterLogo = ({ compact = false }) => (
   </div>
 );
 
-const NeonDriftLogo = ({ compact = false }) => (
-  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-slate-950 text-white shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-300/20`}>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(34,211,238,0.5),transparent_34%),radial-gradient(circle_at_80%_74%,rgba(236,72,153,0.42),transparent_35%)]" />
-    <Gauge size={compact ? 24 : 30} className="relative z-10 text-cyan-100 drop-shadow" />
-  </div>
-);
-
-const SpaceRunnerLogo = ({ compact = false }) => (
-  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-indigo-950 text-white shadow-xl shadow-blue-500/20 ring-1 ring-blue-300/20`}>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(59,130,246,0.52),transparent_34%),radial-gradient(circle_at_80%_74%,rgba(168,85,247,0.42),transparent_35%)]" />
-    <Orbit size={compact ? 24 : 30} className="relative z-10 text-blue-100 drop-shadow" />
+const ReactionTapLogo = ({ compact = false }) => (
+  <div className={`${compact ? 'h-12 w-12 rounded-2xl' : 'h-16 w-16 rounded-3xl'} relative grid shrink-0 place-items-center overflow-hidden bg-slate-950 text-white shadow-xl shadow-blue-500/20 ring-1 ring-blue-300/20`}>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(59,130,246,0.55),transparent_34%),radial-gradient(circle_at_80%_74%,rgba(34,197,94,0.42),transparent_35%)]" />
+    <MousePointer2 size={compact ? 24 : 30} className="relative z-10 text-blue-100 drop-shadow" />
   </div>
 );
 
@@ -714,24 +706,24 @@ export default function OpsArena({ initialView = 'home', consoleOnly = false }) 
       accent: 'from-cyan-300 to-rose-500'
     },
     {
-      key: 'neon-drift',
-      title: 'Neon Drift',
-      label: '3D Neon Racer',
-      description: 'Steer a hovercar through glowing city lanes and red barriers.',
+      key: 'typing-race',
+      title: 'Typing Race',
+      label: 'Speed Typing',
+      description: 'Race through Filipino, programming syntax, and English grammar rounds.',
       status: 'Live',
-      best: summary?.neonDriftStats?.highScore || 0,
-      Logo: NeonDriftLogo,
-      accent: 'from-cyan-400 to-pink-500'
+      best: summary?.typingStats?.highScore || 0,
+      Logo: TypingGameLogo,
+      accent: 'from-sky-500 to-emerald-400'
     },
     {
-      key: 'space-runner',
-      title: 'Space Runner',
-      label: '3D Space Tunnel',
-      description: 'Pilot through asteroid lanes and collect energy cores.',
+      key: 'reaction-tap',
+      title: 'Reaction Tap',
+      label: 'Tap Battle',
+      description: 'Tap random targets before rivals. First to 20 points wins.',
       status: 'Live',
-      best: summary?.spaceRunnerStats?.highScore || 0,
-      Logo: SpaceRunnerLogo,
-      accent: 'from-blue-500 to-violet-500'
+      best: summary?.reactionTapStats?.highScore || 0,
+      Logo: ReactionTapLogo,
+      accent: 'from-blue-500 to-emerald-400'
     },
     {
       key: 'focus-flow',
@@ -970,7 +962,7 @@ export default function OpsArena({ initialView = 'home', consoleOnly = false }) 
                         data-game={game.key}
                       >
                         <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${game.accent} opacity-80`} />
-                        <div className="flex items-start gap-3">
+                        <div className="game-hub-game-card-header flex items-start gap-3">
                           <Logo />
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -999,6 +991,53 @@ export default function OpsArena({ initialView = 'home', consoleOnly = false }) 
                     );
                   })}
                 </div>
+              </section>
+
+              <section className="game-hub-mobile-feature-list md:hidden">
+                {liveGameCards.slice(0, 2).map(game => {
+                  const Logo = game.Logo;
+                  return (
+                    <article key={`mobile-feature-${game.key}`} className="game-hub-mobile-feature-card">
+                      <div className="game-hub-mobile-feature-top">
+                        <Logo compact />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full bg-gradient-to-r ${game.accent} px-2 py-0.5 text-[10px] font-black uppercase text-white`}>
+                              {game.status}
+                            </span>
+                            <span className="text-[10px] font-black uppercase text-slate-400">{game.label}</span>
+                          </div>
+                          <h3 className="mt-1 text-xl font-black text-slate-950">{game.title}</h3>
+                          <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">{game.description}</p>
+                        </div>
+                      </div>
+                      <div className="game-hub-mobile-feature-actions">
+                        <button type="button" onClick={() => openGame(game.key)} className="game-hub-mobile-play-button">
+                          <Play size={15} fill="currentColor" />
+                          Play Now
+                        </button>
+                        <button type="button" onClick={() => openGame(game.key)} className="game-hub-mobile-detail-button">
+                          View Details
+                        </button>
+                      </div>
+                      <div className="game-hub-mobile-track" aria-hidden="true">
+                        <span className={`bg-gradient-to-r ${game.accent}`} />
+                      </div>
+                      <div className="game-hub-mobile-feature-meta">
+                        <span>
+                          <Trophy size={15} />
+                          Best Score
+                        </span>
+                        <strong>{game.best || 0}</strong>
+                        <span>
+                          <Clock size={15} />
+                          Status
+                        </span>
+                        <strong>{game.disabled ? 'Soon' : 'Live'}</strong>
+                      </div>
+                    </article>
+                  );
+                })}
               </section>
 
               <section className="game-hub-leaderboard rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">

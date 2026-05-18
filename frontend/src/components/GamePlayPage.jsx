@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Activity, ArrowLeft, Crosshair, Gamepad2, Gauge, Maximize2, Minimize2, Orbit, Plane, Sparkles, Sword, Trophy, X } from 'lucide-react';
+import { Activity, ArrowLeft, Crosshair, Gamepad2, Keyboard, Maximize2, Minimize2, MousePointer2, Plane, Sparkles, Sword, Trophy, X } from 'lucide-react';
 import api from '../services/api';
 import GameRankBadge from './GameRankBadge';
 import LoadingSpinner from './LoadingSpinner';
@@ -9,8 +9,8 @@ const BlockStackGame = lazy(() => import('./BlockStackGame'));
 const BowDuelGame = lazy(() => import('./BowDuelGame'));
 const FocusFlowGame = lazy(() => import('./FocusFlowGame'));
 const JetFighterGame = lazy(() => import('./JetFighterGame'));
-const NeonDriftGame = lazy(() => import('./NeonDriftGame'));
-const SpaceRunnerGame = lazy(() => import('./SpaceRunnerGame'));
+const ReactionTapGame = lazy(() => import('./ReactionTapGame'));
+const TypingRaceGame = lazy(() => import('./TypingRaceGame'));
 
 const gameRegistry = {
   blocks: {
@@ -31,23 +31,23 @@ const gameRegistry = {
     accent: 'from-cyan-300 via-blue-500 to-rose-500',
     statKey: 'jetFighterStats'
   },
-  'neon-drift': {
-    title: 'Neon Drift',
-    eyebrow: '3D Neon Racer',
-    description: 'Steer a hovercar through glowing city lanes and dodge red barriers.',
-    Icon: Gauge,
-    Component: NeonDriftGame,
-    accent: 'from-cyan-400 via-blue-600 to-pink-500',
-    statKey: 'neonDriftStats'
+  'typing-race': {
+    title: 'Typing Race',
+    eyebrow: 'Speed Typing',
+    description: 'Race through Filipino, programming, and grammar sentences with live progress bars.',
+    Icon: Keyboard,
+    Component: TypingRaceGame,
+    accent: 'from-sky-500 via-blue-600 to-emerald-400',
+    statKey: 'typingStats'
   },
-  'space-runner': {
-    title: 'Space Runner',
-    eyebrow: '3D Space Tunnel',
-    description: 'Pilot through asteroid lanes, collect energy cores, and survive the tunnel.',
-    Icon: Orbit,
-    Component: SpaceRunnerGame,
-    accent: 'from-blue-500 via-violet-600 to-cyan-400',
-    statKey: 'spaceRunnerStats'
+  'reaction-tap': {
+    title: 'Reaction Tap',
+    eyebrow: 'Tap Battle',
+    description: 'Tap random targets before the rivals. First to 20 points wins.',
+    Icon: MousePointer2,
+    Component: ReactionTapGame,
+    accent: 'from-blue-500 via-cyan-500 to-emerald-400',
+    statKey: 'reactionTapStats'
   },
   'focus-flow': {
     title: 'Focus Flow',

@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { Toaster } from 'react-hot-toast';
 import { MotionConfig } from 'framer-motion';
 import { ThemeProvider } from './context/ThemeContext';
@@ -27,25 +28,6 @@ const NotificationsPage = lazy(() => import('./components/NotificationsPage'));
 const GlobalSearchPage = lazy(() => import('./components/GlobalSearchPage'));
 const SavedItemsPage = lazy(() => import('./components/SavedItemsPage'));
 const AppHealthPage = lazy(() => import('./components/AppHealthPage'));
-
-const NATIVE_BACK_ROOT_PATHS = new Set([
-  '/',
-  '/dashboard',
-  '/marketplace',
-  '/messages',
-  '/reels',
-  '/friends',
-  '/arena',
-  '/developer-console',
-  '/settings',
-  '/notifications',
-  '/search',
-  '/saved',
-  '/app-health',
-  '/profile',
-  '/login',
-  '/register'
-]);
 
 const getNativeBackFallbackPath = (pathname = '/') => {
   if (pathname.startsWith('/group/')) return '/marketplace';
@@ -88,7 +70,13 @@ function NativeBackButtonHandler() {
   const location = useLocation();
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.Capacitor?.isNativePlatform?.()) return undefined;
+    const isNative = typeof window !== 'undefined' && (
+      window.Capacitor?.isNativePlatform?.() ||
+      Capacitor.isNativePlatform?.() ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'ionic:'
+    );
+    if (!isNative) return undefined;
 
     let cancelled = false;
     let listenerPromise = null;
@@ -107,13 +95,21 @@ function NativeBackButtonHandler() {
           if (backEvent.defaultPrevented) return;
 
           const pathname = window.location.pathname || '/';
-          if (NATIVE_BACK_ROOT_PATHS.has(pathname)) return;
+          const historyIndex = Number(window.history.state?.idx || 0);
+          const isAppRoot = pathname === '/' || pathname === '/dashboard' || pathname === '/login';
+
+          if (historyIndex > 0 && !isAppRoot) {
+            navigate(-1);
+            return;
+          }
 
           const fallbackPath = getNativeBackFallbackPath(pathname);
           if (fallbackPath && fallbackPath !== pathname) {
             navigate(fallbackPath, { replace: true });
           } else if (window.history.length > 1) {
             navigate(-1);
+          } else if (isAppRoot) {
+            CapacitorApp.exitApp?.();
           } else {
             navigate('/dashboard', { replace: true });
           }
@@ -134,6 +130,16 @@ function NativeBackButtonHandler() {
   }, [navigate, location.pathname]);
 
   return null;
+}
+
+function RouteLoadingFallback() {
+  return (
+    <div className="mx-auto flex min-h-[14rem] max-w-7xl items-center justify-center px-4 py-8" role="status" aria-label="Loading page">
+      <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+        <div className="h-full w-1/2 animate-pulse rounded-full bg-[#0b57d0]" />
+      </div>
+    </div>
+  );
 }
 
 function NativeNotificationRouter() {
@@ -223,7 +229,7 @@ function AppRoutes() {
   if (loading) return <PageSkeleton variant="dashboard" rows={4} />;
   const protectedLayout = isAuthenticated ? <Layout /> : <Navigate to="/login" replace />;
   return (
-    <Suspense fallback={<PageSkeleton variant="dashboard" rows={4} />}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
         <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
         <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />} />

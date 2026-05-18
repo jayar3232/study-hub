@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Lock,
+  MapPin,
   MessageCircle,
   CornerDownRight,
   Bookmark,
@@ -80,12 +81,6 @@ const getPostTitle = (text, fallback = 'Timeline post') => {
 const isVideoPost = (post) => (
   post?.fileType === 'video' || /\.(mp4|webm|mov|m4v)$/i.test(post?.fileUrl || '')
 );
-
-const withVideoPreviewTime = (src) => {
-  if (!src) return '';
-  if (src.includes('#')) return src;
-  return `${src}#t=0.12`;
-};
 
 const readVideoAutoplayPreference = () => {
   if (typeof window === 'undefined') return false;
@@ -168,11 +163,36 @@ const shufflePosts = (items = []) => (
     .map(entry => entry.item)
 );
 
+const applyOptimisticPostReaction = (post, emoji, currentUser) => {
+  const currentUserId = getEntityId(currentUser);
+  if (!post || !currentUserId) return post;
+
+  const reactions = Array.isArray(post.reactions) ? post.reactions : [];
+  const existingIndex = reactions.findIndex(reaction => getEntityId(reaction.userId) === currentUserId);
+  const nextReactions = [...reactions];
+
+  if (existingIndex >= 0) {
+    if (nextReactions[existingIndex]?.emoji === emoji) {
+      nextReactions.splice(existingIndex, 1);
+    } else {
+      nextReactions[existingIndex] = { ...nextReactions[existingIndex], emoji };
+    }
+  } else {
+    nextReactions.push({
+      userId: currentUser,
+      emoji,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  return { ...post, reactions: nextReactions };
+};
+
 function ReactionBurst({ emoji, className = '' }) {
   if (!emoji) return null;
   return (
     <span className={`reaction-motion-zone reaction-burst ${className}`} aria-hidden="true">
-      <AnimatedEmojiText text={emoji} />
+      {emoji}
     </span>
   );
 }
@@ -188,7 +208,7 @@ function ReactionPicker({ onSelect, align = 'left' }) {
           className="emoji-pop-button reaction-motion-zone grid h-10 w-10 place-items-center rounded-full text-[22px] hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none dark:hover:bg-slate-800 dark:focus-visible:bg-slate-800"
           aria-label={`React ${emoji}`}
         >
-          <AnimatedEmojiText text={emoji} />
+          {emoji}
         </button>
       ))}
     </div>
@@ -373,22 +393,8 @@ function FeedVideoPlayer({
 }) {
   const [failed, setFailed] = useState(false);
   const videoRef = useRef(null);
-  const previewedRef = useRef(false);
   const resolvedSrc = resolveMediaUrl(src);
-  const previewSrc = withVideoPreviewTime(resolvedSrc);
   const ownVideoKey = videoKey || resolvedSrc;
-
-  const revealPreviewFrame = () => {
-    if (previewedRef.current) return;
-    previewedRef.current = true;
-    const video = videoRef.current;
-    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
-    try {
-      video.currentTime = Math.min(0.12, Math.max(0, video.duration - 0.05));
-    } catch {
-      // Some mobile browsers only reveal the first frame after enough metadata loads.
-    }
-  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -444,16 +450,15 @@ function FeedVideoPlayer({
     <div className={`feed-video-player overflow-hidden rounded-2xl bg-black ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
       <video
         ref={videoRef}
-        src={previewSrc}
+        src={resolvedSrc}
         controls
         defaultMuted={false}
         playsInline
         preload="metadata"
         title={title}
-        onLoadedMetadata={revealPreviewFrame}
-        onLoadedData={revealPreviewFrame}
         onPlay={() => onVideoPlay(ownVideoKey)}
         onError={() => setFailed(true)}
+        controlsList="nodownload"
         className={`feed-video-element block max-h-[32rem] w-full bg-black object-contain ${videoClassName}`}
       />
     </div>
@@ -586,6 +591,7 @@ export default function HomeFeed({
   const mediaItemsRef = useRef([]);
   const reactionPressTimerRef = useRef(null);
   const reactionPickerOpenedByPressRef = useRef(false);
+  const postReactionInFlightRef = useRef(new Set());
   const deepLinkHandledRef = useRef(false);
   const currentUserId = getEntityId(currentUser);
   const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
@@ -920,12 +926,19 @@ export default function HomeFeed({
 
   const reactToPost = async (post, emoji) => {
     const postId = getEntityId(post);
+    if (!postId || postReactionInFlightRef.current.has(postId)) return;
+    postReactionInFlightRef.current.add(postId);
+    const previousPost = post;
     try {
       triggerBurst(setReactionBursts, postId, emoji);
+      updatePost(applyOptimisticPostReaction(post, emoji, currentUser));
       const res = await api.post(`/posts/${postId}/react`, { emoji });
       updatePost(res.data);
     } catch (err) {
+      updatePost(previousPost);
       toast.error(err.response?.data?.msg || 'Reaction failed');
+    } finally {
+      postReactionInFlightRef.current.delete(postId);
     }
   };
 
@@ -1279,19 +1292,50 @@ export default function HomeFeed({
 
   return (
     <section className={`home-feed space-y-4 ${mobileVariant === 'facebook' ? 'home-feed--facebook-mobile' : ''}`}>
-      <button
-        type="button"
-        onClick={() => setMobileComposerOpen(true)}
-        className="home-feed-composer-button flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 md:hidden"
-      >
-        <Avatar user={currentUser} size="h-10 w-10" />
-        <span className="min-w-0 flex-1 rounded-full bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-          What's on your mind?
-        </span>
-        <ImageIcon size={20} className="home-feed-composer-photo text-emerald-600 dark:text-emerald-300" />
-      </button>
-
       {mobileTopSlot && <div className="home-feed-mobile-slot md:hidden">{mobileTopSlot}</div>}
+
+      <div className="home-feed-composer-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileComposerOpen(true)}
+          className="home-feed-composer-button flex w-full items-center gap-3 text-left"
+        >
+          <Avatar user={currentUser} size="h-10 w-10" />
+          <span className="min-w-0 flex-1 rounded-full bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+            Share a campus update
+          </span>
+          <ImageIcon size={20} className="home-feed-composer-photo text-emerald-600 dark:text-emerald-300" />
+        </button>
+        <div className="home-feed-composer-actions mt-3 grid grid-cols-4 gap-1 border-t border-slate-100 pt-2.5 text-xs font-black text-slate-600 dark:border-slate-800 dark:text-slate-300">
+          <button type="button" onClick={() => setMobileComposerOpen(true)} className="home-feed-composer-action">
+            <Video size={17} className="text-rose-500" />
+            Live
+          </button>
+          <label className="home-feed-composer-action cursor-pointer">
+            <ImageIcon size={17} className="text-emerald-600" />
+            Photo
+            <input
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={event => {
+                selectMedia(event.target.files);
+                setMobileComposerOpen(true);
+                event.target.value = '';
+              }}
+            />
+          </label>
+          <button type="button" onClick={() => setMobileComposerOpen(true)} className="home-feed-composer-action">
+            <SmilePlus size={17} className="text-amber-500" />
+            Feeling
+          </button>
+          <button type="button" onClick={() => setMobileComposerOpen(true)} className="home-feed-composer-action">
+            <MapPin size={17} className="text-pink-500" />
+            Check in
+          </button>
+        </div>
+      </div>
 
       <form onSubmit={createPost} className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 md:block">
         <div className="p-4">
@@ -1302,7 +1346,7 @@ export default function HomeFeed({
               value={composerText}
               onChange={event => updateComposerText(event.target.value)}
               rows={3}
-              placeholder={`What's on your mind, ${currentUser?.name?.split(' ')[0] || 'there'}?`}
+              placeholder={`Share something useful, ${currentUser?.name?.split(' ')[0] || 'there'}...`}
               className="min-h-[5rem] min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:bg-slate-950"
             />
           </div>
@@ -1448,7 +1492,7 @@ export default function HomeFeed({
               onChange={event => updateComposerText(event.target.value)}
               rows={4}
               autoFocus
-              placeholder={`What's on your mind, ${currentUser?.name?.split(' ')[0] || 'there'}?`}
+              placeholder={`Share something useful, ${currentUser?.name?.split(' ')[0] || 'there'}...`}
               className="mt-4 min-h-[8rem] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] font-semibold text-slate-900 outline-none focus:border-[#0b57d0] focus:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             />
 
@@ -1578,16 +1622,23 @@ export default function HomeFeed({
 
       {loading ? (
         <>
-          <div className="space-y-3 md:hidden">
-            {[0, 1, 2].map(item => (
-              <div key={item} className="mobile-skeleton-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-3">
-                  <span className="h-11 w-11 rounded-full bg-slate-200 dark:bg-slate-800" />
-                  <span className="h-4 w-40 rounded-full bg-slate-200 dark:bg-slate-800" />
+          <div className="home-feed-mobile-loading space-y-3 md:hidden">
+            {[0, 1].map(item => (
+              <div key={item} className="mobile-skeleton-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="skeleton-block h-3.5 w-32 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  <span className="skeleton-block h-3 w-14 rounded-full bg-slate-200 dark:bg-slate-800" />
                 </div>
-                <div className="mt-4 h-4 w-11/12 rounded-full bg-slate-200 dark:bg-slate-800" />
-                <div className="mt-2 h-4 w-7/12 rounded-full bg-slate-200 dark:bg-slate-800" />
-                <div className="mt-4 aspect-video rounded-2xl bg-slate-200 dark:bg-slate-800" />
+                <div className="mt-4 space-y-2">
+                  <span className="skeleton-block block h-3.5 w-11/12 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  <span className="skeleton-block block h-3.5 w-7/12 rounded-full bg-slate-200 dark:bg-slate-800" />
+                </div>
+                <div className="skeleton-block mt-4 aspect-[4/3] rounded-xl bg-slate-200 dark:bg-slate-800" />
+                <div className="mt-3 grid grid-cols-4 gap-2">
+                  {[0, 1, 2, 3].map(action => (
+                    <span key={action} className="skeleton-block h-8 rounded-lg bg-slate-200 dark:bg-slate-800" />
+                  ))}
+                </div>
               </div>
             ))}
           </div>

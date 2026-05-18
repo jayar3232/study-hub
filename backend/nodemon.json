@@ -13,5 +13,6 @@
     "uploads/**",
     "public/**",
     "scripts/**"
-  ]
+  ],
+  "legacyWatch": true
 }

@@ -65,6 +65,7 @@ import NativeMediaLibrarySheet from './NativeMediaLibrarySheet';
 import { isNativeMediaLibraryAvailable, nativeMediaAssetToFile } from '../utils/nativeMediaLibrary';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import AnimatedEmojiText from './AnimatedEmojiText';
+import { AppLogoMark, AppWordmark } from './AppLogo';
 
 let socket;
 
@@ -3094,11 +3095,13 @@ export default function Messages() {
     return conversations.filter(({ user: conversationUser, lastMessage, unreadCount }) => {
       const conversationId = getEntityId(conversationUser);
       const isMessageRequest = acceptedFriendIds instanceof Set && !acceptedFriendIds.has(conversationId);
+      const isMutedConversation = mutedConversationIds.has(conversationId);
       if (conversationFilter === 'unread' && !unreadCount) return false;
       if (conversationFilter === 'favorites' && !favoriteConversationIds.has(conversationId)) return false;
-      if (conversationFilter === 'muted' && !mutedConversationIds.has(conversationId)) return false;
+      if (conversationFilter === 'muted' && !isMutedConversation) return false;
       if (conversationFilter === 'pinned' && !pinnedConversationIds.has(conversationId)) return false;
       if (conversationFilter === 'requests' && !isMessageRequest) return false;
+      if (conversationFilter === 'primary' && (isMessageRequest || isMutedConversation)) return false;
       if (conversationFilter !== 'requests' && isMessageRequest && conversationFilter === 'all') return true;
       if (!query) return true;
 
@@ -3306,6 +3309,13 @@ export default function Messages() {
     if (!(acceptedFriendIds instanceof Set)) return 0;
     return conversations.filter(conversation => !acceptedFriendIds.has(getEntityId(conversation.user))).length;
   }, [acceptedFriendIds, conversations]);
+  const primaryConversationCount = useMemo(() => {
+    if (!(acceptedFriendIds instanceof Set)) return conversations.length;
+    return conversations.filter(conversation => {
+      const conversationId = getEntityId(conversation.user);
+      return acceptedFriendIds.has(conversationId) && !mutedConversationIds.has(conversationId);
+    }).length;
+  }, [acceptedFriendIds, conversations, mutedConversationIds]);
 
   const conversationFilters = useMemo(() => ([
     { id: 'all', label: 'All', count: conversations.length },
@@ -3315,6 +3325,13 @@ export default function Messages() {
     { id: 'favorites', label: 'Favorites', count: favoriteConversationIds.size },
     { id: 'muted', label: 'Muted', count: mutedConversationIds.size }
   ]), [conversations.length, favoriteConversationIds.size, mutedConversationIds.size, pinnedConversationIds.size, requestConversationCount, unreadTotal]);
+  const mobileConversationFilters = useMemo(() => ([
+    { id: 'all', label: 'All', count: conversations.length },
+    { id: 'primary', label: 'Primary', count: primaryConversationCount },
+    { id: 'muted', label: 'Muted', count: mutedConversationIds.size },
+    { id: 'pinned', label: 'Pinned', count: pinnedConversationIds.size },
+    { id: 'requests', label: 'Requests', count: requestConversationCount }
+  ]), [conversations.length, mutedConversationIds.size, pinnedConversationIds.size, primaryConversationCount, requestConversationCount]);
   const noteTrayItems = useMemo(() => {
     const items = [];
     if (user) {
@@ -4079,7 +4096,35 @@ export default function Messages() {
 
         <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[22rem] md:max-w-none md:flex xl:w-[23rem]`}>
           <div className="border-b border-gray-200/80 p-3 dark:border-gray-800 md:p-4">
-            <div className="mb-3 flex items-center justify-between md:mb-4">
+            <div className="messages-mobile-hero mb-4 flex items-center justify-between md:hidden">
+              <div className="messages-mobile-brand flex min-w-0 items-center gap-2.5">
+                <AppLogoMark size="xs" className="messages-mobile-brand-logo" />
+                <span className="messages-mobile-brand-copy min-w-0">
+                  <AppWordmark size="sm" className="messages-mobile-wordmark" />
+                  <span>Made by Sigma Boyz</span>
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => toast('Open a conversation to start a video call')}
+                  className="messages-mobile-action-button"
+                  aria-label="Start video call"
+                >
+                  <Video size={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(true)}
+                  className="messages-mobile-action-button"
+                  aria-label="Start new message"
+                >
+                  <Edit3 size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
               <div>
                 <h2 className="text-xl font-black tracking-normal text-gray-950 dark:text-white md:text-2xl">Chats</h2>
                 <p className="text-sm text-slate-500 dark:text-gray-400">
@@ -4145,12 +4190,24 @@ export default function Messages() {
               <input
                 value={conversationSearch}
                 onChange={event => setConversationSearch(event.target.value)}
-                placeholder="Search conversations"
-                className="w-full rounded-2xl border border-gray-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
+                placeholder="Search messages"
+                className="messages-search-input w-full rounded-2xl border border-gray-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
               />
             </div>
 
-            <div className="messenger-notes-tray mt-3 -mx-1 hidden gap-3 overflow-x-auto px-1 pb-1 md:flex">
+            <div className="messenger-notes-tray mt-3 -mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="messenger-room-tile group w-[4.75rem] shrink-0 text-center"
+              >
+                <span className="mx-auto grid h-[4.75rem] w-[4.75rem] place-items-center rounded-3xl bg-blue-50 text-[#1877f2] shadow-sm ring-1 ring-blue-100 transition group-hover:bg-blue-100 dark:bg-blue-950/25 dark:text-sky-200 dark:ring-blue-900/40">
+                  <Plus size={26} strokeWidth={2.4} />
+                </span>
+                <span className="mt-1 block text-[11px] font-bold leading-tight text-slate-600 dark:text-gray-300">
+                  Create room
+                </span>
+              </button>
               {noteTrayItems.map(item => {
                 const noteAvatar = renderAvatar(item.person, 'h-12 w-12', 20);
                 return (
@@ -4222,7 +4279,24 @@ export default function Messages() {
               </form>
             )}
 
-            <div className="mobile-fixed-tabbar mobile-fixed-tabbar--chat messages-filter-tabs mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="mobile-fixed-tabbar mobile-fixed-tabbar--chat messages-filter-tabs messages-filter-tabs--mobile mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
+              {mobileConversationFilters.map(filter => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  onClick={() => setConversationFilter(filter.id)}
+                  className={`messages-filter-tab inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-black ring-1 ${
+                    conversationFilter === filter.id
+                      ? 'is-active bg-[#1877f2] text-white ring-[#1877f2]'
+                      : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-white/10 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="messages-filter-tabs messages-filter-tabs--desktop mt-3 hidden gap-2 overflow-x-auto pb-1 md:flex">
               {conversationFilters.map(filter => (
                 <button
                   key={filter.id}
@@ -4304,7 +4378,7 @@ export default function Messages() {
                   <button
                     type="button"
                     onClick={() => setSelectedUser(otherUser)}
-                    className={`mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
+                    className={`conversation-list-row mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
                       isActive
                         ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/50'
                         : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'

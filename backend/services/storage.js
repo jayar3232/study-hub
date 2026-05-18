@@ -11,7 +11,6 @@ const {
 const { createClient } = require('@supabase/supabase-js');
 
 const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
-const allowLocalFallback = String(process.env.STORAGE_LOCAL_FALLBACK || 'true').toLowerCase() !== 'false';
 
 const cleanEnv = (value = '') => String(value || '').trim();
 
@@ -54,6 +53,10 @@ const normalizeProvider = (value = '') => {
 
 const requestedProvider = normalizeProvider(requestedStorageProvider);
 const forceLocalStorage = requestedProvider === 'local';
+const localFallbackSetting = cleanEnv(process.env.STORAGE_LOCAL_FALLBACK).toLowerCase();
+const allowLocalFallback = localFallbackSetting
+  ? !['false', '0', 'no', 'off'].includes(localFallbackSetting)
+  : false;
 const isSupabaseConfigured = Boolean(supabaseUrl && supabaseServiceKey && supabaseBucket);
 const isR2Configured = Boolean(r2Endpoint && r2AccessKeyId && r2SecretAccessKey && r2Bucket);
 

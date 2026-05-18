@@ -3,7 +3,7 @@ import React from 'react';
 const lineWidths = ['w-3/5', 'w-11/12', 'w-4/5'];
 
 export const SkeletonBlock = ({ className = '' }) => (
-  <span className={`block rounded-full bg-slate-200 dark:bg-slate-800 ${className}`} />
+  <span className={`skeleton-block block rounded-full bg-slate-200 dark:bg-slate-800 ${className}`} />
 );
 
 export const SkeletonCard = ({ lines = 3, media = false, compact = false }) => (

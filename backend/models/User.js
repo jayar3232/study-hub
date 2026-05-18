@@ -8,7 +8,11 @@ const UserSchema = new mongoose.Schema({
   campus: { type: String, default: '' },
   bio: { type: String, default: '' },
   avatar: { type: String, default: '' },
+  avatarStoragePath: { type: String, default: '' },
+  avatarStorageProvider: { type: String, enum: ['', 'local', 'supabase', 'r2'], default: '' },
   coverPhoto: { type: String, default: '' },
+  coverPhotoStoragePath: { type: String, default: '' },
+  coverPhotoStorageProvider: { type: String, enum: ['', 'local', 'supabase', 'r2'], default: '' },
   lastSeen: { type: Date, default: null },
   isDeveloper: { type: Boolean, default: false },
   studentVerificationStatus: {

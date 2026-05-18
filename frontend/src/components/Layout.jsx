@@ -161,13 +161,14 @@ export default function Layout({ children }) {
   const showFacebookMobileTabs = false;
   const useFacebookMobileHome = isDashboardRoute;
   const hideMobileBottomNav = mobileChatRouteOpen;
+  const hideMobileTopbar = location.pathname.startsWith('/messages');
 
   const pageMeta = (() => {
     const arenaGameTitle = {
       blocks: 'Swipe Ninja',
       'jet-fighter': 'Jet Fighter',
-      'neon-drift': 'Neon Drift',
-      'space-runner': 'Space Runner',
+      'typing-race': 'Typing Race',
+      'reaction-tap': 'Reaction Tap',
       'focus-flow': 'Focus Flow'
     }[location.pathname.match(/^\/arena\/([^/]+)/)?.[1]];
     if (location.pathname.startsWith('/marketplace') || location.pathname.startsWith('/groups')) return { title: 'Marketplace', helper: 'Campus buy and sell', action: () => navigate('/marketplace') };
@@ -1266,48 +1267,103 @@ export default function Layout({ children }) {
       </aside>
 
       <div className="layout-content-frame flex min-h-0 flex-col md:ml-72 md:pt-16">
-        <header className="mobile-topbar sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#07036f] text-white shadow-lg shadow-[#07036f]/20 dark:bg-[#050505] dark:shadow-black/35 md:hidden">
-          <div className="mobile-topbar-brand min-w-0" title={`${APP_NAME} - ${pageMeta.title}`}>
-            <AppLogoMark size="xs" className="mobile-topbar-logo" />
-            <span className="mobile-topbar-copy min-w-0">
-              <AppWordmark size="sm" className="mobile-topbar-wordmark" />
-              <span className="mobile-topbar-page truncate">{pageMeta.title}</span>
-            </span>
-          </div>
-          <div className="mobile-topbar-actions flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => navigate('/search')}
-              className="mobile-topbar-action grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition active:scale-95"
-              aria-label="Open global search"
-            >
-              <Search size={18} />
-            </button>
-            <NotificationCenterButton compact surface="default" />
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="mobile-topbar-action grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition active:scale-95"
-              aria-label="Open app settings"
-            >
-              <Settings size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="mobile-topbar-action grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-white/10 text-white ring-1 ring-white/15 transition active:scale-95"
-              aria-label="Open menu"
-            >
-              {user && avatarSrc ? (
-                <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" />
-              ) : user ? (
-                <span className="text-sm font-black">{user.name?.charAt(0)?.toUpperCase()}</span>
-              ) : (
-                <Menu size={20} />
-              )}
-            </button>
-          </div>
-        </header>
+        {!hideMobileTopbar && (
+          <header className={`mobile-topbar ${useFacebookMobileHome ? 'mobile-home-topbar' : ''} sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#07036f] text-white shadow-lg shadow-[#07036f]/20 dark:bg-[#050505] dark:shadow-black/35 md:hidden`}>
+            {useFacebookMobileHome ? (
+              <>
+                <div className="mobile-home-topbar-title min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(true)}
+                    className="mobile-home-menu-button"
+                    aria-label="Open menu"
+                  >
+                    <Menu size={24} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/dashboard')}
+                    className="mobile-home-brand-button"
+                    aria-label="Syncrova home"
+                  >
+                    <AppLogoMark size="xs" className="mobile-home-brand-logo" />
+                    <span className="mobile-home-brand-copy">
+                      <AppWordmark size="sm" className="mobile-home-wordmark" />
+                      <span>Made by Sigma Boyz</span>
+                    </span>
+                  </button>
+                </div>
+                <div className="mobile-topbar-actions mobile-home-actions flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/search')}
+                    className="mobile-topbar-action"
+                    aria-label="Open global search"
+                  >
+                    <Search size={21} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/messages')}
+                    className="mobile-topbar-action relative"
+                    aria-label="Open messages"
+                  >
+                    <MessageCircle size={21} />
+                    {unreadCount > 0 && (
+                      <span className="mobile-home-action-badge">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                  <NotificationCenterButton compact surface="default" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mobile-topbar-brand min-w-0" title={`${APP_NAME} - ${pageMeta.title}`}>
+                  <AppLogoMark size="xs" className="mobile-topbar-logo" />
+                  <span className="mobile-topbar-copy min-w-0">
+                    <AppWordmark size="sm" className="mobile-topbar-wordmark" />
+                    <span className="mobile-topbar-page truncate">{pageMeta.title}</span>
+                  </span>
+                </div>
+                <div className="mobile-topbar-actions flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/search')}
+                    className="mobile-topbar-action grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition active:scale-95"
+                    aria-label="Open global search"
+                  >
+                    <Search size={18} />
+                  </button>
+                  <NotificationCenterButton compact surface="default" />
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen(true)}
+                    className="mobile-topbar-action grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition active:scale-95"
+                    aria-label="Open app settings"
+                  >
+                    <Settings size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(true)}
+                    className="mobile-topbar-action grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-white/10 text-white ring-1 ring-white/15 transition active:scale-95"
+                    aria-label="Open menu"
+                  >
+                    {user && avatarSrc ? (
+                      <img src={avatarSrc} alt={user.name} className="h-full w-full object-cover" />
+                    ) : user ? (
+                      <span className="text-sm font-black">{user.name?.charAt(0)?.toUpperCase()}</span>
+                    ) : (
+                      <Menu size={20} />
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </header>
+        )}
 
         {showFacebookMobileTabs && (
           <nav className="mobile-fb-tabbar md:hidden" style={mobileTabStyle} aria-label="Home sections">

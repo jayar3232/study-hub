@@ -8,6 +8,7 @@ const Story = require('../models/Story');
 const Message = require('../models/Message');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification } = require('../services/notifications');
+const { hydrateStoryMedia } = require('../utils/mediaUrls');
 const router = express.Router();
 
 const storyUploadDir = path.join(__dirname, '..', 'uploads', 'stories');
@@ -15,6 +16,8 @@ fs.mkdirSync(storyUploadDir, { recursive: true });
 
 const MAX_STORY_UPLOAD_SIZE = 30 * 1024 * 1024;
 const STORY_DURATION_MS = 24 * 60 * 60 * 1000;
+const STORY_USER_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider course campus isDeveloper';
+const STORY_RELATED_USER_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
 
 const getStoryType = (file) => {
   if (file?.mimetype?.startsWith('image/')) return 'image';
@@ -57,19 +60,19 @@ const uploadStory = (req, res, next) => {
 
 const activeStoryQuery = () => ({ expiresAt: { $gt: new Date() } });
 const populateStory = (query) => query
-  .populate('userId', 'name avatar course campus isDeveloper')
-  .populate('reactions.userId', 'name avatar isDeveloper')
-  .populate('viewers.userId', 'name avatar isDeveloper')
-  .populate('comments.userId', 'name avatar isDeveloper')
+  .populate('userId', STORY_USER_FIELDS)
+  .populate('reactions.userId', STORY_RELATED_USER_FIELDS)
+  .populate('viewers.userId', STORY_RELATED_USER_FIELDS)
+  .populate('comments.userId', STORY_RELATED_USER_FIELDS)
   .populate('comments.messageId');
 
 const populateStoryDocument = async (story) => {
-  await story.populate('userId', 'name avatar course campus isDeveloper');
-  await story.populate('reactions.userId', 'name avatar isDeveloper');
-  await story.populate('viewers.userId', 'name avatar isDeveloper');
-  await story.populate('comments.userId', 'name avatar isDeveloper');
+  await story.populate('userId', STORY_USER_FIELDS);
+  await story.populate('reactions.userId', STORY_RELATED_USER_FIELDS);
+  await story.populate('viewers.userId', STORY_RELATED_USER_FIELDS);
+  await story.populate('comments.userId', STORY_RELATED_USER_FIELDS);
   await story.populate('comments.messageId');
-  return story;
+  return hydrateStoryMedia(story);
 };
 
 const populateMessage = (id) => Message.findById(id)
@@ -116,7 +119,7 @@ router.get('/active', auth, async (req, res) => {
     const stories = await populateStory(Story.find(activeStoryQuery()))
       .sort({ createdAt: -1 })
       .limit(150);
-    res.json(stories);
+    res.json(stories.map(hydrateStoryMedia));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -127,7 +130,7 @@ router.get('/active/grouped', auth, async (req, res) => {
     const stories = await populateStory(Story.find(activeStoryQuery()))
       .sort({ createdAt: -1 })
       .limit(150);
-    const plainStories = stories.map(toPlainStory);
+    const plainStories = stories.map(hydrateStoryMedia);
     res.json({ stories: plainStories, groups: groupStoriesByOwner(plainStories) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -142,7 +145,7 @@ router.get('/user/:userId', auth, async (req, res) => {
 
     const stories = await populateStory(Story.find({ ...activeStoryQuery(), userId: req.params.userId }))
       .sort({ createdAt: -1 });
-    res.json(stories);
+    res.json(stories.map(hydrateStoryMedia));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -156,7 +159,7 @@ router.get('/user/:userId/grouped', auth, async (req, res) => {
 
     const stories = await populateStory(Story.find({ ...activeStoryQuery(), userId: req.params.userId }))
       .sort({ createdAt: -1 });
-    const plainStories = stories.map(toPlainStory);
+    const plainStories = stories.map(hydrateStoryMedia);
     res.json({ stories: plainStories, groups: groupStoriesByOwner(plainStories) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -200,9 +203,9 @@ router.post('/', auth, uploadStory, async (req, res) => {
     });
 
     await story.save();
-    await populateStoryDocument(story);
-    req.app.get('io')?.emit('story-updated', story);
-    res.status(201).json(story);
+    const hydratedStory = await populateStoryDocument(story);
+    req.app.get('io')?.emit('story-updated', hydratedStory);
+    res.status(201).json(hydratedStory);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedFile?.path) {
       await deleteObject(uploadedFile.path, { provider: uploadedFile.provider }).catch(() => {});
@@ -234,7 +237,7 @@ router.post('/:storyId/react', auth, async (req, res) => {
     }
 
     await story.save();
-    await populateStoryDocument(story);
+    const hydratedStory = await populateStoryDocument(story);
 
     if (String(story.userId?._id || story.userId) !== String(req.user)) {
       await createNotification({
@@ -249,8 +252,8 @@ router.post('/:storyId/react', auth, async (req, res) => {
       });
     }
 
-    req.app.get('io')?.emit('story-updated', story);
-    res.json(story);
+    req.app.get('io')?.emit('story-updated', hydratedStory);
+    res.json(hydratedStory);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -273,9 +276,9 @@ router.post('/:storyId/view', auth, async (req, res) => {
     }
 
     await story.save();
-    await populateStoryDocument(story);
-    req.app.get('io')?.emit('story-updated', story);
-    res.json(story);
+    const hydratedStory = await populateStoryDocument(story);
+    req.app.get('io')?.emit('story-updated', hydratedStory);
+    res.json(hydratedStory);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -292,7 +295,7 @@ router.post('/:storyId/comment', auth, async (req, res) => {
 
     const story = await Story.findOne({ _id: req.params.storyId, ...activeStoryQuery() });
     if (!story) return res.status(404).json({ msg: 'Story not found' });
-    await story.populate('userId', 'name avatar isDeveloper');
+    await story.populate('userId', STORY_RELATED_USER_FIELDS);
 
     const ownerId = story.userId?._id || story.userId;
     if (String(ownerId) === String(req.user)) {
@@ -317,13 +320,13 @@ router.post('/:storyId/comment', auth, async (req, res) => {
 
     story.comments.push({ userId: req.user, text, messageId: message._id });
     await story.save();
-    await populateStoryDocument(story);
+    const hydratedStory = await populateStoryDocument(story);
 
     const io = req.app.get('io');
     if (io) {
       io.to(`user_${ownerId}`).emit('receiveMessage', populatedMessage);
       io.to(`user_${req.user}`).emit('receiveMessage', populatedMessage);
-      io.emit('story-updated', story);
+      io.emit('story-updated', hydratedStory);
     }
 
     await createNotification({
@@ -337,7 +340,7 @@ router.post('/:storyId/comment', auth, async (req, res) => {
       meta: { storyId: story._id, messageId: message._id }
     });
 
-    res.status(201).json({ story, message: populatedMessage });
+    res.status(201).json({ story: hydratedStory, message: populatedMessage });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }

@@ -32,8 +32,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.2').trim() || '4.4.2';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 49);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.3').trim() || '4.4.3';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 50);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );

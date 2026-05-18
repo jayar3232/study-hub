@@ -8,7 +8,6 @@ import {
   Building2,
   CalendarDays,
   Camera,
-  CheckCircle,
   Clock3,
   CloudSun,
   Loader2,
@@ -77,6 +76,14 @@ const WEATHER_CODE_LABELS = {
   99: 'Severe storm'
 };
 
+const WELCOME_QUOTES = [
+  'The Lord is my strength and my shield. - Psalm 28:7',
+  'Commit your work to the Lord, and your plans will be established. - Proverbs 16:3',
+  'Be strong and courageous. The Lord your God is with you. - Joshua 1:9',
+  'Let all that you do be done in love. - 1 Corinthians 16:14',
+  'Start with faith, stay disciplined, and do the next right thing.'
+];
+
 const getWeatherLabel = (code) => WEATHER_CODE_LABELS[Number(code)] || 'Weather update';
 
 const formatDateLong = (date) => new Intl.DateTimeFormat(undefined, {
@@ -90,6 +97,11 @@ const formatTimeWithSeconds = (date) => new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit'
+}).format(date);
+
+const formatTimeShort = (date) => new Intl.DateTimeFormat(undefined, {
+  hour: '2-digit',
+  minute: '2-digit'
 }).format(date);
 
 const getGreeting = (date) => {
@@ -308,6 +320,102 @@ function DashboardWelcomeHeader({ user, now, weather, weatherLoading, gameStats,
   );
 }
 
+function WelcomeBackPopup({ user, now, weather, weatherLoading }) {
+  const [minimized, setMinimized] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const closeTimerRef = useRef(null);
+  const quote = useMemo(() => (
+    WELCOME_QUOTES[Math.floor(Math.random() * WELCOME_QUOTES.length)] || WELCOME_QUOTES[0]
+  ), []);
+  const fullName = user?.name || 'Member';
+  const firstName = fullName.split(' ')[0] || fullName;
+  const hasTemperature = Number.isFinite(weather?.temperature);
+  const weatherText = hasTemperature
+    ? `${Math.round(weather.temperature)}°C, ${weather.label}`
+    : weatherLoading ? 'Checking weather' : 'Weather unavailable';
+
+  const minimizeBrief = () => {
+    setClosing(true);
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      setMinimized(true);
+      setClosing(false);
+    }, 180);
+  };
+
+  useEffect(() => {
+    setMinimized(false);
+    setClosing(false);
+    window.clearTimeout(closeTimerRef.current);
+    const timer = window.setTimeout(minimizeBrief, 6500);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
+  if (minimized) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          window.clearTimeout(closeTimerRef.current);
+          setClosing(false);
+          setMinimized(false);
+        }}
+        className="dashboard-welcome-mini"
+        aria-label="Open welcome update"
+      >
+        <span>Daily brief</span>
+        <CloudSun size={16} />
+      </button>
+    );
+  }
+
+  return (
+    <aside className={`dashboard-welcome-popover ${closing ? 'is-exiting' : ''}`} aria-live="polite">
+      <div className="dashboard-welcome-popup-card">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-wide text-[#0b57d0] dark:text-sky-200">
+              {getGreeting(now)}
+            </p>
+            <h2 className="mt-1 truncate text-lg font-black text-slate-950 dark:text-white">
+              Welcome back, {firstName}
+            </h2>
+            <p className="mt-1 text-sm font-semibold leading-5 text-slate-600 dark:text-slate-300">
+              {quote}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={minimizeBrief}
+            className="dashboard-welcome-minimize"
+            aria-label="Minimize welcome update"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="dashboard-welcome-popup-grid">
+          <span>
+            <Clock3 size={15} />
+            {formatTimeShort(now)}
+          </span>
+          <span>
+            <CalendarDays size={15} />
+            {formatDateLong(now)}
+          </span>
+          <span>
+            <CloudSun size={15} />
+            {weatherText}
+          </span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 function DashboardCommandCard({ icon: Icon, label, value, helper, onClick, accent = 'blue' }) {
   const accents = {
     blue: 'bg-blue-50 text-[#0b57d0] ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/50',
@@ -335,100 +443,11 @@ function DashboardCommandCard({ icon: Icon, label, value, helper, onClick, accen
   );
 }
 
-function OnboardingChecklist({ user, groups, conversations, storyRail, friendCount, navigate, openStoryPicker }) {
-  const currentUserId = getEntityId(user);
-  const hasOwnStory = storyRail.some(group => group.ownerId === currentUserId || getEntityId(group.owner) === currentUserId);
-  const items = [
-    {
-      label: 'Add your profile photo',
-      helper: 'Make your account easy to recognize.',
-      done: Boolean(user?.avatar),
-      actionLabel: 'Edit profile',
-      onClick: () => navigate('/profile?tab=about')
-    },
-    {
-      label: 'Add your first friend',
-      helper: 'Start a trusted teammate network.',
-      done: Number(friendCount || 0) > 0,
-      actionLabel: 'Find friends',
-      onClick: () => navigate('/friends')
-    },
-    {
-      label: 'Verify marketplace access',
-      helper: 'Submit campus ID or COR to unlock buy and sell.',
-      done: user?.studentVerificationStatus === 'approved',
-      actionLabel: 'Open marketplace',
-      onClick: () => navigate('/marketplace')
-    },
-    {
-      label: 'Post your first My Day',
-      helper: 'Share a quick story that expires after 24 hours.',
-      done: hasOwnStory,
-      actionLabel: 'Add My Day',
-      onClick: openStoryPicker
-    },
-    {
-      label: 'Send your first chat',
-      helper: 'Try messages, media, voice, or video calls.',
-      done: conversations.length > 0,
-      actionLabel: 'Open chats',
-      onClick: () => navigate('/messages')
-    }
-  ];
-  const completed = items.filter(item => item.done).length;
-  const progress = Math.round((completed / items.length) * 100);
-
-  if (completed === items.length) return null;
-
-  return (
-    <section className="dashboard-onboarding-card rounded-[1.35rem] border border-blue-100 bg-white/92 p-5 shadow-sm shadow-blue-200/45 dark:border-blue-900/45 dark:bg-slate-900/92 dark:shadow-black/25">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-black uppercase text-[#0b57d0] dark:text-sky-300">Getting started</p>
-          <h2 className="mt-1 text-xl font-black text-slate-950 dark:text-white">Finish your Syncrova setup</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">{completed} of {items.length} complete</p>
-        </div>
-        <div className="min-w-[8rem]">
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-            <div className="h-full rounded-full bg-[#0b57d0]" style={{ width: `${progress}%` }} />
-          </div>
-          <p className="mt-1 text-right text-xs font-black text-slate-500 dark:text-slate-400">{progress}%</p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-        {items.map(item => (
-          <button
-            key={item.label}
-            type="button"
-            onClick={item.done ? undefined : item.onClick}
-            className={`min-h-32 rounded-2xl border p-3 text-left transition ${
-              item.done
-                ? 'border-emerald-100 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900/45 dark:bg-emerald-950/25 dark:text-emerald-100'
-                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50/70 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-200 dark:hover:border-blue-900/55'
-            }`}
-          >
-            <span className={`grid h-9 w-9 place-items-center rounded-2xl ${item.done ? 'bg-emerald-600 text-white' : 'bg-white text-[#0b57d0] ring-1 ring-blue-100 dark:bg-slate-900 dark:text-sky-200 dark:ring-blue-900/40'}`}>
-              <CheckCircle size={18} />
-            </span>
-            <span className="mt-3 block text-sm font-black">{item.label}</span>
-            <span className="mt-1 line-clamp-2 text-xs font-semibold opacity-75">{item.done ? 'Completed' : item.helper}</span>
-            {!item.done && <span className="mt-3 inline-flex text-xs font-black text-[#0b57d0] dark:text-sky-300">{item.actionLabel}</span>}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export default function Dashboard() {
   const { user } = useAuth();
   const { onlinePeople, stories, storyGroups: presenceStoryGroups } = usePresence();
   const navigate = useNavigate();
-  const [groups, setGroups] = useState([]);
-  const [tasks, setTasks] = useState([]);
   const [conversations, setConversations] = useState([]);
-  const [friendCount, setFriendCount] = useState(0);
   const [gameData, setGameData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeStory, setActiveStory] = useState(null);
@@ -536,29 +555,20 @@ export default function Dashboard() {
       try {
         const requestConfig = { timeout: DASHBOARD_REQUEST_TIMEOUT_MS };
         const optionalRequestConfig = { timeout: DASHBOARD_OPTIONAL_TIMEOUT_MS };
-        const [dashboardRes, gameRes, friendRes] = await Promise.all([
+        const [dashboardRes, gameRes] = await Promise.all([
           safeDashboardRequest(async () => api.get('/dashboard/summary', requestConfig).catch(async () => {
-            const [groupRes, conversationRes] = await Promise.all([
-              safeDashboardRequest(() => api.get('/groups', optionalRequestConfig), []),
-              safeDashboardRequest(() => api.get('/messages/conversations', optionalRequestConfig), [])
-            ]);
+            const conversationRes = await safeDashboardRequest(() => api.get('/messages/conversations', optionalRequestConfig), []);
             return {
               data: {
-                groups: groupRes.data || [],
-                tasks: [],
                 conversations: conversationRes.data || []
               }
             };
-          }), { groups: [], tasks: [], conversations: [] }),
-          safeDashboardRequest(() => api.get('/games/summary/me', optionalRequestConfig), null),
-          safeDashboardRequest(() => api.get('/friends/summary', optionalRequestConfig), null)
+          }), { conversations: [] }),
+          safeDashboardRequest(() => api.get('/games/summary/me', optionalRequestConfig), null)
         ]);
 
         if (cancelled) return;
-        setGroups(dashboardRes.data?.groups || []);
-        setTasks(dashboardRes.data?.tasks || []);
         setConversations(dashboardRes.data?.conversations || []);
-        setFriendCount(friendRes.data?.counts?.friends || 0);
         setGameData(gameRes.data);
         window.dispatchEvent(new Event('marketplaceUpdated'));
       } catch (err) {
@@ -574,9 +584,17 @@ export default function Dashboard() {
     };
   }, []);
 
-  const storyRail = useMemo(() => (
-    (presenceStoryGroups?.length ? presenceStoryGroups : groupActiveStoriesByOwner(stories)).slice(0, 12)
-  ), [presenceStoryGroups, stories]);
+  const storyRail = useMemo(() => {
+    const groupsSource = presenceStoryGroups?.length ? presenceStoryGroups : groupActiveStoriesByOwner(stories);
+    return [...groupsSource]
+      .sort((a, b) => {
+        const aIsMine = a.ownerId === currentUserId || getEntityId(a.owner) === currentUserId;
+        const bIsMine = b.ownerId === currentUserId || getEntityId(b.owner) === currentUserId;
+        if (aIsMine === bIsMine) return 0;
+        return aIsMine ? -1 : 1;
+      })
+      .slice(0, 12);
+  }, [currentUserId, presenceStoryGroups, stories]);
 
   const activeStoryList = useMemo(() => (
     getStoryListForActiveStory(storyRail, activeStory)
@@ -609,7 +627,6 @@ export default function Dashboard() {
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/react`, { emoji });
       syncActiveStory(res.data);
-      toast.success('Reaction sent');
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Reaction failed');
     }
@@ -788,7 +805,7 @@ export default function Dashboard() {
             className="inline-flex items-center gap-2 rounded-xl bg-[#07036f] px-3 py-2 text-xs font-black text-white hover:bg-[#05004f]"
           >
             <PlusCircle size={15} />
-            My Day
+            Add stories
           </button>
         </div>
       )}
@@ -797,7 +814,7 @@ export default function Dashboard() {
         <div className="dashboard-mobile-story-heading">
           <p>Stories</p>
           <button type="button" onClick={openStoryPicker} disabled={storyUploading}>
-            {storyUploading ? 'Posting...' : 'Add My Day'}
+            {storyUploading ? 'Posting...' : 'Add stories'}
           </button>
         </div>
       )}
@@ -821,7 +838,7 @@ export default function Dashboard() {
           <span className="dashboard-create-story-icon mb-auto grid h-10 w-10 place-items-center rounded-full bg-[#0b57d0] text-white">
             {storyUploading ? <Loader2 size={19} className="animate-spin" /> : <Camera size={19} />}
           </span>
-          <span className="dashboard-create-story-label text-sm font-black leading-tight">{mobile ? 'Create story' : 'Create My Day'}</span>
+          <span className="dashboard-create-story-label text-sm font-black leading-tight">{mobile ? 'Add stories' : 'Create story'}</span>
         </button>
 
         {storyRail.map(group => {
@@ -883,72 +900,22 @@ export default function Dashboard() {
 
   return (
     <div className="mobile-page dashboard-page mx-auto max-w-7xl px-0 py-1 sm:px-6 sm:py-4 lg:px-8">
+      <WelcomeBackPopup
+        user={user}
+        now={now}
+        weather={weather}
+        weatherLoading={weatherLoading}
+      />
+
       <div className="dashboard-facebook-mobile md:hidden">
         <HomeFeed
           currentUser={user}
           mobileVariant="facebook"
           mobileTopSlot={renderStoryPanel({ mobile: true })}
-          mobileOverviewSlot={(
-            <div className="dashboard-mobile-overview-stack">
-              <DashboardWelcomeHeader
-                user={user}
-                now={now}
-                weather={weather}
-                weatherLoading={weatherLoading}
-                gameStats={gameStats}
-                onProfileClick={() => navigate('/profile')}
-              />
-              <OnboardingChecklist
-                user={user}
-                groups={groups}
-                conversations={conversations}
-                storyRail={storyRail}
-                friendCount={friendCount}
-                navigate={navigate}
-                openStoryPicker={openStoryPicker}
-              />
-              <section className="dashboard-mobile-status-row grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => navigate('/marketplace')} className="dashboard-mobile-status-card">
-                  <Store size={18} />
-                  <span>{user?.isDeveloper || user?.studentVerificationStatus === 'approved' ? 'OK' : 'ID'}</span>
-                  <small>Market</small>
-                </button>
-                <button type="button" onClick={() => navigate('/messages')} className="dashboard-mobile-status-card">
-                  <MessageCircle size={18} />
-                  <span>{unreadMessages}</span>
-                  <small>Chats</small>
-                </button>
-                <button type="button" onClick={() => navigate('/arena')} className="dashboard-mobile-status-card">
-                  <Trophy size={18} />
-                  <span>{compactNumber(gameStats?.highScore || 0)}</span>
-                  <small>Score</small>
-                </button>
-              </section>
-            </div>
-          )}
         />
       </div>
 
       <div className="hidden space-y-4 md:block">
-        <DashboardWelcomeHeader
-          user={user}
-          now={now}
-          weather={weather}
-          weatherLoading={weatherLoading}
-          gameStats={gameStats}
-          onProfileClick={() => navigate('/profile')}
-        />
-
-        <OnboardingChecklist
-          user={user}
-          groups={groups}
-          conversations={conversations}
-          storyRail={storyRail}
-          friendCount={friendCount}
-          navigate={navigate}
-          openStoryPicker={openStoryPicker}
-        />
-
         <section className="dashboard-command-strip grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <DashboardCommandCard
             icon={Store}
@@ -976,7 +943,7 @@ export default function Dashboard() {
           />
           <DashboardCommandCard
             icon={PlayCircle}
-            label="My Day"
+            label="Stories"
             value={storyRail.length}
             helper="Active story groups"
             onClick={() => navigate('/profile')}
@@ -1043,7 +1010,7 @@ export default function Dashboard() {
         initialFilter="all"
         maxSelection={MAX_STORY_MEDIA_SELECTION}
         existingCount={0}
-        title="Create My Day"
+        title="Create story"
         confirmLabel="Add"
         onClose={() => setStoryMediaLibraryOpen(false)}
         onSelect={handleNativeStoryMediaSelect}
@@ -1051,15 +1018,15 @@ export default function Dashboard() {
 
       {storyDraft && typeof document !== 'undefined' && createPortal(
         <div className="story-draft-overlay" onClick={closeStoryDraft}>
-          <section className="story-draft-sheet" onClick={event => event.stopPropagation()} aria-label="Create My Day">
+          <section className="story-draft-sheet" onClick={event => event.stopPropagation()} aria-label="Create story">
             <header className="flex items-center justify-between gap-3 border-b border-slate-100 p-4">
               <div className="min-w-0">
-                <p className="text-base font-black text-slate-950">Create My Day</p>
+                <p className="text-base font-black text-slate-950">Create story</p>
                 <p className="text-xs font-semibold text-slate-500">
                   {storyDraftItems.length}/{MAX_STORY_MEDIA_SELECTION} selected - preview before posting
                 </p>
               </div>
-              <button type="button" onClick={closeStoryDraft} className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600" aria-label="Close My Day editor">
+              <button type="button" onClick={closeStoryDraft} className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600" aria-label="Close story editor">
                 <X size={18} />
               </button>
             </header>
@@ -1070,7 +1037,7 @@ export default function Dashboard() {
                 ) : (
                   <img
                     src={activeStoryDraftItem?.previewUrl}
-                    alt="My Day preview"
+                    alt="Story preview"
                     className="h-full max-h-[70vh] w-full rounded-2xl bg-black object-contain transition"
                     style={getMediaEditPreviewStyle(activeStoryDraftItem?.edit)}
                   />
@@ -1183,7 +1150,7 @@ export default function Dashboard() {
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#07036f] px-4 py-3 text-sm font-black text-white disabled:opacity-60"
                 >
                   {storyUploading ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
-                  {storyDraftItems.length > 1 ? `Post ${storyDraftItems.length} My Day updates` : 'Post My Day'}
+                  {storyDraftItems.length > 1 ? `Post ${storyDraftItems.length} stories` : 'Post story'}
                 </button>
               </div>
             </div>

@@ -6,7 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
-const { isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const Group = require('../models/Group');
 const Task = require('../models/Task');
 const GameSession = require('../models/GameSession');
@@ -16,7 +16,13 @@ const { RANK_TIERS, buildLeaderboard, buildRankStats } = require('../services/ra
 const { buildGameStats } = require('../services/gameRanks');
 const { syncDeveloperAccess } = require('../services/roles');
 const { normalizeCampus, normalizeCourse } = require('../utils/academics');
+const { hydratePostMedia, serializeMediaUser } = require('../utils/mediaUrls');
 const router = express.Router();
+
+const USER_MEDIA_FIELDS = 'avatar avatarStoragePath avatarStorageProvider coverPhoto coverPhotoStoragePath coverPhotoStorageProvider';
+const USER_PUBLIC_SELECT = `name email course campus ${USER_MEDIA_FIELDS} lastSeen isDeveloper studentVerificationStatus studentVerifiedAt`;
+const POST_USER_MEDIA_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
+const POST_AUTHOR_FIELDS = `${POST_USER_MEDIA_FIELDS} studentVerificationStatus`;
 
 const avatarUploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
 const coverUploadDir = path.join(__dirname, '..', 'uploads', 'covers');
@@ -25,23 +31,26 @@ fs.mkdirSync(coverUploadDir, { recursive: true });
 
 const isBcryptHash = (value = '') => /^\$2[aby]\$\d{2}\$/.test(value);
 
-const toClientUser = (user) => ({
-  _id: user?._id,
-  id: user?._id,
-  name: user?.name,
-  email: user?.email,
-  course: normalizeCourse(user?.course),
-  campus: normalizeCampus(user?.campus),
-  bio: user?.bio,
-  avatar: user?.avatar,
-  coverPhoto: user?.coverPhoto,
-  lastSeen: user?.lastSeen,
-  isDeveloper: user?.isDeveloper,
-  studentVerificationStatus: user?.studentVerificationStatus || 'not_submitted',
-  studentVerifiedAt: user?.studentVerifiedAt || null,
-  studentVerificationReviewedAt: user?.studentVerificationReviewedAt || null,
-  createdAt: user?.createdAt
-});
+const toClientUser = (user) => {
+  const mediaUser = serializeMediaUser(user);
+  return {
+    _id: mediaUser?._id,
+    id: mediaUser?._id,
+    name: mediaUser?.name,
+    email: mediaUser?.email,
+    course: normalizeCourse(mediaUser?.course),
+    campus: normalizeCampus(mediaUser?.campus),
+    bio: mediaUser?.bio,
+    avatar: mediaUser?.avatar,
+    coverPhoto: mediaUser?.coverPhoto,
+    lastSeen: mediaUser?.lastSeen,
+    isDeveloper: mediaUser?.isDeveloper,
+    studentVerificationStatus: mediaUser?.studentVerificationStatus || 'not_submitted',
+    studentVerifiedAt: mediaUser?.studentVerifiedAt || null,
+    studentVerificationReviewedAt: mediaUser?.studentVerificationReviewedAt || null,
+    createdAt: mediaUser?.createdAt
+  };
+};
 
 const getFriendshipState = (friendship, currentUserId) => {
   if (!friendship) return { status: 'none' };
@@ -228,7 +237,11 @@ router.post('/avatar', auth, uploadAvatar, async (req, res) => {
         })
       : null;
     const avatarUrl = uploadedAvatar?.url || `/uploads/avatars/${req.file.filename}`;
-    const user = await User.findByIdAndUpdate(req.user, { avatar: avatarUrl }, { new: true }).select('-password');
+    const user = await User.findByIdAndUpdate(req.user, {
+      avatar: avatarUrl,
+      avatarStoragePath: uploadedAvatar?.path || (isCloudStorageEnabled ? '' : `avatars/${req.file.filename}`),
+      avatarStorageProvider: uploadedAvatar?.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
+    }, { new: true }).select('-password');
     res.json({ avatar: avatarUrl, user: toClientUser(user) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -251,7 +264,11 @@ router.post('/cover-photo', auth, uploadCoverPhoto, async (req, res) => {
         })
       : null;
     const coverPhotoUrl = uploadedCover?.url || `/uploads/covers/${req.file.filename}`;
-    const user = await User.findByIdAndUpdate(req.user, { coverPhoto: coverPhotoUrl }, { new: true }).select('-password');
+    const user = await User.findByIdAndUpdate(req.user, {
+      coverPhoto: coverPhotoUrl,
+      coverPhotoStoragePath: uploadedCover?.path || (isCloudStorageEnabled ? '' : `covers/${req.file.filename}`),
+      coverPhotoStorageProvider: uploadedCover?.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
+    }, { new: true }).select('-password');
     res.json({ coverPhoto: coverPhotoUrl, user: toClientUser(user) });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -268,7 +285,7 @@ router.get('/search', auth, async (req, res) => {
         { name: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } }
       ]
-    }).select('name email course campus avatar coverPhoto lastSeen isDeveloper studentVerificationStatus studentVerifiedAt').limit(10);
+    }).select(USER_PUBLIC_SELECT).limit(10);
     res.json(users.map(toClientUser));
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -286,7 +303,7 @@ router.get('/rankings/me', auth, async (req, res) => {
     ];
 
     const [networkUsers, networkTasks, myTasks] = await Promise.all([
-      User.find({ _id: { $in: memberIds } }).select('name email course campus avatar coverPhoto isDeveloper').lean(),
+      User.find({ _id: { $in: memberIds } }).select(`name email course campus ${USER_MEDIA_FIELDS} isDeveloper`).lean(),
       Task.find({ assignedTo: { $in: memberIds } })
         .select('assignedTo status priority approvalStatus completedAt dueDate')
         .lean(),
@@ -317,7 +334,7 @@ router.get('/:id/public', auth, async (req, res) => {
     }
 
     const profile = await User.findById(req.params.id)
-      .select('name email course campus bio avatar coverPhoto lastSeen isDeveloper createdAt studentVerificationStatus studentVerifiedAt studentVerificationReviewedAt');
+      .select(`name email course campus bio ${USER_MEDIA_FIELDS} lastSeen isDeveloper createdAt studentVerificationStatus studentVerifiedAt studentVerificationReviewedAt`);
 
     if (!profile) return res.status(404).json({ msg: 'User not found' });
 
@@ -339,7 +356,7 @@ router.get('/:id/public', auth, async (req, res) => {
       getAcceptedFriendIds(profile._id)
     ]);
 
-    const profileObject = profile.toObject();
+    const profileObject = serializeMediaUser(profile.toObject());
     const profileFriendIdSet = new Set(profileFriendIds.map(String));
     const mutualFriendIds = viewerFriendIds
       .map(String)
@@ -352,16 +369,16 @@ router.get('/:id/public', auth, async (req, res) => {
         scope: 'timeline',
         privacy: { $in: visiblePostPrivacy }
       })
-        .populate('userId', 'name avatar isDeveloper studentVerificationStatus')
-        .populate('comments.userId', 'name avatar isDeveloper')
-        .populate('comments.reactions.userId', 'name avatar isDeveloper')
-        .populate('reactions.userId', 'name avatar isDeveloper')
-        .populate('taggedUsers', 'name avatar isDeveloper')
+        .populate('userId', POST_AUTHOR_FIELDS)
+        .populate('comments.userId', POST_USER_MEDIA_FIELDS)
+        .populate('comments.reactions.userId', POST_USER_MEDIA_FIELDS)
+        .populate('reactions.userId', POST_USER_MEDIA_FIELDS)
+        .populate('taggedUsers', POST_USER_MEDIA_FIELDS)
         .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 })
         .limit(12)
         .lean(),
       User.find({ _id: { $in: mutualFriendIds.slice(0, 12) } })
-        .select('name email course campus avatar coverPhoto lastSeen isDeveloper createdAt')
+        .select(`name email course campus ${USER_MEDIA_FIELDS} lastSeen isDeveloper createdAt`)
         .lean()
     ]);
 
@@ -376,7 +393,7 @@ router.get('/:id/public', auth, async (req, res) => {
       friendCount: profileFriendIds.length,
       mutualFriendCount: mutualFriendIds.length,
       mutualFriends: mutualFriends.map(toClientUser),
-      posts,
+      posts: posts.map(hydratePostMedia),
       rankStats: buildRankStats(rankTasks, profile._id),
       gameStats: buildGameStats(gameSessions),
       friendship: isSelf ? { status: 'self' } : getFriendshipState(friendship, req.user)

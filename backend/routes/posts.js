@@ -11,9 +11,12 @@ const { createNotification, createNotifications } = require('../services/notific
 const { createGroupActivity } = require('../services/activity');
 const { getMentionedMemberIds } = require('../services/mentions');
 const { cloudStorageProvider, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { hydratePostMedia } = require('../utils/mediaUrls');
 const router = express.Router();
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const USER_MEDIA_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
+const POST_AUTHOR_FIELDS = `${USER_MEDIA_FIELDS} studentVerificationStatus`;
 const postUploadDir = path.join(__dirname, '..', 'uploads', 'posts');
 fs.mkdirSync(postUploadDir, { recursive: true });
 
@@ -155,12 +158,12 @@ const ensurePostViewer = async (post, userId) => {
 
 const populatePost = async (post) => {
   await post.populate('groupId', 'name subject description');
-  await post.populate('userId', 'name avatar isDeveloper studentVerificationStatus');
-  await post.populate('comments.userId', 'name avatar isDeveloper');
-  await post.populate('comments.reactions.userId', 'name avatar isDeveloper');
-  await post.populate('reactions.userId', 'name avatar isDeveloper');
-  await post.populate('taggedUsers', 'name avatar isDeveloper');
-  return post;
+  await post.populate('userId', POST_AUTHOR_FIELDS);
+  await post.populate('comments.userId', USER_MEDIA_FIELDS);
+  await post.populate('comments.reactions.userId', USER_MEDIA_FIELDS);
+  await post.populate('reactions.userId', USER_MEDIA_FIELDS);
+  await post.populate('taggedUsers', USER_MEDIA_FIELDS);
+  return hydratePostMedia(post);
 };
 
 router.post('/upload', auth, uploadPostMedia, async (req, res) => {
@@ -206,16 +209,16 @@ router.get('/home', auth, async (req, res) => {
         { privacy: 'friends', userId: { $in: friendIds } }
       ]
     })
-      .populate('userId', 'name avatar isDeveloper studentVerificationStatus')
-      .populate('comments.userId', 'name avatar isDeveloper')
-      .populate('comments.reactions.userId', 'name avatar isDeveloper')
-      .populate('reactions.userId', 'name avatar isDeveloper')
-      .populate('taggedUsers', 'name avatar isDeveloper')
+      .populate('userId', POST_AUTHOR_FIELDS)
+      .populate('comments.userId', USER_MEDIA_FIELDS)
+      .populate('comments.reactions.userId', USER_MEDIA_FIELDS)
+      .populate('reactions.userId', USER_MEDIA_FIELDS)
+      .populate('taggedUsers', USER_MEDIA_FIELDS)
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
 
-    res.json(posts);
+    res.json(posts.map(hydratePostMedia));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -274,16 +277,16 @@ router.get('/feed', auth, async (req, res) => {
 
     const posts = await Post.find({ groupId: { $in: groupIds } })
       .populate('groupId', 'name subject description')
-      .populate('userId', 'name avatar isDeveloper studentVerificationStatus')
-      .populate('comments.userId', 'name avatar isDeveloper')
-      .populate('comments.reactions.userId', 'name avatar isDeveloper')
-      .populate('reactions.userId', 'name avatar isDeveloper')
-      .populate('taggedUsers', 'name avatar isDeveloper')
+      .populate('userId', POST_AUTHOR_FIELDS)
+      .populate('comments.userId', USER_MEDIA_FIELDS)
+      .populate('comments.reactions.userId', USER_MEDIA_FIELDS)
+      .populate('reactions.userId', USER_MEDIA_FIELDS)
+      .populate('taggedUsers', USER_MEDIA_FIELDS)
       .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 })
       .limit(limit)
       .lean();
 
-    res.json(posts);
+    res.json(posts.map(hydratePostMedia));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -297,15 +300,15 @@ router.get('/group/:groupId', auth, async (req, res) => {
 
     const posts = await Post.find({ groupId: req.params.groupId })
       .populate('groupId', 'name subject description')
-      .populate('userId', 'name avatar isDeveloper studentVerificationStatus')
-      .populate('comments.userId', 'name avatar isDeveloper')
-      .populate('comments.reactions.userId', 'name avatar isDeveloper')
-      .populate('reactions.userId', 'name avatar isDeveloper')
-      .populate('taggedUsers', 'name avatar isDeveloper')
+      .populate('userId', POST_AUTHOR_FIELDS)
+      .populate('comments.userId', USER_MEDIA_FIELDS)
+      .populate('comments.reactions.userId', USER_MEDIA_FIELDS)
+      .populate('reactions.userId', USER_MEDIA_FIELDS)
+      .populate('taggedUsers', USER_MEDIA_FIELDS)
       .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 })
       .limit(limit)
       .lean();
-    res.json(posts);
+    res.json(posts.map(hydratePostMedia));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
