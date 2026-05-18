@@ -24,10 +24,6 @@ const main = async () => {
     return;
   }
 
-  if (status.provider === 'supabase' && !status.serviceRoleKeyLooksLikeJwt) {
-    console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY does not look like the long Supabase service_role JWT key.');
-  }
-
   if (!isCloudStorageEnabled) {
     console.error('Cloud storage is not enabled.');
     process.exitCode = 1;
@@ -60,9 +56,6 @@ const main = async () => {
     }
   } catch (err) {
     console.error('Storage check failed:', err.message || err);
-    if (/Invalid Compact JWS/i.test(err.message || '')) {
-      console.error('Fix: use the Supabase service_role API key. Do not use the JWT Secret, anon key, or publishable key here.');
-    }
     process.exitCode = 1;
     return;
   } finally {

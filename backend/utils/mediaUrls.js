@@ -1,4 +1,4 @@
-const { getObjectUrl } = require('../services/storage');
+const { getObjectUrl, getSupabaseObjectPathFromUrl } = require('../services/storage');
 
 const cloneObject = (value) => {
   if (!value) return value;
@@ -10,6 +10,8 @@ const resolveStoredMediaUrl = ({ url = '', storagePath = '', storageProvider = '
   const provider = String(storageProvider || '').trim();
   const path = String(storagePath || '').trim();
   if (provider && path) return getObjectUrl(provider, path) || url || '';
+  const legacySupabasePath = getSupabaseObjectPathFromUrl(url);
+  if (legacySupabasePath) return getObjectUrl('r2', legacySupabasePath) || url || '';
   return url || '';
 };
 

@@ -8,14 +8,11 @@ const {
   PutObjectCommand,
   S3Client
 } = require('@aws-sdk/client-s3');
-const { createClient } = require('@supabase/supabase-js');
 
 const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
 
 const cleanEnv = (value = '') => String(value || '').trim();
 
-const supabaseUrl = cleanEnv(process.env.SUPABASE_URL);
-const supabaseServiceKey = cleanEnv(process.env.SUPABASE_SERVICE_ROLE_KEY);
 const supabaseBucket = cleanEnv(
   process.env.SUPABASE_BUCKET
   || process.env.SUPABASE_STORAGE_BUCKET
@@ -57,35 +54,18 @@ const localFallbackSetting = cleanEnv(process.env.STORAGE_LOCAL_FALLBACK).toLowe
 const allowLocalFallback = localFallbackSetting
   ? !['false', '0', 'no', 'off'].includes(localFallbackSetting)
   : false;
-const isSupabaseConfigured = Boolean(supabaseUrl && supabaseServiceKey && supabaseBucket);
 const isR2Configured = Boolean(r2Endpoint && r2AccessKeyId && r2SecretAccessKey && r2Bucket);
 
 const getActiveCloudProvider = () => {
   if (forceLocalStorage) return 'local';
   if (requestedProvider === 'r2') return isR2Configured ? 'r2' : 'local';
-  if (requestedProvider === 'supabase') return isSupabaseConfigured ? 'supabase' : 'local';
+  if (requestedProvider === 'supabase') return isR2Configured ? 'r2' : 'local';
   if (isR2Configured) return 'r2';
-  if (isSupabaseConfigured) return 'supabase';
   return 'local';
 };
 
 const cloudStorageProvider = getActiveCloudProvider();
 const isCloudStorageEnabled = cloudStorageProvider !== 'local';
-
-const serviceKeyLooksLikeJwt = Boolean(
-  supabaseServiceKey
-  && supabaseServiceKey.startsWith('eyJ')
-  && (supabaseServiceKey.match(/\./g) || []).length === 2
-);
-
-const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    })
-  : null;
 
 const r2 = isR2Configured
   ? new S3Client({
@@ -163,6 +143,33 @@ const encodeObjectPath = (objectPath = '') => cleanObjectPath(objectPath)
   .map(part => encodeURIComponent(part))
   .join('/');
 
+const getSupabaseObjectPathFromUrl = (url = '') => {
+  const raw = cleanEnv(url);
+  if (!raw) return '';
+
+  try {
+    const pathname = new URL(raw).pathname;
+    const markers = supabaseBucket
+      ? [
+          `/storage/v1/object/public/${supabaseBucket}/`,
+          `/storage/v1/object/sign/${supabaseBucket}/`,
+          `/storage/v1/object/${supabaseBucket}/`
+        ]
+      : [
+          '/storage/v1/object/public/',
+          '/storage/v1/object/sign/',
+          '/storage/v1/object/'
+        ];
+    const marker = markers.find(value => pathname.includes(value));
+    if (!marker) return '';
+    let objectPath = pathname.slice(pathname.indexOf(marker) + marker.length);
+    if (!supabaseBucket) objectPath = objectPath.split('/').slice(1).join('/');
+    return cleanObjectPath(decodeURIComponent(objectPath));
+  } catch {
+    return '';
+  }
+};
+
 const streamToBuffer = async (body) => {
   if (!body) return Buffer.alloc(0);
   if (Buffer.isBuffer(body)) return body;
@@ -202,14 +209,9 @@ const getObjectUrl = (provider, objectPath) => {
   const storedPath = cleanObjectPath(objectPath);
   if (!storedPath) return '';
 
-  if (storageProvider === 'r2') {
+  if (storageProvider === 'r2' || storageProvider === 'supabase') {
     const encodedPath = encodeObjectPath(storedPath);
     return r2PublicBaseUrl ? `${r2PublicBaseUrl}/${encodedPath}` : `/uploads/r2/${encodedPath}`;
-  }
-
-  if (storageProvider === 'supabase' && supabase) {
-    const { data } = supabase.storage.from(supabaseBucket).getPublicUrl(storedPath);
-    return data?.publicUrl || '';
   }
 
   if (storageProvider === 'local') {
@@ -221,13 +223,9 @@ const getObjectUrl = (provider, objectPath) => {
 
 const ensureCloudProvider = (provider) => {
   const storageProvider = normalizeProvider(provider || cloudStorageProvider);
-  if (storageProvider === 'r2') {
+  if (storageProvider === 'r2' || storageProvider === 'supabase') {
     if (!isR2Configured || !r2) throw new Error('Cloudflare R2 storage is not configured');
     return 'r2';
-  }
-  if (storageProvider === 'supabase') {
-    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase storage is not configured');
-    return 'supabase';
   }
   throw new Error('Cloud storage is not configured');
 };
@@ -253,24 +251,7 @@ const uploadObjectBuffer = async ({ buffer, objectPath, mimeType, provider = clo
     };
   }
 
-  const { data, error } = await supabase.storage
-    .from(supabaseBucket)
-    .upload(storedPath, buffer, {
-      contentType: mimeType || 'application/octet-stream',
-      cacheControl: '3600',
-      upsert: false
-    });
-
-  if (error) {
-    throw new Error(error.message || 'Cloud upload failed');
-  }
-
-  const uploadedPath = data?.path || storedPath;
-  return {
-    path: uploadedPath,
-    provider: 'supabase',
-    url: getObjectUrl('supabase', uploadedPath)
-  };
+  throw new Error('Cloudflare R2 storage is not configured');
 };
 
 const uploadBuffer = async ({ buffer, originalName, mimeType, folder }) => {
@@ -334,10 +315,7 @@ const deleteObject = async (objectPath, options = {}) => {
     return;
   }
 
-  const { error } = await supabase.storage.from(supabaseBucket).remove([storedPath]);
-  if (error) {
-    throw new Error(error.message || 'Cloud delete failed');
-  }
+  throw new Error('Cloudflare R2 storage is not configured');
 };
 
 const readObjectBuffer = async (objectPath, options = {}) => {
@@ -352,15 +330,13 @@ const readObjectBuffer = async (objectPath, options = {}) => {
     return fs.promises.readFile(targetPath);
   }
 
-  ensureCloudProvider(storageProvider);
-  if (storageProvider === 'r2') {
+  const cloudProvider = ensureCloudProvider(storageProvider);
+  if (cloudProvider === 'r2') {
     const result = await r2.send(new GetObjectCommand({ Bucket: r2Bucket, Key: storedPath }));
     return streamToBuffer(result.Body);
   }
 
-  const { data, error } = await supabase.storage.from(supabaseBucket).download(storedPath);
-  if (error) throw new Error(error.message || 'Cloud download failed');
-  return Buffer.from(await data.arrayBuffer());
+  throw new Error('Cloudflare R2 storage is not configured');
 };
 
 const setObjectResponseHeaders = (res, result = {}) => {
@@ -430,23 +406,12 @@ const getMissingConfig = () => {
     ].filter(Boolean);
   }
 
-  if (requestedProvider === 'supabase') {
-    return [
-      !supabaseUrl && 'SUPABASE_URL',
-      !supabaseServiceKey && 'SUPABASE_SERVICE_ROLE_KEY',
-      !supabaseBucket && 'SUPABASE_BUCKET'
-    ].filter(Boolean);
-  }
-
   if (!isCloudStorageEnabled) {
     return [
       !r2Endpoint && 'R2_ENDPOINT or R2_ACCOUNT_ID',
       !r2AccessKeyId && 'R2_ACCESS_KEY_ID',
       !r2SecretAccessKey && 'R2_SECRET_ACCESS_KEY',
-      !r2Bucket && 'R2_BUCKET_NAME',
-      !supabaseUrl && 'SUPABASE_URL',
-      !supabaseServiceKey && 'SUPABASE_SERVICE_ROLE_KEY',
-      !supabaseBucket && 'SUPABASE_BUCKET'
+      !r2Bucket && 'R2_BUCKET_NAME'
     ].filter(Boolean);
   }
 
@@ -459,16 +424,13 @@ const getStorageConfigStatus = () => ({
   forceLocalStorage,
   enabled: isCloudStorageEnabled,
   localFallbackEnabled: allowLocalFallback,
-  bucket: cloudStorageProvider === 'r2' ? r2Bucket : supabaseBucket,
+  bucket: cloudStorageProvider === 'r2' ? r2Bucket : '',
   r2Bucket,
   r2EndpointConfigured: Boolean(r2Endpoint),
   r2AccessKeyConfigured: Boolean(r2AccessKeyId),
   r2SecretAccessKeyConfigured: Boolean(r2SecretAccessKey),
   r2PublicUrlConfigured: Boolean(r2PublicBaseUrl),
-  supabaseBucket,
-  urlConfigured: Boolean(supabaseUrl),
-  serviceRoleKeyConfigured: Boolean(supabaseServiceKey),
-  serviceRoleKeyLooksLikeJwt: serviceKeyLooksLikeJwt,
+  legacySupabaseBucketConfigured: Boolean(supabaseBucket),
   status: isCloudStorageEnabled
     ? `${cloudStorageProvider} cloud enabled`
     : 'local uploads',
@@ -479,6 +441,7 @@ module.exports = {
   cloudStorageProvider,
   deleteObject,
   getObjectUrl,
+  getSupabaseObjectPathFromUrl,
   getStorageConfigStatus,
   isCloudStorageEnabled,
   readObjectBuffer,

@@ -32,8 +32,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.3').trim() || '4.4.3';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 50);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.4').trim() || '4.4.4';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 51);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -123,7 +123,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.2.2 developer profile glow is brighter and blue-only across the app|LiveKit call signaling now waits for the socket to be registered before call events are sent|APK update metadata is bumped so older builds can download this version inside Syncrova'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.4 routes media uploads through Cloudflare R2 only|Legacy Supabase media references are resolved through the R2 proxy|APK update metadata is bumped so older builds can download this version inside Syncrova'
   });
 });
 
