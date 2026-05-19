@@ -42,6 +42,37 @@ const formatNotificationTime = (value) => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+const formatNotificationDateTime = (value) => {
+  if (!value) return 'Just now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Just now';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+
+const getNotificationActionPath = (notification = {}) => {
+  const source = notification || {};
+  const href = String(source.href || source.meta?.href || source.meta?.path || '').trim();
+  if (!href || !href.startsWith('/') || href.startsWith('//')) return '';
+  return href;
+};
+
+const getNotificationActionLabel = (notification = {}) => {
+  const source = notification || {};
+  if (source.meta?.actionLabel) return String(source.meta.actionLabel).slice(0, 48);
+  if (source.type === 'message') return 'Open conversation';
+  if (source.type === 'friend') return 'View friends';
+  if (source.type === 'marketplace') return 'View marketplace';
+  if (source.type === 'group') return 'View group';
+  if (source.type === 'post' || source.type === 'comment' || source.type === 'reaction') return 'View post';
+  return 'Open related page';
+};
+
 const isMessageNotification = (notification = {}) => {
   const text = `${notification.title || ''} ${notification.body || ''} ${notification.href || ''}`.toLowerCase();
   return notification.type === 'message' || text.includes('/messages');
@@ -122,6 +153,7 @@ export default function Layout({ children }) {
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState(null);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [expandedNotificationThreads, setExpandedNotificationThreads] = useState(() => new Set());
   const [groupBadgeCount, setGroupBadgeCount] = useState(0);
@@ -217,6 +249,11 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     const handleNativeBack = (event) => {
+      if (selectedNotification) {
+        event.preventDefault();
+        setSelectedNotification(null);
+        return;
+      }
       if (settingsOpen) {
         event.preventDefault();
         setSettingsOpen(false);
@@ -235,7 +272,16 @@ export default function Layout({ children }) {
 
     window.addEventListener('syncrova:native-back', handleNativeBack);
     return () => window.removeEventListener('syncrova:native-back', handleNativeBack);
-  }, [notificationPanelOpen, settingsOpen, sidebarOpen]);
+  }, [notificationPanelOpen, selectedNotification, settingsOpen, sidebarOpen]);
+
+  useEffect(() => {
+    if (!selectedNotification) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedNotification(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNotification]);
 
   useEffect(() => installGlobalClickSound(), []);
 
@@ -679,7 +725,7 @@ export default function Layout({ children }) {
       setNotificationUnreadCount(count => Math.max(0, count - 1));
     }
     setNotificationPanelOpen(false);
-    if (notification.href) navigate(notification.href);
+    setSelectedNotification({ ...notification, read: true });
   };
 
   const markNotificationGroupRead = (items = []) => {
@@ -700,7 +746,26 @@ export default function Layout({ children }) {
   const openNotificationThread = (thread) => {
     markNotificationGroupRead(thread.items);
     setNotificationPanelOpen(false);
-    navigate(thread.latest?.href || '/messages');
+    setSelectedNotification({
+      ...(thread.latest || {}),
+      title: thread.actor?.name ? `Messages from ${thread.actor.name}` : thread.latest?.title || 'Messages',
+      body: thread.latest?.body || `${thread.items.length} recent message notifications`,
+      href: thread.latest?.href || '/messages',
+      read: true,
+      meta: {
+        ...(thread.latest?.meta || {}),
+        actionLabel: 'Open conversation'
+      }
+    });
+  };
+
+  const closeNotificationModal = () => setSelectedNotification(null);
+
+  const openSelectedNotificationAction = () => {
+    const actionPath = getNotificationActionPath(selectedNotification);
+    if (!actionPath) return;
+    setSelectedNotification(null);
+    navigate(actionPath);
   };
 
   const toggleNotificationThread = (event, threadKey) => {
@@ -789,7 +854,7 @@ export default function Layout({ children }) {
         )}
       </button>
 
-      {notificationPanelOpen && (
+      {false && notificationPanelOpen && (
         <div className={`${compact ? 'mobile-notification-panel mobile-bottom-sheet fixed right-2 top-[4.25rem] w-[min(94vw,24rem)]' : 'absolute bottom-full left-0 mb-2 w-[min(22rem,86vw)]'} z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-gray-950/20 dark:border-slate-800 dark:bg-slate-950`}>
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-3 dark:border-slate-800">
             <div>
@@ -1192,6 +1257,169 @@ export default function Layout({ children }) {
     >
       {children}
     </button>
+  );
+
+  const selectedNotificationActionPath = getNotificationActionPath(selectedNotification);
+  const selectedNotificationActor = selectedNotification?.actorId && typeof selectedNotification.actorId === 'object'
+    ? selectedNotification.actorId
+    : null;
+  const selectedNotificationActorAvatar = resolveMediaUrl(selectedNotificationActor?.avatar);
+  const notificationListPanel = (
+    <section
+      className="w-full max-w-md overflow-hidden rounded-[1.6rem] border border-white/70 bg-white text-slate-950 shadow-2xl shadow-slate-950/25 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+      onClick={event => event.stopPropagation()}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
+        <div>
+          <p className="text-base font-black text-slate-950 dark:text-white">Notifications</p>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{notificationUnreadCount} unread</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={markAllNotificationsRead} className="grid h-10 w-10 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" title="Mark all read">
+            <CheckCheck size={17} />
+          </button>
+          <button type="button" onClick={() => setNotificationPanelOpen(false)} className="grid h-10 w-10 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Close notifications">
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+      <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-2">
+        {notificationsLoading ? (
+          <div className="space-y-2" aria-hidden="true">
+            {[0, 1, 2].map(item => (
+              <div key={item} className="mobile-skeleton-card rounded-2xl bg-slate-50 p-3 dark:bg-slate-900">
+                <div className="flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  <span className="min-w-0 flex-1 space-y-2">
+                    <span className="block h-3 w-2/3 rounded-full bg-slate-200 dark:bg-slate-800" />
+                    <span className="block h-3 w-4/5 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : notificationPanelItems.length ? notificationPanelItems.map(row => {
+          if (row.kind === 'message-thread') {
+            const actor = row.actor || {};
+            const actorAvatar = resolveMediaUrl(actor.avatar);
+            const latest = row.latest || {};
+            const isExpanded = expandedNotificationThreads.has(row.key);
+            const displayName = actor.name || actor.email || 'Messages';
+            return (
+              <article
+                key={row.key}
+                className={`overflow-hidden rounded-2xl transition ${
+                  row.unreadCount
+                    ? 'bg-blue-50/85 dark:bg-blue-950/25'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-900'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => openNotificationThread(row)}
+                  className="group flex w-full items-start gap-3 p-3 text-left"
+                >
+                  <span className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white">
+                    {actorAvatar ? <img src={actorAvatar} alt={displayName} className="h-full w-full object-cover" /> : <MessageCircle size={18} />}
+                    {row.unreadCount > 0 && <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white dark:ring-slate-950" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="line-clamp-1 text-sm font-black text-slate-950 dark:text-white">{displayName}</span>
+                      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#0b57d0] px-1.5 text-[11px] font-black text-white">
+                        {row.items.length}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-black uppercase text-[#0b57d0] dark:text-sky-300">
+                      {row.unreadCount ? `${row.unreadCount} unread messages` : `${row.items.length} recent messages`}
+                    </span>
+                    {latest.body && <span className="mt-0.5 line-clamp-2 text-xs font-semibold text-slate-600 dark:text-slate-300">{latest.body}</span>}
+                    <span className="mt-1 block text-[11px] font-black uppercase text-slate-400">{formatNotificationTime(latest.createdAt)}</span>
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={event => toggleNotificationThread(event, row.key)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toggleNotificationThread(event, row.key);
+                      }
+                    }}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-blue-50 hover:text-[#0b57d0] dark:hover:bg-blue-950/35 dark:hover:text-sky-200"
+                    title={isExpanded ? 'Hide messages' : 'Show grouped messages'}
+                  >
+                    {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-slate-200/70 bg-white/70 p-1.5 dark:border-slate-800 dark:bg-black/20">
+                    {row.items.map(notification => (
+                      <button
+                        key={getEntityId(notification)}
+                        type="button"
+                        onClick={() => openNotification(notification)}
+                        className="flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition hover:bg-blue-50 dark:hover:bg-blue-950/25"
+                      >
+                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-emerald-400'}`} />
+                        <span className="min-w-0 flex-1">
+                          <span className="line-clamp-2 text-xs font-bold text-slate-700 dark:text-slate-200">{notification.body || notification.title}</span>
+                          <span className="mt-0.5 block text-[10px] font-black uppercase text-slate-400">{formatNotificationTime(notification.createdAt)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </article>
+            );
+          }
+
+          const notification = row.notification;
+          const actor = notification.actorId || {};
+          const actorAvatar = resolveMediaUrl(actor.avatar);
+          return (
+            <button
+              key={row.key}
+              type="button"
+              onClick={() => openNotification(notification)}
+              className={`group flex w-full items-start gap-3 rounded-2xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900 ${notification.read ? '' : 'bg-blue-50/80 dark:bg-blue-950/25'}`}
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white">
+                {actorAvatar ? <img src={actorAvatar} alt={actor.name || 'User'} className="h-full w-full object-cover" /> : (actor.name || notification.type || 'N').charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="line-clamp-1 text-sm font-black text-slate-950 dark:text-white">{notification.title}</span>
+                {notification.body && <span className="mt-0.5 line-clamp-2 text-xs font-semibold text-slate-600 dark:text-slate-300">{notification.body}</span>}
+                <span className="mt-1 block text-[11px] font-black uppercase text-[#0b57d0] dark:text-sky-300">{formatNotificationTime(notification.createdAt)}</span>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={event => deleteNotification(event, notification)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') deleteNotification(event, notification);
+                }}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 opacity-100 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/35 dark:hover:text-rose-300"
+                title="Delete notification"
+              >
+                <Trash2 size={15} />
+              </span>
+            </button>
+          );
+        }) : (
+          <p className="rounded-xl p-5 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">No notifications yet.</p>
+        )}
+      </div>
+      <div className="border-t border-slate-100 p-2 dark:border-slate-800">
+        <Link
+          to="/notifications"
+          onClick={() => setNotificationPanelOpen(false)}
+          className="flex items-center justify-center rounded-xl bg-blue-50 px-3 py-2 text-sm font-black text-[#0b57d0] transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:hover:bg-blue-950/50"
+        >
+          View all notifications
+        </Link>
+      </div>
+    </section>
   );
 
   return (
@@ -1616,6 +1844,111 @@ export default function Layout({ children }) {
             );
           })}
       </div>
+
+      {notificationPanelOpen && (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Notifications"
+          onClick={() => setNotificationPanelOpen(false)}
+        >
+          {notificationListPanel}
+        </div>
+      )}
+
+      {selectedNotification && (
+        <div
+          className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm transition-opacity"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="notification-detail-title"
+          onClick={closeNotificationModal}
+        >
+          <section
+            className="w-full max-w-md overflow-hidden rounded-[1.6rem] border border-white/70 bg-white text-slate-950 shadow-2xl shadow-slate-950/25 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="h-1.5 bg-gradient-to-r from-[#0b57d0] via-sky-400 to-emerald-400" />
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-base font-black text-white shadow-lg shadow-blue-500/20">
+                  {selectedNotificationActorAvatar ? (
+                    <img src={selectedNotificationActorAvatar} alt={selectedNotificationActor?.name || 'Notification actor'} className="h-full w-full object-cover" />
+                  ) : (
+                    <Bell size={22} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black uppercase text-[#0b57d0] dark:text-sky-300">
+                    {selectedNotification.type ? `${selectedNotification.type} notification` : 'Notification'}
+                  </p>
+                  <h2 id="notification-detail-title" className="mt-1 text-xl font-black leading-tight tracking-normal text-slate-950 dark:text-white">
+                    {selectedNotification.title || 'Notification'}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeNotificationModal}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label="Close notification details"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+                <p className="whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+                  {selectedNotification.body || selectedNotification.message || 'No additional details were included with this notification.'}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-black uppercase text-slate-500 dark:text-slate-400">Date and time</span>
+                  <span className="text-right text-sm font-black text-slate-800 dark:text-slate-100">
+                    {formatNotificationDateTime(selectedNotification.createdAt)}
+                  </span>
+                </div>
+                {selectedNotificationActor ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-black uppercase text-slate-500 dark:text-slate-400">From</span>
+                    <span className="max-w-[12rem] truncate text-right text-sm font-black text-slate-800 dark:text-slate-100">
+                      {selectedNotificationActor.name || selectedNotificationActor.email || 'User'}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-black uppercase text-slate-500 dark:text-slate-400">Related action</span>
+                  <span className="max-w-[13rem] truncate text-right text-sm font-black text-slate-800 dark:text-slate-100">
+                    {selectedNotificationActionPath ? getNotificationActionLabel(selectedNotification) : 'No action available'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className={`grid gap-2 border-t border-slate-100 p-4 dark:border-slate-800 ${selectedNotificationActionPath ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <button
+                type="button"
+                onClick={closeNotificationModal}
+                className="inline-flex h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                Close
+              </button>
+              {selectedNotificationActionPath ? (
+                <button
+                  type="button"
+                  onClick={openSelectedNotificationAction}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#0b57d0] px-4 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700"
+                >
+                  {getNotificationActionLabel(selectedNotification)}
+                  <ChevronRight size={17} />
+                </button>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      )}
 
       {settingsOpen && (
         <div className="fixed inset-0 z-[95] flex items-end bg-slate-950/45 backdrop-blur-sm md:hidden" onClick={() => setSettingsOpen(false)}>

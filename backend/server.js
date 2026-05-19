@@ -214,16 +214,34 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/syncro
 const mongoMaxPoolSize = Number(process.env.MONGO_MAX_POOL_SIZE || 20);
 const mongoMinPoolSize = Number(process.env.MONGO_MIN_POOL_SIZE || 2);
 const mongoAutoIndex = process.env.NODE_ENV !== 'production';
+const mongoRetryMs = Number(process.env.MONGO_RETRY_MS || 5000);
+const mongoRetryEnabled = process.env.MONGO_RETRY !== 'false';
 
-mongoose.connect(MONGODB_URI, {
+const getMongoTargetLabel = (uri = '') => {
+  if (/mongodb\.net/i.test(uri)) return 'MongoDB Atlas';
+  if (/localhost|127\.0\.0\.1/i.test(uri)) return 'local MongoDB';
+  return 'MongoDB';
+};
+
+const connectMongo = (attempt = 1) => mongoose.connect(MONGODB_URI, {
   maxPoolSize: Number.isFinite(mongoMaxPoolSize) ? mongoMaxPoolSize : 20,
   minPoolSize: Number.isFinite(mongoMinPoolSize) ? mongoMinPoolSize : 2,
   serverSelectionTimeoutMS: 10000,
   socketTimeoutMS: 45000,
   autoIndex: mongoAutoIndex
 })
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
+  .then(() => console.log(`${getMongoTargetLabel(MONGODB_URI)} connected`))
+  .catch(err => {
+    console.error(`${getMongoTargetLabel(MONGODB_URI)} connection error: ${err.message || err}`);
+    if (!mongoRetryEnabled) return;
+
+    const retryDelay = Number.isFinite(mongoRetryMs) && mongoRetryMs > 0 ? mongoRetryMs : 5000;
+    console.error(`Retrying database connection in ${Math.round(retryDelay / 1000)}s (attempt ${attempt + 1})`);
+    const retryTimer = setTimeout(() => connectMongo(attempt + 1), retryDelay);
+    retryTimer.unref?.();
+  });
+
+connectMongo();
 
 // Create HTTP server
 const server = http.createServer(app);

@@ -34,6 +34,23 @@ const GameSessionSchema = new mongoose.Schema({
   totalCount: { type: Number, default: 0 },
   maxStreak: { type: Number, default: 0 },
   elapsedMs: { type: Number, default: 0 },
+  mode: { type: String, enum: ['solo', 'practice', 'multiplayer', 'ranked'], default: 'ranked', index: true },
+  roomId: { type: String, default: '', index: true },
+  roomCode: { type: String, default: '' },
+  opponents: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    name: { type: String, default: '' }
+  }],
+  placement: { type: Number, default: null },
+  xpEarned: { type: Number, default: 0 },
+  creditsEarned: { type: Number, default: 0 },
+  rewardSummary: { type: mongoose.Schema.Types.Mixed, default: null },
+  achievements: [{ type: String }],
+  flags: [{ type: String }],
+  bestReactionMs: { type: Number, default: 0 },
+  averageReactionMs: { type: Number, default: 0 },
+  falseStarts: { type: Number, default: 0 },
+  disqualified: { type: Boolean, default: false },
   startedAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
   completedAt: { type: Date, default: null, index: true }

@@ -6,6 +6,8 @@ const User = require('../models/User');
 const GameSession = require('../models/GameSession');
 const IssueReport = require('../models/IssueReport');
 const { GAME_RANKS, buildGameLeaderboard, buildGameStats } = require('../services/gameRanks');
+const gameRooms = require('../services/gameRooms');
+const multiplayerConfig = require('../services/gameMultiplayerConfig');
 
 const router = express.Router();
 
@@ -226,6 +228,21 @@ const typingRaceBanks = {
   ]
 };
 
+const typingEnglishWordBank = [
+  'school', 'campus', 'student', 'teacher', 'lesson', 'project', 'library', 'notebook',
+  'science', 'history', 'english', 'course', 'review', 'practice', 'answer', 'question',
+  'future', 'leader', 'member', 'friend', 'message', 'profile', 'market', 'credit',
+  'reward', 'typing', 'signal', 'reaction', 'window', 'button', 'update', 'upload',
+  'storage', 'cloud', 'secure', 'simple', 'quick', 'steady', 'bright', 'honest',
+  'better', 'strong', 'clear', 'focus', 'finish', 'result', 'winner', 'rank',
+  'daily', 'weekly', 'record', 'badge', 'speed', 'accuracy', 'motion', 'design',
+  'server', 'client', 'mobile', 'screen', 'system', 'search', 'create', 'share',
+  'delete', 'photo', 'video', 'audio', 'report', 'status', 'online', 'ready',
+  'player', 'match', 'room', 'start', 'countdown', 'bubble', 'canvas', 'smooth',
+  'correct', 'wrong', 'input', 'space', 'logic', 'class', 'group', 'grade',
+  'study', 'learn', 'build', 'solve', 'verify', 'deploy', 'release', 'version'
+];
+
 const quizBank = [
   { title: 'JavaScript scope', brief: 'Which keyword declares a block-scoped variable?', options: ['var', 'let', 'global', 'static'], correctAnswer: 'let', basePoints: 150 },
   { title: 'HTML document', brief: 'Which tag contains page metadata?', options: ['body', 'main', 'head', 'section'], correctAnswer: 'head', basePoints: 130 },
@@ -357,6 +374,20 @@ const createTypingSentences = (count = 18, mode = 'english') => {
   return pool.slice(0, target);
 };
 
+const createTypingWords = (count = 44) => {
+  const pool = [...typingEnglishWordBank];
+  for (let index = pool.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [pool[index], pool[swapIndex]] = [pool[swapIndex], pool[index]];
+  }
+  if (count <= pool.length) return pool.slice(0, count);
+  const words = [];
+  while (words.length < count) {
+    words.push(...pool.slice(0, count - words.length));
+  }
+  return words;
+};
+
 const sanitizeText = (value, maxLength) => String(value || '').trim().slice(0, maxLength);
 
 const getDeveloperStatus = async (userId) => {
@@ -450,7 +481,7 @@ const scoreSentenceStream = (expected, typedSentences, elapsedMs) => {
     }
   });
 
-  const totalCount = Math.max(cleanTypedSentences.length, 1);
+  const totalCount = Math.max(expectedSentences.length, 1);
   const accuracy = Math.round((correctCount / totalCount) * 100);
   const minutes = Math.max(elapsedMs / 60000, 0.02);
   const correctWords = cleanTypedSentences.reduce((sum, sentence, index) => {
@@ -697,6 +728,570 @@ const recordDeveloperContribution = async ({ userId, issue, action, detail }) =>
   });
 };
 
+const getMultiplayerGameKey = (gameType = '') => (
+  gameType === 'reaction-tap' ? 'reaction-tap' : 'typing-sprint'
+);
+
+const buildMultiplayerContent = (gameType, body = {}) => {
+  if (gameType !== 'typing-race') return {};
+
+  const mode = 'english';
+  const durationSeconds = clampNumber(
+    body.durationSeconds,
+    multiplayerConfig.typing.minDurationSeconds,
+    multiplayerConfig.typing.maxDurationSeconds,
+    multiplayerConfig.typing.defaultDurationSeconds
+  );
+  const sentences = createTypingWords(multiplayerConfig.typing.sentenceCount);
+
+  return {
+    typingMode: mode,
+    durationSeconds,
+    sentences,
+    prompt: sentences.join('\n')
+  };
+};
+
+const getCurrentUser = async (req) => {
+  const user = await User.findById(req.user).select('name email avatar');
+  if (!user) {
+    const error = new Error('Session expired. Please log in again.');
+    error.status = 401;
+    throw error;
+  }
+  return user;
+};
+
+const getOpponentList = (room, player) => room.players
+  .filter(candidate => candidate.userId !== player.userId)
+  .map(candidate => ({
+    userId: mongoose.Types.ObjectId.isValid(candidate.userId) ? candidate.userId : undefined,
+    name: candidate.name
+  }))
+  .filter(candidate => candidate.userId);
+
+const buildRewardSummary = ({ result, previousSessions }) => {
+  if (
+    !result
+    || result.disqualified
+    || (result.falseStarts || 0) > 0
+    || (result.flags || []).includes('false-start')
+    || (result.flags || []).includes('disconnected')
+    || (result.flags || []).includes('impossible-wpm')
+    || (result.flags || []).includes('instant-finish')
+  ) {
+    return {
+      xp: 0,
+      credits: 0,
+      rankBonusXp: 0,
+      rankBonusCredits: 0,
+      streakBonusXp: 0,
+      streakBonusCredits: 0,
+      eligible: false
+    };
+  }
+
+  const isWinner = result.rank === 1;
+  const isSecond = result.rank === 2;
+  const rankBonusXp = isWinner
+    ? multiplayerConfig.rewards.winnerXp - multiplayerConfig.rewards.participantXp
+    : isSecond ? multiplayerConfig.rewards.secondPlaceXp : 0;
+  const rankBonusCredits = isWinner
+    ? multiplayerConfig.rewards.winnerCredits - multiplayerConfig.rewards.participantCredits
+    : isSecond ? multiplayerConfig.rewards.secondPlaceCredits : 0;
+  const hasWinStreak = isWinner && previousSessions[0]?.placement === 1;
+  const streakBonusXp = hasWinStreak ? multiplayerConfig.rewards.streakXp : 0;
+  const streakBonusCredits = hasWinStreak ? multiplayerConfig.rewards.streakCredits : 0;
+
+  return {
+    xp: multiplayerConfig.rewards.participantXp + rankBonusXp + streakBonusXp,
+    credits: multiplayerConfig.rewards.participantCredits + rankBonusCredits + streakBonusCredits,
+    rankBonusXp,
+    rankBonusCredits,
+    streakBonusXp,
+    streakBonusCredits,
+    eligible: true
+  };
+};
+
+const buildAchievements = (gameType, result, previousSessions) => {
+  const achievements = [];
+
+  if (gameType === 'typing-race') {
+    if ((result.wpm || 0) >= 50) achievements.push('Speedster');
+    if ((result.accuracy || 0) >= 95) achievements.push('Accuracy Master');
+    if ((result.totalCount || 0) > 0 && result.correctCount === result.totalCount) achievements.push('No Mistake Run');
+    return achievements;
+  }
+
+  if ((result.bestReactionMs || 0) > 0 && result.bestReactionMs < 200) achievements.push('Lightning Reflex');
+  const recentNoFalseStarts = previousSessions
+    .slice(0, 4)
+    .every(session => (session.falseStarts || 0) === 0 && !(session.flags || []).includes('false-start'));
+  if ((result.falseStarts || 0) === 0 && previousSessions.length >= 4 && recentNoFalseStarts) {
+    achievements.push('Perfect Start');
+  }
+  const previousWins = previousSessions.filter(session => session.placement === 1).length;
+  if (result.rank === 1 && previousWins >= 4) achievements.push('Tap Champion');
+  return achievements;
+};
+
+const persistFinishedRoom = async (room) => {
+  if (!room || room.status !== 'finished' || room.persistedAt) return room;
+  if (room.persistingAt) return room;
+  room.persistingAt = Date.now();
+
+  try {
+    const completedAt = new Date(room.finishedAt || Date.now());
+    const startedAt = new Date(room.startedAt || room.createdAt || Date.now());
+    const gameKey = getMultiplayerGameKey(room.gameType);
+
+    for (const player of room.players) {
+      const result = player.result;
+      if (!result || !mongoose.Types.ObjectId.isValid(player.userId)) continue;
+
+      const existing = await GameSession.findOne({
+        userId: player.userId,
+        roomId: room.id,
+        gameKey
+      }).select('_id rewardSummary achievements xpEarned creditsEarned');
+      if (existing) {
+        result.sessionId = existing._id;
+        result.rewardSummary = existing.rewardSummary || null;
+        result.achievements = existing.achievements || [];
+        continue;
+      }
+
+      const previousSessions = await GameSession.find({
+        userId: player.userId,
+        gameKey,
+        mode: 'multiplayer',
+        completedAt: { $ne: null }
+      }).sort({ completedAt: -1 }).limit(10).lean();
+      const rewards = buildRewardSummary({ result, previousSessions });
+      const achievements = buildAchievements(room.gameType, result, previousSessions);
+      const challengeId = crypto.randomUUID();
+      const session = new GameSession({
+        userId: player.userId,
+        gameKey,
+        mode: 'multiplayer',
+        roomId: room.id,
+        roomCode: room.code,
+        opponents: getOpponentList(room, player),
+        placement: result.rank || null,
+        xpEarned: rewards.xp,
+        creditsEarned: rewards.credits,
+        rewardSummary: rewards,
+        achievements,
+        flags: result.flags || [],
+        bestReactionMs: result.bestReactionMs || 0,
+        averageReactionMs: result.averageReactionMs || 0,
+        falseStarts: result.falseStarts || 0,
+        disqualified: Boolean(result.disqualified),
+        durationSeconds: Math.max(1, Math.ceil((result.elapsedMs || 1000) / 1000)),
+        challenges: [{
+          challengeId,
+          title: room.gameType === 'typing-race' ? 'Typing Race Multiplayer' : 'Reaction Tap Multiplayer',
+          brief: room.gameType === 'typing-race'
+            ? room.prompt
+            : `First to ${multiplayerConfig.reaction.targetPoints} points with server-controlled signal timing.`,
+          priority: 'medium',
+          dueInHours: 1,
+          estimateHours: 1,
+          impact: 'medium',
+          signal: room.gameType === 'typing-race'
+            ? `${result.wpm || 0} WPM, ${result.accuracy || 0}% accuracy.`
+            : `Best ${result.bestReactionMs || 0}ms. Average ${result.averageReactionMs || 0}ms. False starts ${result.falseStarts || 0}.`,
+          correctAnswer: 'score',
+          basePoints: result.score || 0
+        }],
+        answers: [{
+          challengeId,
+          answer: `rank:${result.rank || 'dq'} score:${result.score || 0}`,
+          correct: !result.disqualified,
+          points: result.score || 0
+        }],
+        score: result.score || 0,
+        accuracy: result.accuracy || 0,
+        wpm: result.wpm || 0,
+        correctCount: result.correctCount || result.playerPoints || 0,
+        totalCount: result.totalCount || multiplayerConfig.reaction.targetPoints,
+        maxStreak: result.maxStreak || result.playerPoints || 0,
+        elapsedMs: result.elapsedMs || 1000,
+        startedAt,
+        expiresAt: completedAt,
+        completedAt
+      });
+
+      await session.save();
+      result.sessionId = session._id;
+      result.rewardSummary = rewards;
+      result.achievements = achievements;
+
+      if (rewards.eligible && (rewards.xp > 0 || rewards.credits > 0)) {
+        await User.updateOne(
+          { _id: player.userId },
+          { $inc: { gameRewardXp: rewards.xp, gameCredits: rewards.credits } }
+        );
+      }
+    }
+
+    room.persistedAt = Date.now();
+  } catch (err) {
+    room.persistingAt = null;
+    throw err;
+  }
+
+  room.persistingAt = null;
+  return room;
+};
+
+const sendSerializedRoom = async (req, res, room, status = 200) => {
+  await persistFinishedRoom(room);
+  const serialized = gameRooms.serializeRoom(room, req.user);
+  if (!serialized) return res.status(404).json({ msg: 'Match no longer exists' });
+  return res.status(status).json({ room: serialized });
+};
+
+const handleRoomError = (res, err, fallback = 'Failed to join match') => (
+  res.status(err.status || 500).json({ msg: err.message || fallback })
+);
+
+const roomHasPlayer = (room, userId) => Boolean(
+  room?.players?.some(player => player.userId === String(userId))
+);
+
+router.post('/typing-sprint/practice', auth, async (req, res) => {
+  try {
+    const mode = 'english';
+    const durationSeconds = clampNumber(req.body?.durationSeconds, 30, 90, 45);
+    const sentences = createTypingWords(52);
+    res.status(201).json({
+      mode: 'practice',
+      prompt: sentences.join('\n'),
+      sentences,
+      raceMode: mode,
+      durationSeconds,
+      ranked: false
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.post('/multiplayer/rooms/quick', auth, async (req, res) => {
+  try {
+    const gameType = String(req.body?.gameType || '').trim();
+    const user = await getCurrentUser(req);
+    const room = gameRooms.quickMatch({
+      gameType,
+      user,
+      content: buildMultiplayerContent(gameType, req.body)
+    });
+    return sendSerializedRoom(req, res, room, 201);
+  } catch (err) {
+    return handleRoomError(res, err);
+  }
+});
+
+router.post('/multiplayer/rooms/private', auth, async (req, res) => {
+  try {
+    const gameType = String(req.body?.gameType || '').trim();
+    const user = await getCurrentUser(req);
+    const room = gameRooms.createRoom({
+      gameType,
+      user,
+      privateRoom: true,
+      content: buildMultiplayerContent(gameType, req.body)
+    });
+    return sendSerializedRoom(req, res, room, 201);
+  } catch (err) {
+    return handleRoomError(res, err);
+  }
+});
+
+router.post('/multiplayer/rooms/join', auth, async (req, res) => {
+  try {
+    const user = await getCurrentUser(req);
+    const room = gameRooms.joinByCode({ code: req.body?.code, user });
+    return sendSerializedRoom(req, res, room, 200);
+  } catch (err) {
+    return handleRoomError(res, err);
+  }
+});
+
+router.get('/multiplayer/rooms/:roomId', auth, async (req, res) => {
+  try {
+    const room = gameRooms.touchRoom(req.params.roomId, req.user);
+    if (room && !roomHasPlayer(room, req.user)) {
+      return res.status(403).json({ msg: 'This match has already started. Please join another match.' });
+    }
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Match no longer exists');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/heartbeat', auth, async (req, res) => {
+  try {
+    const room = gameRooms.touchRoom(req.params.roomId, req.user);
+    if (room && !roomHasPlayer(room, req.user)) {
+      return res.status(403).json({ msg: 'This match has already started. Please join another match.' });
+    }
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Connection lost');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/ready', auth, async (req, res) => {
+  try {
+    const room = gameRooms.setReady({
+      roomId: req.params.roomId,
+      userId: req.user,
+      ready: req.body?.ready !== false
+    });
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Not enough players');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/start', auth, async (req, res) => {
+  try {
+    const room = gameRooms.hostStart({ roomId: req.params.roomId, userId: req.user });
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Not enough players');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/leave', auth, async (req, res) => {
+  try {
+    const room = gameRooms.leaveRoom({ roomId: req.params.roomId, userId: req.user });
+    if (!room) return res.json({ ok: true });
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Connection lost');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/typing-progress', auth, async (req, res) => {
+  try {
+    const room = gameRooms.updateTypingProgress({
+      roomId: req.params.roomId,
+      userId: req.user,
+      progress: req.body?.progress
+    });
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Connection lost');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/typing-submit', auth, async (req, res) => {
+  try {
+    const room = gameRooms.getRoom(req.params.roomId);
+    if (!room) return res.status(404).json({ msg: 'Match no longer exists' });
+    if (room.gameType !== 'typing-race') return res.status(400).json({ msg: 'Failed to join match' });
+    if (room.status === 'finished') return res.status(400).json({ msg: 'Game already finished' });
+    if (room.status !== 'playing') return res.status(400).json({ msg: 'Match has not started yet' });
+
+    const elapsedMs = Math.max(1000, Date.now() - (room.startedAt || Date.now()));
+    const typedSentences = Array.isArray(req.body?.typedSentences)
+      ? req.body.typedSentences.map(sentence => sanitizeText(sentence, 240))
+      : [];
+    const scored = scoreSentenceStream(room.prompt || '', typedSentences, elapsedMs);
+    const flags = [];
+    if (scored.wpm > multiplayerConfig.typing.impossibleWpm) flags.push('impossible-wpm');
+    if (elapsedMs < multiplayerConfig.typing.minimumFinishMs && scored.correctCount >= (room.sentences?.length || 1)) {
+      flags.push('instant-finish');
+    }
+
+    const updatedRoom = gameRooms.submitTypingResult({
+      roomId: req.params.roomId,
+      userId: req.user,
+      result: {
+        score: scored.score,
+        accuracy: scored.accuracy,
+        wpm: scored.wpm,
+        correctCount: scored.correctCount,
+        totalCount: scored.totalCount,
+        maxStreak: scored.maxStreak,
+        elapsedMs,
+        typedText: scored.typedText,
+        flags
+      }
+    });
+
+    return sendSerializedRoom(req, res, updatedRoom);
+  } catch (err) {
+    return handleRoomError(res, err, 'Failed to save Typing Race');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/reaction-tap', auth, async (req, res) => {
+  try {
+    const room = gameRooms.tapReaction({ roomId: req.params.roomId, userId: req.user });
+    return sendSerializedRoom(req, res, room);
+  } catch (err) {
+    return handleRoomError(res, err, 'Connection lost');
+  }
+});
+
+router.post('/multiplayer/rooms/:roomId/rematch', auth, async (req, res) => {
+  try {
+    const room = gameRooms.getRoom(req.params.roomId);
+    if (!room) return res.status(404).json({ msg: 'Match no longer exists' });
+    const user = await getCurrentUser(req);
+    const updatedRoom = gameRooms.voteRematch({
+      roomId: req.params.roomId,
+      user,
+      content: buildMultiplayerContent(room.gameType, req.body)
+    });
+    return sendSerializedRoom(req, res, updatedRoom);
+  } catch (err) {
+    return handleRoomError(res, err, 'Failed to join rematch');
+  }
+});
+
+const formatRecentMatch = (session) => ({
+  id: session._id,
+  gameType: session.gameKey === 'reaction-tap' ? 'Reaction Tap' : 'Typing Race',
+  opponents: (session.opponents || []).map(opponent => opponent.name).filter(Boolean),
+  rank: session.placement,
+  score: session.score || 0,
+  accuracy: session.accuracy || 0,
+  wpm: session.wpm || 0,
+  bestReactionMs: session.bestReactionMs || 0,
+  averageReactionMs: session.averageReactionMs || 0,
+  xpEarned: session.xpEarned || 0,
+  creditsEarned: session.creditsEarned || 0,
+  rewardSummary: session.rewardSummary || null,
+  achievements: session.achievements || [],
+  flags: session.flags || [],
+  date: session.completedAt
+});
+
+router.get('/history/me', auth, async (req, res) => {
+  try {
+    const limit = clampNumber(req.query.limit, 1, 30, 10);
+    const sessions = await GameSession.find({
+      userId: req.user,
+      mode: 'multiplayer',
+      gameKey: { $in: ['typing-sprint', 'reaction-tap'] },
+      completedAt: { $ne: null }
+    }).sort({ completedAt: -1 }).limit(limit).lean();
+
+    res.json({ matches: sessions.map(formatRecentMatch) });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+const getPeriodStart = (period = 'all') => {
+  const now = new Date();
+  if (period === 'daily') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+  if (period === 'weekly') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+    return start;
+  }
+  return null;
+};
+
+router.get('/leaderboards', auth, async (req, res) => {
+  try {
+    const gameType = String(req.query.gameType || 'typing-race');
+    const metric = String(req.query.metric || (gameType === 'reaction-tap' ? 'reaction' : 'wpm'));
+    const period = ['daily', 'weekly', 'all'].includes(req.query.period) ? req.query.period : 'weekly';
+    const gameKey = getMultiplayerGameKey(gameType);
+    const completedAt = { $ne: null };
+    const periodStart = getPeriodStart(period);
+    if (periodStart) completedAt.$gte = periodStart;
+    const baseQuery = {
+      gameKey,
+      mode: 'multiplayer',
+      disqualified: { $ne: true },
+      completedAt
+    };
+
+    const sessions = await GameSession.find(
+      metric === 'reaction' ? { ...baseQuery, bestReactionMs: { $gt: 0 } } : baseQuery
+    )
+      .populate('userId', 'name email course avatar isDeveloper')
+      .sort(metric === 'reaction'
+        ? { bestReactionMs: 1, score: -1 }
+        : metric === 'accuracy'
+          ? { accuracy: -1, score: -1 }
+          : metric === 'wins'
+            ? { completedAt: -1 }
+            : { wpm: -1, score: -1 })
+      .limit(300)
+      .lean();
+
+    let rows = [];
+    if (metric === 'wins') {
+      const grouped = new Map();
+      sessions.forEach(session => {
+        const id = String(session.userId?._id || session.userId || '');
+        if (!id || session.placement !== 1) return;
+        const current = grouped.get(id) || { user: session.userId, value: 0, score: 0 };
+        current.value += 1;
+        current.score += session.score || 0;
+        grouped.set(id, current);
+      });
+      rows = [...grouped.values()].sort((a, b) => b.value - a.value || b.score - a.score);
+    } else {
+      const bestByUser = new Map();
+      sessions.forEach(session => {
+        const id = String(session.userId?._id || session.userId || '');
+        if (!id || bestByUser.has(id)) return;
+        bestByUser.set(id, {
+          user: session.userId,
+          value: metric === 'reaction'
+            ? session.bestReactionMs || 0
+            : metric === 'accuracy'
+              ? session.accuracy || 0
+              : session.wpm || session.score || 0,
+          score: session.score || 0,
+          accuracy: session.accuracy || 0,
+          wpm: session.wpm || 0,
+          bestReactionMs: session.bestReactionMs || 0
+        });
+      });
+      rows = [...bestByUser.values()];
+    }
+
+    res.json({
+      gameType,
+      metric,
+      period,
+      leaders: rows.slice(0, 25).map((row, index) => ({
+        rank: index + 1,
+        value: row.value,
+        score: row.score || 0,
+        accuracy: row.accuracy || 0,
+        wpm: row.wpm || 0,
+        bestReactionMs: row.bestReactionMs || 0,
+        user: row.user ? {
+          id: row.user._id,
+          name: row.user.name,
+          email: row.user.email,
+          course: row.user.course,
+          avatar: row.user.avatar,
+          isDeveloper: row.user.isDeveloper
+        } : null
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.get('/summary/me', auth, async (req, res) => {
   try {
     const [
@@ -805,6 +1400,7 @@ router.get('/summary/me', auth, async (req, res) => {
       reactionTapStats: buildGameStats(myReactionTapSessions),
       bowDuelStats: buildGameStats(myBowDuelSessions),
       codeQuizStats: buildGameStats(myCodeQuizSessions),
+      gameAchievements: [...new Set(mySessions.flatMap(session => session.achievements || []))],
       leaderboard: leaderboard.slice(0, 15),
       typingLeaderboard: typingLeaderboard.slice(0, 15),
       blockLeaderboard: blockLeaderboard.slice(0, 15),
@@ -1011,10 +1607,9 @@ router.post('/fix-arena/issues/:issueId/messages', auth, async (req, res) => {
 router.post('/typing-sprint/start', auth, async (req, res) => {
   try {
     const startedAt = new Date();
-    const mode = normalizeTypingMode(req.body?.mode);
+    const mode = 'english';
     const requestedDuration = clampNumber(req.body?.durationSeconds, 30, 90, 60);
-    const sentenceCount = mode === 'programming' ? 10 : 12;
-    const sentences = createTypingSentences(sentenceCount, mode);
+    const sentences = createTypingWords(52);
     const prompt = sentences.join('\n');
     const session = new GameSession({
       userId: req.user,

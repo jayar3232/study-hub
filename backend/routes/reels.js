@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const GalleryItem = require('../models/GalleryItem');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { hydrateGalleryMedia } = require('../utils/mediaUrls');
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ const MIME_FALLBACKS = {
   '.3gp': 'video/3gpp',
   '.3gpp': 'video/3gpp'
 };
+const GALLERY_USER_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
 
 const getFileExtension = (file) => path.extname(file?.originalname || '').toLowerCase();
 
@@ -84,21 +86,21 @@ const uploadGallery = (req, res, next) => {
 };
 
 const populateGallery = (query) => query
-  .populate('uploadedBy', 'name avatar isDeveloper')
-  .populate('comments.userId', 'name avatar isDeveloper')
-  .populate('reactions.userId', 'name avatar isDeveloper')
-  .populate('viewers.userId', 'name avatar isDeveloper');
+  .populate('uploadedBy', GALLERY_USER_FIELDS)
+  .populate('comments.userId', GALLERY_USER_FIELDS)
+  .populate('reactions.userId', GALLERY_USER_FIELDS)
+  .populate('viewers.userId', GALLERY_USER_FIELDS);
 
 const populateGalleryDocument = async (item) => {
-  await item.populate('uploadedBy', 'name avatar isDeveloper');
-  await item.populate('comments.userId', 'name avatar isDeveloper');
-  await item.populate('reactions.userId', 'name avatar isDeveloper');
-  await item.populate('viewers.userId', 'name avatar isDeveloper');
+  await item.populate('uploadedBy', GALLERY_USER_FIELDS);
+  await item.populate('comments.userId', GALLERY_USER_FIELDS);
+  await item.populate('reactions.userId', GALLERY_USER_FIELDS);
+  await item.populate('viewers.userId', GALLERY_USER_FIELDS);
   return item;
 };
 
 const toPayload = (item, currentUserId) => {
-  const plain = typeof item.toObject === 'function' ? item.toObject() : item;
+  const plain = hydrateGalleryMedia(item);
   const itemId = getId(plain);
   const viewerId = getId(currentUserId);
   const reactions = plain.reactions || [];

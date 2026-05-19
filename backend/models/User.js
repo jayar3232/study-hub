@@ -14,6 +14,8 @@ const UserSchema = new mongoose.Schema({
   coverPhotoStoragePath: { type: String, default: '' },
   coverPhotoStorageProvider: { type: String, enum: ['', 'local', 'supabase', 'r2'], default: '' },
   lastSeen: { type: Date, default: null },
+  gameRewardXp: { type: Number, default: 0 },
+  gameCredits: { type: Number, default: 0 },
   isDeveloper: { type: Boolean, default: false },
   studentVerificationStatus: {
     type: String,

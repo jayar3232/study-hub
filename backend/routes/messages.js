@@ -8,6 +8,7 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification } = require('../services/notifications');
+const { hydrateMessageMedia, serializeMediaUser } = require('../utils/mediaUrls');
 const router = express.Router();
 
 const messageUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
@@ -18,6 +19,8 @@ const MAX_MESSAGE_ATTACHMENTS = 10;
 const BLOCKED_EXTENSIONS = new Set(['.bat', '.cmd', '.com', '.exe', '.msi', '.ps1', '.scr', '.sh']);
 const DEFAULT_MESSAGE_PAGE_LIMIT = 80;
 const MAX_MESSAGE_PAGE_LIMIT = 200;
+const MESSAGE_USER_FIELDS = 'name email avatar avatarStoragePath avatarStorageProvider lastSeen isDeveloper';
+const MESSAGE_REACTION_USER_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
 
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 
@@ -64,14 +67,15 @@ const getFileType = (file) => {
 };
 
 const populateMessage = (messageId) => Message.findById(messageId)
-  .populate('from', 'name email avatar lastSeen isDeveloper')
-  .populate('to', 'name email avatar lastSeen isDeveloper')
-  .populate('reactions.userId', 'name avatar isDeveloper')
+  .populate('from', MESSAGE_USER_FIELDS)
+  .populate('to', MESSAGE_USER_FIELDS)
+  .populate('reactions.userId', MESSAGE_REACTION_USER_FIELDS)
   .populate({
     path: 'replyTo',
-    populate: { path: 'from', select: 'name email avatar lastSeen' }
+    populate: { path: 'from', select: MESSAGE_USER_FIELDS }
   })
-  .lean();
+  .lean()
+  .then(hydrateMessageMedia);
 
 const isParticipant = (message, userId) => (
   normalizeId(message?.from) === userId || normalizeId(message?.to) === userId
@@ -241,6 +245,8 @@ router.get('/conversations', auth, async (req, res) => {
             name: '$user.name',
             email: '$user.email',
             avatar: '$user.avatar',
+            avatarStoragePath: '$user.avatarStoragePath',
+            avatarStorageProvider: '$user.avatarStorageProvider',
             lastSeen: '$user.lastSeen'
           },
           lastMessageDoc: 1,
@@ -252,7 +258,7 @@ router.get('/conversations', auth, async (req, res) => {
     ]);
 
     const conversations = rows.map((item) => ({
-      user: item.user,
+      user: serializeMediaUser(item.user),
       lastMessage: describeMessage(item.lastMessageDoc || {}),
       lastTime: item.lastTime,
       unreadCount: item.unreadCount || 0
@@ -384,25 +390,25 @@ router.get('/:userId', auth, async (req, res) => {
 
     const usePagination = req.query.paginated === '1' || Boolean(req.query.before) || Boolean(req.query.limit);
     if (!usePagination) {
-      const messages = await Message.find(query).populate('from', 'name email avatar lastSeen isDeveloper')
-        .populate('to', 'name email avatar lastSeen isDeveloper')
-        .populate('reactions.userId', 'name avatar isDeveloper')
+      const messages = await Message.find(query).populate('from', MESSAGE_USER_FIELDS)
+        .populate('to', MESSAGE_USER_FIELDS)
+        .populate('reactions.userId', MESSAGE_REACTION_USER_FIELDS)
         .populate({
           path: 'replyTo',
-          populate: { path: 'from', select: 'name email avatar lastSeen' }
+          populate: { path: 'from', select: MESSAGE_USER_FIELDS }
         })
         .sort('createdAt')
         .lean();
-      return res.json(messages);
+      return res.json(messages.map(hydrateMessageMedia));
     }
 
     const limit = parseMessageLimit(req.query.limit);
-    const page = await Message.find(query).populate('from', 'name email avatar lastSeen isDeveloper')
-      .populate('to', 'name email avatar lastSeen isDeveloper')
-      .populate('reactions.userId', 'name avatar isDeveloper')
+    const page = await Message.find(query).populate('from', MESSAGE_USER_FIELDS)
+      .populate('to', MESSAGE_USER_FIELDS)
+      .populate('reactions.userId', MESSAGE_REACTION_USER_FIELDS)
       .populate({
         path: 'replyTo',
-        populate: { path: 'from', select: 'name email avatar lastSeen' }
+        populate: { path: 'from', select: MESSAGE_USER_FIELDS }
       })
       .sort({ createdAt: -1 })
       .limit(limit + 1)
@@ -410,7 +416,7 @@ router.get('/:userId', auth, async (req, res) => {
 
     const hasMore = page.length > limit;
     const currentPage = hasMore ? page.slice(0, limit) : page;
-    const items = currentPage.reverse();
+    const items = currentPage.reverse().map(hydrateMessageMedia);
     const oldestInPage = items[0];
 
     return res.json({

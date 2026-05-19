@@ -32,8 +32,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.4').trim() || '4.4.4';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 51);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.5').trim() || '4.4.5';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 52);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -123,7 +123,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.4 routes media uploads through Cloudflare R2 only|Legacy Supabase media references are resolved through the R2 proxy|APK update metadata is bumped so older builds can download this version inside Syncrova'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.5 improves Typing Race with English word flow and live mistake indicators|Reaction Tap now uses a shared canvas bubble for fair first-tap scoring|Dark mode welcome card and mobile post options are easier to use'
   });
 });
 

@@ -55,6 +55,22 @@ const hydrateMediaAsset = (asset = {}, urlField = 'fileUrl') => {
   return object;
 };
 
+const hydrateGroupMedia = (group) => {
+  const object = cloneObject(group);
+  if (!object) return object;
+
+  object.photo = resolveStoredMediaUrl({
+    url: object.photo,
+    storagePath: object.photoStoragePath,
+    storageProvider: object.photoStorageProvider
+  });
+  hydrateMediaUserInPlace(object.creator);
+  (object.members || []).forEach(hydrateMediaUserInPlace);
+  delete object.photoStoragePath;
+  delete object.photoStorageProvider;
+  return object;
+};
+
 const hydratePostMedia = (post) => {
   const object = cloneObject(post);
   if (!object) return object;
@@ -87,9 +103,43 @@ const hydrateStoryMedia = (story) => {
   return object;
 };
 
+const hydrateMessageMedia = (message) => {
+  const object = cloneObject(message);
+  if (!object) return object;
+
+  hydrateMediaUserInPlace(object.from);
+  hydrateMediaUserInPlace(object.to);
+  (object.reactions || []).forEach(reaction => hydrateMediaUserInPlace(reaction.userId));
+  if (object.replyTo) {
+    hydrateMediaUserInPlace(object.replyTo.from);
+  }
+
+  const hydratedPrimary = hydrateMediaAsset(object, 'fileUrl');
+  object.fileUrl = hydratedPrimary.fileUrl || '';
+  object.attachments = (object.attachments || []).map(attachment => hydrateMediaAsset(attachment, 'fileUrl'));
+  return object;
+};
+
+const hydrateGalleryMedia = (item) => {
+  const object = cloneObject(item);
+  if (!object) return object;
+
+  hydrateMediaUserInPlace(object.uploadedBy);
+  (object.comments || []).forEach(comment => hydrateMediaUserInPlace(comment.userId));
+  (object.reactions || []).forEach(reaction => hydrateMediaUserInPlace(reaction.userId));
+  (object.viewers || []).forEach(viewer => hydrateMediaUserInPlace(viewer.userId));
+
+  const hydrated = hydrateMediaAsset(object, 'fileUrl');
+  object.fileUrl = hydrated.fileUrl || '';
+  return object;
+};
+
 module.exports = {
+  hydrateGalleryMedia,
+  hydrateGroupMedia,
   hydrateMediaAsset,
   hydrateMediaUserInPlace,
+  hydrateMessageMedia,
   hydratePostMedia,
   hydrateStoryMedia,
   resolveStoredMediaUrl,

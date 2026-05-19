@@ -79,7 +79,7 @@ const formatProfileTime = (value) => {
   }
 };
 
-const buildAchievementBadges = ({ completion, user, rankStats, gameStats, storyItems, myStoryCount }) => {
+const buildAchievementBadges = ({ completion, user, rankStats, gameStats, gameAchievements, storyItems, myStoryCount }) => {
   const marketplaceUnlocked = Boolean(user?.isDeveloper || user?.studentVerificationStatus === 'approved');
   return ([
   {
@@ -114,6 +114,14 @@ const buildAchievementBadges = ({ completion, user, rankStats, gameStats, storyI
     unlocked: (gameStats?.totalPlays || 0) >= 5,
     progress: Math.min(100, ((gameStats?.totalPlays || 0) / 5) * 100)
   },
+  ...[...new Set(gameAchievements || [])].map(title => ({
+    id: `game-${String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    title,
+    helper: 'Unlocked in multiplayer Game Hub',
+    icon: Trophy,
+    unlocked: true,
+    progress: 100
+  })),
   {
     id: 'story-pulse',
     title: 'Story Pulse',
@@ -531,6 +539,7 @@ export default function Profile() {
     user,
     rankStats,
     gameStats,
+    gameAchievements: gameData?.gameAchievements || [],
     storyItems,
     myStoryCount
   });
@@ -1041,7 +1050,7 @@ export default function Profile() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-gray-950 dark:text-white">Achievement Badges</h2>
-              <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{unlockedAchievements} of {achievementBadges.length} unlocked from profile, marketplace, My Day, tasks, and Game Hub progress.</p>
+              <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{unlockedAchievements} of {achievementBadges.length} unlocked from profile, marketplace, My Day, tasks, and multiplayer Game Hub progress.</p>
             </div>
             <Award className="text-[#1877f2]" size={24} />
           </div>

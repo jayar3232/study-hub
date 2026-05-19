@@ -4470,26 +4470,28 @@ export default function Messages() {
                     {otherUserTyping ? 'Typing...' : presenceText}
                   </div>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => startSharedCall(selectedUser, 'audio')}
-                  disabled={!canStartCall}
-                  className="mobile-chat-icon-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
-                  aria-label="Start audio call"
-                  title={selectedIsOnline ? 'Audio call' : 'User must be online to call'}
-                >
-                  <Phone size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startSharedCall(selectedUser, 'video')}
-                  disabled={!canStartCall}
-                  className="mobile-chat-icon-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 dark:hover:bg-blue-950/30"
-                  aria-label="Start video call"
-                  title={selectedIsOnline ? 'Video call' : 'User must be online to call'}
-                >
-                  <Video size={18} />
-                </button>
+                <div className="mobile-chat-call-actions flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => startSharedCall(selectedUser, 'audio')}
+                    disabled={!canStartCall}
+                    className="mobile-chat-icon-button mobile-chat-call-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                    aria-label="Start audio call"
+                    title={selectedIsOnline ? 'Audio call' : 'User must be online to call'}
+                  >
+                    <Phone size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startSharedCall(selectedUser, 'video')}
+                    disabled={!canStartCall}
+                    className="mobile-chat-icon-button mobile-chat-call-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                    aria-label="Start video call"
+                    title={selectedIsOnline ? 'Video call' : 'User must be online to call'}
+                  >
+                    <Video size={18} />
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowChatDetails(true)}

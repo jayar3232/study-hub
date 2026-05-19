@@ -347,7 +347,7 @@ router.get('/:id/public', auth, async (req, res) => {
         .select('assignedTo status priority approvalStatus completedAt dueDate')
         .lean(),
       GameSession.find({ userId: profile._id, completedAt: { $ne: null } })
-        .select('score accuracy wpm correctCount totalCount maxStreak elapsedMs completedAt')
+        .select('score accuracy wpm correctCount totalCount maxStreak elapsedMs completedAt achievements')
         .lean(),
       isSelf
         ? Promise.resolve(null)
@@ -396,6 +396,7 @@ router.get('/:id/public', auth, async (req, res) => {
       posts: posts.map(hydratePostMedia),
       rankStats: buildRankStats(rankTasks, profile._id),
       gameStats: buildGameStats(gameSessions),
+      gameAchievements: [...new Set(gameSessions.flatMap(session => session.achievements || []))],
       friendship: isSelf ? { status: 'self' } : getFriendshipState(friendship, req.user)
     });
   } catch (err) {
