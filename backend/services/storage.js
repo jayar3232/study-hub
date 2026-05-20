@@ -50,6 +50,7 @@ const normalizeProvider = (value = '') => {
 
 const requestedProvider = normalizeProvider(requestedStorageProvider);
 const forceLocalStorage = requestedProvider === 'local';
+const isHostedRuntime = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 const localFallbackSetting = cleanEnv(process.env.STORAGE_LOCAL_FALLBACK).toLowerCase();
 const allowLocalFallback = localFallbackSetting
   ? !['false', '0', 'no', 'off'].includes(localFallbackSetting)
@@ -61,6 +62,7 @@ const getActiveCloudProvider = () => {
   if (requestedProvider === 'r2') return 'r2';
   if (requestedProvider === 'supabase') return 'r2';
   if (isR2Configured) return 'r2';
+  if (isHostedRuntime) return 'r2';
   return 'local';
 };
 
@@ -447,7 +449,7 @@ const serveR2Object = async (req, res, next) => {
 };
 
 const getMissingConfig = () => {
-  if (requestedProvider === 'r2') {
+  if (cloudStorageProvider === 'r2') {
     return [
       !r2Endpoint && 'R2_ENDPOINT or R2_ACCOUNT_ID',
       !r2AccessKeyId && 'R2_ACCESS_KEY_ID',
@@ -468,24 +470,32 @@ const getMissingConfig = () => {
   return [];
 };
 
-const getStorageConfigStatus = () => ({
-  provider: cloudStorageProvider,
-  requestedProvider: requestedStorageProvider || 'auto',
-  forceLocalStorage,
-  enabled: isCloudStorageEnabled,
-  localFallbackEnabled: allowLocalFallback,
-  bucket: cloudStorageProvider === 'r2' ? r2Bucket : '',
-  r2Bucket,
-  r2EndpointConfigured: Boolean(r2Endpoint),
-  r2AccessKeyConfigured: Boolean(r2AccessKeyId),
-  r2SecretAccessKeyConfigured: Boolean(r2SecretAccessKey),
-  r2PublicUrlConfigured: Boolean(r2PublicBaseUrl),
-  legacySupabaseBucketConfigured: Boolean(supabaseBucket),
-  status: isCloudStorageEnabled
-    ? `${cloudStorageProvider} cloud enabled`
-    : 'local uploads',
-  missing: getMissingConfig()
-});
+const getStorageConfigStatus = () => {
+  const missing = getMissingConfig();
+
+  return {
+    provider: cloudStorageProvider,
+    requestedProvider: requestedStorageProvider || 'auto',
+    forceLocalStorage,
+    hostedRuntime: isHostedRuntime,
+    enabled: isCloudStorageEnabled,
+    configured: missing.length === 0,
+    localFallbackEnabled: allowLocalFallback,
+    bucket: cloudStorageProvider === 'r2' ? r2Bucket : '',
+    r2Bucket,
+    r2EndpointConfigured: Boolean(r2Endpoint),
+    r2AccessKeyConfigured: Boolean(r2AccessKeyId),
+    r2SecretAccessKeyConfigured: Boolean(r2SecretAccessKey),
+    r2PublicUrlConfigured: Boolean(r2PublicBaseUrl),
+    legacySupabaseBucketConfigured: Boolean(supabaseBucket),
+    status: missing.length
+      ? `${cloudStorageProvider} cloud missing config`
+      : isCloudStorageEnabled
+        ? `${cloudStorageProvider} cloud enabled`
+        : 'local uploads',
+    missing
+  };
+};
 
 module.exports = {
   cloudStorageProvider,

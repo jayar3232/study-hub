@@ -4,11 +4,13 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
+const DirectConversation = require('../models/DirectConversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification } = require('../services/notifications');
 const { hydrateMessageMedia, serializeMediaUser } = require('../utils/mediaUrls');
+const { DEFAULT_CHAT_BACKGROUND_ID, normalizeChatBackgroundId } = require('../utils/chatBackgrounds');
 const router = express.Router();
 
 const messageUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
@@ -23,6 +25,41 @@ const MESSAGE_USER_FIELDS = 'name email avatar avatarStoragePath avatarStoragePr
 const MESSAGE_REACTION_USER_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
 
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
+
+const getParticipantIds = (userA, userB) => {
+  const ids = [normalizeId(userA), normalizeId(userB)];
+  if (ids.some(id => !mongoose.Types.ObjectId.isValid(id))) return null;
+  if (ids[0] === ids[1]) return null;
+  return ids.sort();
+};
+
+const getParticipantKey = (userA, userB) => {
+  const ids = getParticipantIds(userA, userB);
+  return ids ? ids.join(':') : '';
+};
+
+const getConversationSettings = async (userA, userB, { create = false } = {}) => {
+  const participantIds = getParticipantIds(userA, userB);
+  if (!participantIds) return null;
+  const participantKey = participantIds.join(':');
+  if (!create) return DirectConversation.findOne({ participantKey }).lean();
+
+  return DirectConversation.findOneAndUpdate(
+    { participantKey },
+    {
+      $setOnInsert: {
+        participantKey,
+        participants: participantIds,
+        backgroundId: DEFAULT_CHAT_BACKGROUND_ID
+      }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+};
+
+const getConversationPayload = (conversation) => ({
+  backgroundId: normalizeChatBackgroundId(conversation?.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID
+});
 
 const localStorage = multer.diskStorage({
   destination: messageUploadDir,
@@ -126,6 +163,7 @@ const sanitizeAttachment = (attachment = {}, userId = '') => {
 const describeMessage = (message) => {
   const attachments = getMessageAttachments(message);
   if (message.unsent) return 'Message unsent';
+  if (message.system) return message.text || 'Conversation updated';
   if (message.text?.trim()) return message.text;
   if (attachments.length > 1) {
     const mediaCount = attachments.filter(item => ['image', 'video'].includes(item.fileType)).length;
@@ -257,12 +295,30 @@ router.get('/conversations', auth, async (req, res) => {
       { $sort: { lastTime: -1 } }
     ]);
 
-    const conversations = rows.map((item) => ({
-      user: serializeMediaUser(item.user),
-      lastMessage: describeMessage(item.lastMessageDoc || {}),
-      lastTime: item.lastTime,
-      unreadCount: item.unreadCount || 0
-    }));
+    const backgroundRows = await DirectConversation.find({
+      participantKey: {
+        $in: rows
+          .map(item => getParticipantKey(req.user, item.user?._id || item._id))
+          .filter(Boolean)
+      }
+    }).select('participantKey backgroundId').lean();
+    const backgroundByKey = new Map(backgroundRows.map(item => [
+      item.participantKey,
+      normalizeChatBackgroundId(item.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID
+    ]));
+
+    const conversations = rows.map((item) => {
+      const participantKey = getParticipantKey(req.user, item.user?._id || item._id);
+      return {
+        user: serializeMediaUser(item.user),
+        lastMessage: describeMessage(item.lastMessageDoc || {}),
+        lastTime: item.lastTime,
+        unreadCount: item.unreadCount || 0,
+        conversation: {
+          backgroundId: backgroundByKey.get(participantKey) || DEFAULT_CHAT_BACKGROUND_ID
+        }
+      };
+    });
     res.json(conversations);
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -373,8 +429,85 @@ router.get('/streak/:userId', auth, async (req, res) => {
   }
 });
 
+router.put('/:userId/background', auth, async (req, res) => {
+  try {
+    const otherUser = await User.findById(req.params.userId).select(MESSAGE_USER_FIELDS);
+    if (!otherUser) return res.status(404).json({ msg: 'User not found' });
+    if (normalizeId(otherUser) === req.user) return res.status(400).json({ msg: 'Choose another user' });
+
+    const backgroundId = normalizeChatBackgroundId(req.body?.backgroundId);
+    if (!backgroundId) return res.status(400).json({ msg: 'Invalid conversation background' });
+
+    const previous = await getConversationSettings(req.user, req.params.userId, { create: true });
+    const previousBackgroundId = normalizeChatBackgroundId(previous?.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID;
+    const changed = previousBackgroundId !== backgroundId;
+    const participantIds = getParticipantIds(req.user, req.params.userId);
+    const participantKey = participantIds.join(':');
+    const conversation = await DirectConversation.findOneAndUpdate(
+      { participantKey },
+      {
+        $set: {
+          participantKey,
+          participants: participantIds,
+          backgroundId,
+          updatedBy: req.user
+        }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    let systemMessage = null;
+    if (changed) {
+      const actor = await User.findById(req.user).select(MESSAGE_USER_FIELDS).lean();
+      const actorName = actor?.name || 'User';
+      const message = new Message({
+        from: req.user,
+        to: req.params.userId,
+        text: backgroundId === DEFAULT_CHAT_BACKGROUND_ID
+          ? `${actorName} reset the chat background.`
+          : `${actorName} changed the chat background.`,
+        system: true,
+        systemType: 'background_changed',
+        systemData: {
+          backgroundId,
+          previousBackgroundId
+        },
+        read: true,
+        readAt: new Date()
+      });
+      await message.save();
+      systemMessage = await populateMessage(message._id);
+    }
+
+    const payload = {
+      userId: req.user,
+      otherUserId: req.params.userId,
+      participants: participantIds,
+      conversation: getConversationPayload(conversation),
+      backgroundId,
+      changed,
+      message: systemMessage
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      participantIds.forEach(participantId => {
+        io.to(`user_${participantId}`).emit('conversation-background-updated', payload);
+        if (systemMessage) io.to(`user_${participantId}`).emit('receiveMessage', systemMessage);
+      });
+    }
+
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
 router.get('/:userId', auth, async (req, res) => {
   try {
+    const otherUser = await User.findById(req.params.userId).select('_id');
+    if (!otherUser) return res.status(404).json({ msg: 'User not found' });
+
     const query = {
       $or: [
         { from: req.user, to: req.params.userId },
@@ -418,11 +551,13 @@ router.get('/:userId', auth, async (req, res) => {
     const currentPage = hasMore ? page.slice(0, limit) : page;
     const items = currentPage.reverse().map(hydrateMessageMedia);
     const oldestInPage = items[0];
+    const conversation = await getConversationSettings(req.user, req.params.userId);
 
     return res.json({
       items,
       hasMore,
-      nextCursor: hasMore ? oldestInPage?.createdAt || null : null
+      nextCursor: hasMore ? oldestInPage?.createdAt || null : null,
+      conversation: getConversationPayload(conversation)
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });

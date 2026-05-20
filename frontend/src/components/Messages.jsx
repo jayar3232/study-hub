@@ -65,6 +65,7 @@ import { isNativeMediaLibraryAvailable, nativeMediaAssetToFile } from '../utils/
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import AnimatedEmojiText from './AnimatedEmojiText';
 import { AppLogoMark, AppWordmark } from './AppLogo';
+import { CHAT_BACKGROUND_OPTIONS, DEFAULT_CHAT_BACKGROUND_ID, getChatBackground } from '../data/chatBackgroundPresets';
 
 let socket;
 
@@ -407,8 +408,7 @@ const STORAGE_KEYS = {
   mutedChats: 'syncrova-muted-chats',
   pinnedChats: 'syncrova-pinned-chats',
   chatNicknames: 'syncrova-chat-nicknames',
-  chatThemes: 'syncrova-chat-themes',
-  chatBackgrounds: 'syncrova-chat-backgrounds'
+  chatThemes: 'syncrova-chat-themes'
 };
 
 const LEGACY_STORAGE_KEYS = {
@@ -416,8 +416,7 @@ const LEGACY_STORAGE_KEYS = {
   mutedChats: 'studenthub-muted-chats',
   pinnedChats: 'studenthub-pinned-chats',
   chatNicknames: 'studenthub-chat-nicknames',
-  chatThemes: 'studenthub-chat-themes',
-  chatBackgrounds: 'studenthub-chat-backgrounds'
+  chatThemes: 'studenthub-chat-themes'
 };
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '✅'];
@@ -454,44 +453,10 @@ const CHAT_THEMES = {
   }
 };
 
-const CHAT_BACKGROUNDS = {
-  default: {
-    label: 'Default',
-    description: 'Clean Syncrova surface',
-    className: 'chat-bg-default',
-    preview: 'linear-gradient(135deg, #f8fafc, #eef2f7)'
-  },
-  minimal: {
-    label: 'Minimal light',
-    description: 'Soft pattern',
-    className: 'chat-bg-minimal',
-    preview: 'radial-gradient(circle at 20% 20%, rgba(148, 163, 184, 0.24) 0 1px, transparent 1px), linear-gradient(135deg, #ffffff, #f1f5f9)'
-  },
-  darkGradient: {
-    label: 'Dark gradient',
-    description: 'Low-light focus',
-    className: 'chat-bg-dark-gradient',
-    preview: 'linear-gradient(135deg, #050506, #111827 55%, #0f172a)'
-  },
-  softBlue: {
-    label: 'Soft blue',
-    description: 'Calm blue wash',
-    className: 'chat-bg-soft-blue',
-    preview: 'linear-gradient(135deg, #dbeafe, #eff6ff 52%, #ffffff)'
-  },
-  classroom: {
-    label: 'Classroom',
-    description: 'Student theme',
-    className: 'chat-bg-classroom',
-    preview: 'linear-gradient(135deg, #ecfeff, #fef3c7 52%, #f8fafc)'
-  },
-  abstract: {
-    label: 'Abstract blur',
-    description: 'Subtle color wash',
-    className: 'chat-bg-abstract',
-    preview: 'radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.45), transparent 32%), radial-gradient(circle at 82% 20%, rgba(168, 85, 247, 0.3), transparent 30%), linear-gradient(135deg, #f8fafc, #eef2ff)'
-  }
-};
+const isValidChatBackgroundId = (value) => CHAT_BACKGROUND_OPTIONS.some(option => option.id === value);
+const normalizeChatBackgroundKey = (value) => (
+  isValidChatBackgroundId(value) ? value : DEFAULT_CHAT_BACKGROUND_ID
+);
 
 export default function Messages() {
   const { user } = useAuth();
@@ -513,7 +478,10 @@ export default function Messages() {
   const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.pinnedChats, LEGACY_STORAGE_KEYS.pinnedChats));
   const [conversationNicknames, setConversationNicknames] = useState(() => readStoredObject(STORAGE_KEYS.chatNicknames, LEGACY_STORAGE_KEYS.chatNicknames));
   const [conversationThemes, setConversationThemes] = useState(() => readStoredObject(STORAGE_KEYS.chatThemes, LEGACY_STORAGE_KEYS.chatThemes));
-  const [conversationBackgrounds, setConversationBackgrounds] = useState(() => readStoredObject(STORAGE_KEYS.chatBackgrounds, LEGACY_STORAGE_KEYS.chatBackgrounds));
+  const [conversationBackgrounds, setConversationBackgrounds] = useState({});
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
+  const [pendingBackgroundKey, setPendingBackgroundKey] = useState(DEFAULT_CHAT_BACKGROUND_ID);
+  const [savingBackground, setSavingBackground] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -706,9 +674,43 @@ export default function Messages() {
     updateStoredObject(STORAGE_KEYS.chatThemes, setConversationThemes, rawId, value === 'default' ? '' : value);
   }, [updateStoredObject]);
 
-  const updateConversationBackground = useCallback((rawId, value) => {
-    updateStoredObject(STORAGE_KEYS.chatBackgrounds, setConversationBackgrounds, rawId, value === 'default' ? '' : value);
-  }, [updateStoredObject]);
+  const cacheConversationBackground = useCallback((rawId, value) => {
+    const id = getEntityId(rawId);
+    if (!id) return;
+    const backgroundId = normalizeChatBackgroundKey(value);
+    setConversationBackgrounds(prev => {
+      if ((prev[id] || DEFAULT_CHAT_BACKGROUND_ID) === backgroundId) return prev;
+      return { ...prev, [id]: backgroundId };
+    });
+  }, []);
+
+  const updateConversationBackground = useCallback(async (rawId, value) => {
+    const id = getEntityId(rawId);
+    if (!id || savingBackground) return;
+    const backgroundId = normalizeChatBackgroundKey(value);
+
+    setSavingBackground(true);
+    try {
+      const res = await api.put(`/messages/${id}/background`, { backgroundId });
+      const nextBackgroundId = normalizeChatBackgroundKey(res.data?.conversation?.backgroundId || backgroundId);
+      cacheConversationBackground(id, nextBackgroundId);
+      if (res.data?.message && getEntityId(selectedUserRef.current) === id) {
+        const systemMessage = res.data.message;
+        setMessages(prev => (
+          prev.some(message => getEntityId(message) === getEntityId(systemMessage))
+            ? prev
+            : [...prev, systemMessage]
+        ));
+      }
+      setPendingBackgroundKey(nextBackgroundId);
+      setShowBackgroundPicker(false);
+      toast.success(res.data?.changed ? 'Conversation background updated' : 'Background already selected');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to update background');
+    } finally {
+      setSavingBackground(false);
+    }
+  }, [cacheConversationBackground, savingBackground]);
 
   const clearTargetUserParam = useCallback(() => {
     setSearchParams(prev => {
@@ -736,6 +738,17 @@ export default function Messages() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [actionMenuMessageId]);
+
+  useEffect(() => {
+    if (!showBackgroundPicker) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setShowBackgroundPicker(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showBackgroundPicker]);
 
   const scrollThreadToBottomNow = useCallback(() => {
     const thread = messageThreadRef.current;
@@ -852,6 +865,12 @@ export default function Messages() {
         return;
       }
 
+      if (showBackgroundPicker) {
+        event.preventDefault();
+        setShowBackgroundPicker(false);
+        return;
+      }
+
       if (showChatDetails) {
         event.preventDefault();
         setShowChatDetails(false);
@@ -905,6 +924,7 @@ export default function Messages() {
     selectedAttachment,
     selectedMessageInfo,
     selectedUser,
+    showBackgroundPicker,
     showChatDetails,
     showModal,
     showPinnedPanel
@@ -930,10 +950,25 @@ export default function Messages() {
   const fetchConversations = useCallback(async () => {
     try {
       const res = await api.get('/messages/conversations');
-      setConversations(res.data);
-      rememberLastSeen(res.data);
-      updateUnreadBadge(res.data);
-      return res.data;
+      const items = Array.isArray(res.data) ? res.data : [];
+      setConversations(items);
+      setConversationBackgrounds(prev => {
+        let changed = false;
+        const next = { ...prev };
+        items.forEach(item => {
+          const userId = getEntityId(item.user);
+          if (!userId) return;
+          const backgroundId = normalizeChatBackgroundKey(item.conversation?.backgroundId);
+          if ((next[userId] || DEFAULT_CHAT_BACKGROUND_ID) !== backgroundId) {
+            next[userId] = backgroundId;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+      rememberLastSeen(items);
+      updateUnreadBadge(items);
+      return items;
     } catch (err) {
       console.error(err);
       return [];
@@ -1058,6 +1093,7 @@ export default function Messages() {
 
       const payload = res.data || {};
       const loadedMessages = Array.isArray(payload) ? payload : (payload.items || []);
+      if (!Array.isArray(payload)) cacheConversationBackground(id, payload.conversation?.backgroundId);
       setMessages(loadedMessages);
       setHasOlderMessages(Boolean(!Array.isArray(payload) && payload.hasMore));
       setOldestMessageCursor(Array.isArray(payload) ? null : (payload.nextCursor || null));
@@ -1075,7 +1111,7 @@ export default function Messages() {
     } finally {
       if (latestFetchIdRef.current === fetchId) setLoading(false);
     }
-  }, [currentUserId, markChatAsRead]);
+  }, [cacheConversationBackground, currentUserId, markChatAsRead]);
 
   const fetchChatStreak = useCallback(async (userId) => {
     const id = getEntityId(userId);
@@ -2282,12 +2318,12 @@ export default function Messages() {
         setOtherUserTyping(false);
         scrollToBottom();
 
-        if (fromId !== currentUserId) {
+        if (fromId !== currentUserId && !message.system) {
           if (soundEnabled && !mutedConversationIds.has(fromId)) playUiSound('message', 0.5);
           markChatAsRead(fromId);
         }
         fetchChatStreak(fromId === currentUserId ? toId : fromId);
-      } else if (toId === currentUserId && fromId !== currentUserId) {
+      } else if (toId === currentUserId && fromId !== currentUserId && !message.system) {
         if (!mutedConversationIds.has(fromId)) {
           if (soundEnabled) playUiSound('message', 0.5);
           toast.success(`New message from ${getDisplayName(message.from, 'someone')}`);
@@ -2342,6 +2378,36 @@ export default function Messages() {
       }
     };
 
+    const onConversationBackgroundUpdated = (payload = {}) => {
+      const participants = Array.isArray(payload.participants)
+        ? payload.participants.map(getEntityId).filter(Boolean)
+        : [];
+      if (participants.length && !participants.includes(currentUserId)) return;
+
+      const otherUserId = participants.find(id => id !== currentUserId)
+        || getEntityId(payload.otherUserId)
+        || getEntityId(payload.userId);
+      if (!otherUserId || otherUserId === currentUserId) return;
+
+      const backgroundId = normalizeChatBackgroundKey(payload.conversation?.backgroundId || payload.backgroundId);
+      cacheConversationBackground(otherUserId, backgroundId);
+      setConversations(prev => prev.map(conversation => (
+        getEntityId(conversation.user) === otherUserId
+          ? {
+              ...conversation,
+              conversation: {
+                ...(conversation.conversation || {}),
+                backgroundId
+              }
+            }
+          : conversation
+      )));
+
+      if (getEntityId(selectedUserRef.current) === otherUserId) {
+        setPendingBackgroundKey(backgroundId);
+      }
+    };
+
     const onUserNoteUpdated = (note) => {
       syncUserNote(note);
     };
@@ -2362,6 +2428,7 @@ export default function Messages() {
     socket.on('message-updated', onMessageUpdated);
     socket.on('message-hidden', onMessageHidden);
     socket.on('conversation-deleted', onConversationDeleted);
+    socket.on('conversation-background-updated', onConversationBackgroundUpdated);
     socket.on('user-note-updated', onUserNoteUpdated);
     socket.on('user-note-deleted', onUserNoteDeleted);
     if (socket.connected) {
@@ -2390,11 +2457,13 @@ export default function Messages() {
       socket.off('message-updated', onMessageUpdated);
       socket.off('message-hidden', onMessageHidden);
       socket.off('conversation-deleted', onConversationDeleted);
+      socket.off('conversation-background-updated', onConversationBackgroundUpdated);
       socket.off('user-note-updated', onUserNoteUpdated);
       socket.off('user-note-deleted', onUserNoteDeleted);
       clearInterval(heartbeat);
     };
   }, [
+    cacheConversationBackground,
     currentUserId,
     fetchConversations,
     fetchChatStreak,
@@ -2441,6 +2510,7 @@ export default function Messages() {
     setSelectedMessageInfo(null);
     setEmojiPickerMessageId(null);
     setActionMenuMessageId(null);
+    setShowBackgroundPicker(false);
     setShowPinnedPanel(false);
     setFocusedMessageId(null);
     clearAttachment();
@@ -3023,7 +3093,7 @@ export default function Messages() {
   };
 
   const startMessageOptionsPress = (message, delay = 430) => {
-    if (!message || message.unsent) return;
+    if (!message || message.unsent || message.system) return;
     clearReactionPressTimer();
     reactionPressTimerRef.current = setTimeout(() => {
       setEmojiPickerMessageId(null);
@@ -3034,7 +3104,7 @@ export default function Messages() {
   };
 
   const startSwipeReply = (event, message) => {
-    if (!isTouchReactionMode() || message?.unsent) return;
+    if (!isTouchReactionMode() || message?.unsent || message?.system) return;
     const touch = event.touches?.[0];
     if (!touch) return;
     swipeReplyRef.current = {
@@ -3176,7 +3246,7 @@ export default function Messages() {
 
   const pinnedMessages = useMemo(() => (
     messages
-      .filter(message => message.pinned && !message.unsent)
+      .filter(message => message.pinned && !message.unsent && !message.system)
       .sort((a, b) => (
         new Date(b.updatedAt || b.createdAt || 0).getTime()
         - new Date(a.updatedAt || a.createdAt || 0).getTime()
@@ -3307,8 +3377,10 @@ export default function Messages() {
   const selectedDisplayName = selectedNickname || selectedUser?.name || 'User';
   const selectedThemeKey = selectedUserId ? conversationThemes[selectedUserId] || 'default' : 'default';
   const selectedTheme = CHAT_THEMES[selectedThemeKey] || CHAT_THEMES.default;
-  const selectedBackgroundKey = selectedUserId ? conversationBackgrounds[selectedUserId] || 'default' : 'default';
-  const selectedBackground = CHAT_BACKGROUNDS[selectedBackgroundKey] || CHAT_BACKGROUNDS.default;
+  const selectedBackgroundKey = selectedUserId
+    ? normalizeChatBackgroundKey(conversationBackgrounds[selectedUserId])
+    : DEFAULT_CHAT_BACKGROUND_ID;
+  const selectedBackground = getChatBackground(selectedBackgroundKey);
   const selectedLastSeen = selectedUserId ? lastSeenByUser[selectedUserId] || selectedUser?.lastSeen : null;
   const callIsActive = callState !== 'idle';
   const callPartnerName = getDisplayName(callPartner, selectedDisplayName);
@@ -3951,24 +4023,27 @@ export default function Messages() {
         <ImageIcon size={14} />
         Conversation background
       </label>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {Object.entries(CHAT_BACKGROUNDS).map(([key, background]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => updateConversationBackground(selectedUserId, key)}
-            className={`chat-background-choice rounded-2xl border p-2 text-left text-xs font-black transition ${
-              selectedBackgroundKey === key
-                ? 'border-[#1877f2] bg-white text-slate-950 shadow-sm dark:bg-gray-950 dark:text-white'
-                : 'border-transparent bg-white/70 text-slate-500 hover:bg-white dark:bg-gray-950/60 dark:text-gray-400 dark:hover:bg-gray-950'
-            }`}
-          >
-            <span className="mb-1 block h-12 rounded-xl border border-white/60 shadow-inner dark:border-white/10" style={{ background: background.preview }} />
-            <span className="block truncate">{background.label}</span>
-            <span className="mt-0.5 block truncate text-[10px] font-bold opacity-65">{background.description}</span>
-          </button>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() => {
+          setPendingBackgroundKey(selectedBackgroundKey);
+          setShowBackgroundPicker(true);
+        }}
+        className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+      >
+        <span
+          className="h-12 w-12 shrink-0 rounded-2xl border border-white/70 shadow-inner ring-1 ring-slate-200 dark:border-white/10 dark:ring-white/10"
+          style={{ background: selectedBackground.preview }}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-black text-slate-950 dark:text-white">{selectedBackground.label}</span>
+          <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500 dark:text-gray-400">
+            Shared with this conversation
+          </span>
+        </span>
+        <ChevronRight size={17} className="shrink-0 text-slate-400" />
+      </button>
     </div>
   );
 
@@ -4894,6 +4969,35 @@ export default function Messages() {
                         const isLatestOwn = messageId === latestOwnMessageId;
                         const isSearchMatch = messageSearchMatchSet.has(messageId);
                         const showUnreadDivider = unreadDividerMessageId && unreadDividerMessageId === messageId;
+                        if (message.system) {
+                          return (
+                            <React.Fragment key={item.id}>
+                              {showUnreadDivider && (
+                                <div className="my-4 flex items-center gap-3">
+                                  <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
+                                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#1877f2] dark:bg-blue-950/40 dark:text-sky-200">New messages</span>
+                                  <span className="h-px flex-1 bg-pink-200 dark:bg-pink-900/60" />
+                                </div>
+                              )}
+                              <div
+                                ref={(node) => {
+                                  if (node) messageRefs.current[messageId] = node;
+                                  else delete messageRefs.current[messageId];
+                                }}
+                                className="system-message-row my-3 flex justify-center scroll-mt-24"
+                                role="status"
+                              >
+                                <span className="system-message-bubble inline-flex max-w-[min(92%,28rem)] items-center gap-2 rounded-full border border-slate-200 bg-white/88 px-3 py-2 text-center text-xs font-black text-slate-600 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-950/82 dark:text-zinc-200">
+                                  <Palette size={13} className="shrink-0 text-[#1877f2] dark:text-sky-300" />
+                                  <span className="min-w-0">{message.text || 'Conversation updated.'}</span>
+                                  <span className="hidden shrink-0 font-bold opacity-60 sm:inline">
+                                    {formatMessageTime(message.createdAt)}
+                                  </span>
+                                </span>
+                              </div>
+                            </React.Fragment>
+                          );
+                        }
                         const isMyDayReply = isMyDayReplyMessage(message);
                         const isNoteReply = isNoteReplyMessage(message);
                         const isContextReply = isMyDayReply || isNoteReply;
@@ -5673,6 +5777,108 @@ export default function Messages() {
             <ChatDetailsContent compact />
           </div>
         </div>
+      )}
+
+      {selectedUser && showBackgroundPicker && typeof document !== 'undefined' && createPortal(
+        <div
+          className="chat-background-picker-overlay fixed inset-0 z-[89] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => {
+            setPendingBackgroundKey(selectedBackgroundKey);
+            setShowBackgroundPicker(false);
+          }}
+        >
+          <div
+            className="chat-background-picker-modal flex max-h-[92svh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[1.65rem] border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-950 sm:rounded-[1.65rem]"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-gray-800">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Conversation background</p>
+                <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingBackgroundKey(selectedBackgroundKey);
+                  setShowBackgroundPicker(false);
+                }}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                aria-label="Cancel background picker"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {CHAT_BACKGROUND_OPTIONS.map(background => {
+                  const isSelected = pendingBackgroundKey === background.id;
+                  return (
+                    <button
+                      key={background.id}
+                      type="button"
+                      onClick={() => setPendingBackgroundKey(background.id)}
+                      className={`chat-background-preview-card rounded-2xl border p-2 text-left transition ${
+                        isSelected
+                          ? 'is-selected border-[#1877f2] bg-blue-50 text-slate-950 shadow-sm dark:bg-blue-950/20 dark:text-white'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-blue-900/60 dark:hover:bg-gray-900/80'
+                      }`}
+                    >
+                      <span
+                        className="chat-background-preview mb-2 block h-24 rounded-xl border border-white/80 shadow-inner ring-1 ring-slate-200 dark:border-white/10 dark:ring-white/10"
+                        style={{ background: background.preview }}
+                        aria-hidden="true"
+                      />
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black">{background.label}</span>
+                          <span className="mt-0.5 block truncate text-[11px] font-semibold opacity-65">{background.description}</span>
+                        </span>
+                        {isSelected && (
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#1877f2] text-white">
+                            <CheckCheck size={14} />
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-zinc-950/95 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingBackgroundKey(selectedBackgroundKey);
+                  setShowBackgroundPicker(false);
+                }}
+                disabled={savingBackground}
+                className="rounded-2xl px-4 py-2.5 text-sm font-black text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => updateConversationBackground(selectedUserId, DEFAULT_CHAT_BACKGROUND_ID)}
+                disabled={savingBackground || selectedBackgroundKey === DEFAULT_CHAT_BACKGROUND_ID}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Reset to default
+              </button>
+              <button
+                type="button"
+                onClick={() => updateConversationBackground(selectedUserId, pendingBackgroundKey)}
+                disabled={savingBackground || pendingBackgroundKey === selectedBackgroundKey}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-[#0f6ae8] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingBackground && <Loader2 size={16} className="animate-spin" />}
+                Apply background
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {activeActionMessage && typeof document !== 'undefined' && createPortal((() => {
