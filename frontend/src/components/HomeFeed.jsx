@@ -32,6 +32,7 @@ import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import MediaViewer from './MediaViewer';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import AnimatedEmojiText from './AnimatedEmojiText';
+import UserProfileModal from './UserProfileModal';
 
 const QUICK_REACTIONS = ['\u{1F44D}', '\u2764\uFE0F', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F525}', '\u{1F44F}', '\u2705'];
 const MAX_HOME_POST_UPLOAD = 35 * 1024 * 1024;
@@ -99,6 +100,18 @@ const saveVideoAutoplayPreference = (enabled) => {
     // Preference storage can be blocked in private modes.
   }
 };
+
+const getInitialFeedVisibleCount = () => (
+  typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
+    ? 5
+    : 8
+);
+
+const getFeedLoadLimit = () => (
+  typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
+    ? 36
+    : 60
+);
 
 const getLocalMediaType = (file = {}) => {
   const mimeType = String(file.type || '').toLowerCase();
@@ -275,7 +288,7 @@ function CommentReactionSummary({ reactions = [], onReact, onOpen }) {
   );
 }
 
-function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose }) {
+function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose, onProfileClick }) {
   const [activeFilter, setActiveFilter] = useState('all');
   const grouped = reactions.reduce((map, reaction) => {
     const emoji = String(reaction?.emoji || '').trim();
@@ -335,13 +348,19 @@ function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose }) {
                 return (
                   <div key={`${getEntityId(reactor) || name}-${reaction.emoji}-${index}`} className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-slate-50 dark:hover:bg-slate-900">
                     <div className="relative shrink-0">
-                      <Avatar user={reactor} size="h-11 w-11" />
+                      <Avatar user={reactor} size="h-11 w-11" onClick={onProfileClick} />
                       <span className="reaction-motion-zone absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-white text-sm shadow ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
                         <AnimatedEmojiText text={reaction.emoji} />
                       </span>
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-slate-950 dark:text-white">{name}</p>
+                      <button
+                        type="button"
+                        onClick={() => onProfileClick?.(reactor)}
+                        className="block max-w-full truncate text-left text-sm font-black text-slate-950 transition hover:text-[#0b57d0] dark:text-white dark:hover:text-sky-200"
+                      >
+                        {name}
+                      </button>
                       <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Reacted with <AnimatedEmojiText text={reaction.emoji} /></p>
                     </div>
                   </div>
@@ -359,14 +378,34 @@ function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose }) {
   );
 }
 
-function Avatar({ user, size = 'h-11 w-11' }) {
+function Avatar({ user, size = 'h-11 w-11', onClick }) {
   const avatar = resolveMediaUrl(user?.avatar);
-  return (
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [avatar]);
+  const avatarContent = (
     <DeveloperAvatarFrame user={user}>
       <span className={`${size} grid shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white`}>
-        {avatar ? <img src={avatar} alt={user?.name || 'User'} className="h-full w-full object-cover" /> : (user?.name || 'U').charAt(0).toUpperCase()}
+        {avatar && !failed ? (
+          <img src={avatar} alt={user?.name || 'User'} onError={() => setFailed(true)} className="h-full w-full object-cover" />
+        ) : (user?.name || 'U').charAt(0).toUpperCase()}
       </span>
     </DeveloperAvatarFrame>
+  );
+  if (!onClick) return avatarContent;
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick(user);
+      }}
+      className="shrink-0 rounded-full transition hover:ring-2 hover:ring-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-300"
+      aria-label={`View ${user?.name || 'member'} profile`}
+    >
+      {avatarContent}
+    </button>
   );
 }
 
@@ -465,6 +504,40 @@ function FeedVideoPlayer({
   );
 }
 
+function FeedImage({ src, alt, className = '', onClick }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`grid min-h-44 w-full place-items-center bg-slate-100 p-5 text-center text-slate-500 dark:bg-slate-900 dark:text-slate-400 ${className}`}
+      >
+        <span>
+          <ImageIcon className="mx-auto" size={28} />
+          <span className="mt-2 block text-xs font-black uppercase">Media unavailable</span>
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className={className}
+    />
+  );
+}
+
 function FeedMediaGrid({
   attachments = [],
   title = 'Post media',
@@ -520,11 +593,13 @@ function FeedMediaGrid({
                   videoClassName={isSingle ? 'max-h-[32rem]' : 'h-full max-h-none object-cover'}
                 />
               ) : (
-                <img
+                <FeedImage
                   src={src}
                   alt={label}
-                  loading="lazy"
-                  decoding="async"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenMedia(index, viewerItems);
+                  }}
                   className={`feed-media-image ${isSingle ? 'max-h-[34rem] object-contain' : 'h-full object-cover'} w-full bg-slate-950`}
                 />
               )}
@@ -570,7 +645,7 @@ export default function HomeFeed({
   const [friendOptions, setFriendOptions] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [commentDrafts, setCommentDrafts] = useState({});
-  const [visibleCount, setVisibleCount] = useState(8);
+  const [visibleCount, setVisibleCount] = useState(getInitialFeedVisibleCount);
   const [reactionBursts, setReactionBursts] = useState({});
   const [commentReactionBursts, setCommentReactionBursts] = useState({});
   const [reactionViewer, setReactionViewer] = useState(null);
@@ -585,6 +660,7 @@ export default function HomeFeed({
   const [hiddenPostIds, setHiddenPostIds] = useState(() => new Set());
   const [mediaViewer, setMediaViewer] = useState(null);
   const [uploadQueue, setUploadQueue] = useState(null);
+  const [profileUser, setProfileUser] = useState(null);
 
   const composerInputRef = useRef(null);
   const commentInputRefs = useRef({});
@@ -595,10 +671,16 @@ export default function HomeFeed({
   const deepLinkHandledRef = useRef(false);
   const currentUserId = getEntityId(currentUser);
   const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
-  const visiblePosts = useMemo(
-    () => posts.filter(post => !hiddenPostIds.has(getEntityId(post))).slice(0, visibleCount),
-    [hiddenPostIds, posts, visibleCount]
+  const filteredPosts = useMemo(
+    () => posts.filter(post => !hiddenPostIds.has(getEntityId(post))),
+    [hiddenPostIds, posts]
   );
+  const visiblePosts = useMemo(
+    () => filteredPosts.slice(0, visibleCount),
+    [filteredPosts, visibleCount]
+  );
+  const hasMoreVisiblePosts = visibleCount < filteredPosts.length;
+  const visiblePostStep = getInitialFeedVisibleCount();
   const activeReactionPost = useMemo(
     () => posts.find(post => getEntityId(post) === activeReactionPostId),
     [activeReactionPostId, posts]
@@ -624,6 +706,11 @@ export default function HomeFeed({
 
   const handleFeedVideoPlay = useCallback((videoKey) => {
     if (videoKey) setActiveVideoKey(videoKey);
+  }, []);
+
+  const openProfile = useCallback((person) => {
+    if (!getEntityId(person)) return;
+    setProfileUser(person);
   }, []);
 
   const toggleVideoAutoplay = () => {
@@ -661,8 +748,9 @@ export default function HomeFeed({
   const loadFeed = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const res = await api.get('/posts/home?limit=60');
+      const res = await api.get(`/posts/home?limit=${getFeedLoadLimit()}`);
       setPosts(shufflePosts(res.data || []));
+      setVisibleCount(count => Math.max(getInitialFeedVisibleCount(), Math.min(count, res.data?.length || getInitialFeedVisibleCount())));
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to load home feed');
     } finally {
@@ -1665,10 +1753,16 @@ export default function HomeFeed({
             return (
               <article id={`post-${postId}`} key={postId} className={`feed-card mobile-facebook-post ${attachments.length ? 'feed-card--has-media' : ''} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/55 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20`}>
                 <header className="feed-card-header flex items-start gap-3 p-4">
-                  <Avatar user={author} />
+                  <Avatar user={author} onClick={openProfile} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="min-w-0 truncate font-black text-slate-950 dark:text-white">{author.name || 'Member'}</span>
+                      <button
+                        type="button"
+                        onClick={() => openProfile(author)}
+                        className="min-w-0 truncate text-left font-black text-slate-950 transition hover:text-[#0b57d0] dark:text-white dark:hover:text-sky-200"
+                      >
+                        {author.name || 'Member'}
+                      </button>
                       <DeveloperBadge user={author} compact />
                       {author.studentVerificationStatus === 'approved' && (
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black uppercase text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/35 dark:text-emerald-200 dark:ring-emerald-500/20" title="Official campus student">
@@ -1814,7 +1908,7 @@ export default function HomeFeed({
 
                     return (
                       <div key={commentReactionKey} className="flex gap-2">
-                        <Avatar user={comment.userId} size="h-8 w-8" />
+                        <Avatar user={comment.userId} size="h-8 w-8" onClick={openProfile} />
                         <div className="min-w-0 flex-1">
                           <div className="relative inline-block max-w-full">
                             <div className="min-w-0 rounded-2xl bg-slate-100 px-3 py-2 dark:bg-slate-950">
@@ -1829,7 +1923,13 @@ export default function HomeFeed({
                                 </div>
                               )}
                               <div className="flex min-w-0 items-center gap-1.5">
-                                <span className="truncate text-xs font-black text-slate-950 dark:text-white">{comment.userId?.name || 'Member'}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openProfile(comment.userId)}
+                                  className="truncate text-left text-xs font-black text-slate-950 transition hover:text-[#0b57d0] dark:text-white dark:hover:text-sky-200"
+                                >
+                                  {comment.userId?.name || 'Member'}
+                                </button>
                                 <DeveloperBadge user={comment.userId} compact />
                               </div>
                               <p className="break-words text-sm text-slate-700 dark:text-slate-200"><AnimatedEmojiText text={comment.text} /></p>
@@ -1898,8 +1998,8 @@ export default function HomeFeed({
             );
           })}
 
-          {visibleCount < posts.length && (
-            <button type="button" onClick={() => setVisibleCount(count => count + 8)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
+          {hasMoreVisiblePosts && (
+            <button type="button" onClick={() => setVisibleCount(count => count + visiblePostStep)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
               Load more posts
             </button>
           )}
@@ -1999,7 +2099,7 @@ export default function HomeFeed({
                   const parentComment = sheetComments.find(item => getCommentId(item) === getEntityId(comment.replyTo));
                   return (
                     <div key={`sheet-${commentReactionKey}`} className="flex gap-2">
-                      <Avatar user={comment.userId} size="h-8 w-8" />
+                      <Avatar user={comment.userId} size="h-8 w-8" onClick={openProfile} />
                       <div className="min-w-0 flex-1">
                         <div className="relative inline-block max-w-full">
                           <div className="min-w-0 rounded-2xl bg-slate-100 px-3 py-2">
@@ -2012,7 +2112,13 @@ export default function HomeFeed({
                               </div>
                             )}
                             <div className="flex min-w-0 items-center gap-1.5">
-                              <span className="truncate text-xs font-black text-slate-950">{comment.userId?.name || 'Member'}</span>
+                              <button
+                                type="button"
+                                onClick={() => openProfile(comment.userId)}
+                                className="truncate text-left text-xs font-black text-slate-950 transition hover:text-[#0b57d0]"
+                              >
+                                {comment.userId?.name || 'Member'}
+                              </button>
                               <DeveloperBadge user={comment.userId} compact />
                             </div>
                             <p className="break-words text-sm text-slate-700"><AnimatedEmojiText text={comment.text} /></p>
@@ -2102,9 +2208,16 @@ export default function HomeFeed({
           title={reactionViewer.title}
           reactions={reactionViewer.reactions}
           onClose={() => setReactionViewer(null)}
+          onProfileClick={openProfile}
         />,
         document.body
       )}
+
+      <UserProfileModal
+        isOpen={Boolean(profileUser)}
+        user={profileUser}
+        onClose={() => setProfileUser(null)}
+      />
     </section>
   );
 }

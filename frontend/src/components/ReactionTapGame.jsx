@@ -38,7 +38,8 @@ const setupCanvas = (canvas) => {
   const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.round(rect.width));
   const height = Math.max(1, Math.round(rect.height));
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const isTouchViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+  const dpr = Math.min(isTouchViewport ? 1.35 : 2, window.devicePixelRatio || 1);
   if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
@@ -186,9 +187,10 @@ export default function ReactionTapGame({ stats, onScoreSaved, onExit }) {
   }, [fetchMeta]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 120);
+    const activeAnimation = room?.status === 'playing' || room?.status === 'countdown' || practice.active;
+    const timer = window.setInterval(() => setNow(Date.now()), activeAnimation ? 160 : 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [practice.active, room?.status]);
 
   const applyRoom = useCallback((nextRoom) => {
     if (!nextRoom) return;

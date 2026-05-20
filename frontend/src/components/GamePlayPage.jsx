@@ -137,6 +137,17 @@ export default function GamePlayPage() {
     return () => root.classList.remove('game-focus-lock');
   }, [focusMode]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const root = document.documentElement;
+    const isTouchViewport = window.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches;
+    root.classList.add('syncrova-game-page');
+    root.classList.toggle('syncrova-touch-performance', Boolean(isTouchViewport));
+    return () => {
+      root.classList.remove('syncrova-game-page', 'syncrova-touch-performance');
+    };
+  }, [gameKey]);
+
   useEffect(() => () => {
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {});

@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const Subscription = require('../models/Subscription');
 const Notification = require('../models/Notification');
 const { emitNotificationState, getUnreadCount } = require('../services/notifications');
+const { USER_AVATAR_MEDIA_FIELDS, hydrateMediaUserInPlace } = require('../utils/mediaUrls');
 const {
   isNativePushConfigured,
   registerNativePushDevice,
@@ -83,9 +84,10 @@ router.delete('/native/register', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.user })
-      .populate('actorId', 'name avatar isDeveloper')
+      .populate('actorId', USER_AVATAR_MEDIA_FIELDS)
       .sort({ createdAt: -1 })
       .limit(40);
+    notifications.forEach(notification => hydrateMediaUserInPlace(notification.actorId));
     const unreadCount = await getUnreadCount(req.user);
     res.json({ notifications, unreadCount });
   } catch (err) {
@@ -117,10 +119,11 @@ router.put('/:notificationId/read', auth, async (req, res) => {
       { _id: req.params.notificationId, userId: req.user },
       { read: true },
       { new: true }
-    ).populate('actorId', 'name avatar isDeveloper');
+    ).populate('actorId', USER_AVATAR_MEDIA_FIELDS);
 
     if (!notification) return res.status(404).json({ msg: 'Notification not found' });
 
+    hydrateMediaUserInPlace(notification.actorId);
     await emitNotificationState(req.app.get('io'), req.user);
     res.json(notification);
   } catch (err) {
@@ -134,10 +137,11 @@ router.put('/:notificationId/unread', auth, async (req, res) => {
       { _id: req.params.notificationId, userId: req.user },
       { read: false },
       { new: true }
-    ).populate('actorId', 'name avatar isDeveloper');
+    ).populate('actorId', USER_AVATAR_MEDIA_FIELDS);
 
     if (!notification) return res.status(404).json({ msg: 'Notification not found' });
 
+    hydrateMediaUserInPlace(notification.actorId);
     await emitNotificationState(req.app.get('io'), req.user);
     res.json(notification);
   } catch (err) {

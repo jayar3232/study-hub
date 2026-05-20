@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const { sendNativePushNotification } = require('./nativePush');
+const { USER_AVATAR_MEDIA_FIELDS, hydrateMediaUserInPlace } = require('../utils/mediaUrls');
 
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 
@@ -27,7 +28,8 @@ const createNotification = async ({ io, userId, actorId, type, title, body = '',
     href,
     meta
   });
-  await notification.populate('actorId', 'name avatar');
+  await notification.populate('actorId', USER_AVATAR_MEDIA_FIELDS);
+  hydrateMediaUserInPlace(notification.actorId);
   await emitNotificationState(io, targetId, notification);
   sendNativePushNotification({
     userId: targetId,

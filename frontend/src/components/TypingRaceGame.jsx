@@ -61,51 +61,100 @@ const scorePractice = (sentences, typedSentences, elapsedMs) => {
   };
 };
 
-const TypingWordBoard = ({ words, currentIndex, currentInput, typedWords, onFocus }) => (
-  <button
-    type="button"
-    onClick={onFocus}
-    className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-inner shadow-slate-200/60 outline-none transition focus:border-[#0b57d0] focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:shadow-black/20"
-  >
-    <div className="flex max-h-56 flex-wrap content-start gap-x-3 gap-y-2 overflow-y-auto pr-1 text-xl font-black leading-9 text-slate-400 sm:text-2xl">
-      {words.map((word, index) => {
-        const isActive = index === currentIndex;
-        const isDone = index < currentIndex;
-        const typed = isActive ? currentInput : (typedWords[index] || '');
-        const isCorrect = isDone && wordMatches(word, typed);
-        const isWrong = isDone && !isCorrect;
-        const length = Math.max(word.length, typed.length || 0);
+const TypingWordToken = React.memo(function TypingWordToken({ word, index, state, typed, setActiveWord }) {
+  const isActive = state === 'active';
+  const isDone = state === 'done';
+  const isCorrect = isDone && wordMatches(word, typed);
+  const isWrong = isDone && !isCorrect;
+  const length = Math.max(word.length, typed.length || 0);
 
+  return (
+    <span
+      ref={isActive ? setActiveWord : null}
+      className={`typing-race-token relative rounded-lg px-1 transition ${isActive ? 'bg-blue-500/10 ring-2 ring-blue-500/25' : ''} ${isCorrect ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : ''} ${isWrong ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300' : ''}`}
+    >
+      {Array.from({ length }).map((_, charIndex) => {
+        const expectedChar = word[charIndex] || '';
+        const typedChar = typed[charIndex] || '';
+        const isExtra = charIndex >= word.length;
+        const isTyped = charIndex < typed.length;
+        const charClass = !isTyped
+          ? 'text-slate-400 dark:text-slate-500'
+          : isExtra
+            ? 'text-rose-500 underline decoration-rose-500'
+            : expectedChar.toLowerCase() === typedChar.toLowerCase()
+              ? 'text-slate-950 dark:text-white'
+              : 'text-rose-500 underline decoration-rose-500';
         return (
-          <span
-            key={`${word}-${index}`}
-            className={`relative rounded-lg px-1 transition ${isActive ? 'bg-blue-500/10 ring-2 ring-blue-500/25' : ''} ${isCorrect ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : ''} ${isWrong ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300' : ''}`}
-          >
-            {Array.from({ length }).map((_, charIndex) => {
-              const expectedChar = word[charIndex] || '';
-              const typedChar = typed[charIndex] || '';
-              const isExtra = charIndex >= word.length;
-              const isTyped = charIndex < typed.length;
-              const charClass = !isTyped
-                ? 'text-slate-400 dark:text-slate-500'
-                : isExtra
-                  ? 'text-rose-500 underline decoration-rose-500'
-                  : expectedChar.toLowerCase() === typedChar.toLowerCase()
-                    ? 'text-slate-950 dark:text-white'
-                    : 'text-rose-500 underline decoration-rose-500';
-              return (
-                <span key={`${index}-${charIndex}`} className={charClass}>
-                  {isExtra ? typedChar : expectedChar}
-                </span>
-              );
-            })}
-            {isActive ? <span className="ml-0.5 inline-block h-6 w-0.5 translate-y-1 rounded-full bg-[#0b57d0] motion-safe:animate-pulse" /> : null}
+          <span key={`${index}-${charIndex}`} className={charClass}>
+            {isExtra ? typedChar : expectedChar}
           </span>
         );
       })}
-    </div>
-  </button>
-);
+      {isActive ? <span className="ml-0.5 inline-block h-6 w-0.5 translate-y-1 rounded-full bg-[#0b57d0] motion-safe:animate-pulse" /> : null}
+    </span>
+  );
+});
+
+const TypingWordBoard = React.memo(function TypingWordBoard({ words, currentIndex, currentInput, typedWords, onFocus }) {
+  const scrollRef = useRef(null);
+  const activeWordRef = useRef(null);
+  const setActiveWord = useCallback((node) => {
+    activeWordRef.current = node;
+  }, []);
+
+  useEffect(() => {
+    const scrollNode = scrollRef.current;
+    const activeNode = activeWordRef.current;
+    if (!scrollNode || !activeNode) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      const active = activeWordRef.current;
+      if (!container || !active) return;
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const margin = 18;
+      const needsScroll = activeRect.top < containerRect.top + margin
+        || activeRect.bottom > containerRect.bottom - margin;
+      if (!needsScroll) return;
+
+      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth';
+      const targetTop = container.scrollTop
+        + activeRect.top
+        - containerRect.top
+        - (container.clientHeight * 0.38);
+      container.scrollTo({ top: Math.max(0, targetTop), behavior });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentIndex, currentInput.length, words.length]);
+
+  return (
+    <button
+      type="button"
+      onClick={onFocus}
+      className="typing-race-board w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-inner shadow-slate-200/60 outline-none transition focus:border-[#0b57d0] focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:shadow-black/20"
+    >
+      <div ref={scrollRef} className="typing-race-board-scroll flex max-h-56 flex-wrap content-start gap-x-3 gap-y-2 overflow-y-auto pr-1 text-xl font-black leading-9 text-slate-400 sm:text-2xl">
+        {words.map((word, index) => {
+          const state = index === currentIndex ? 'active' : index < currentIndex ? 'done' : 'pending';
+          const typed = state === 'active' ? currentInput : state === 'done' ? (typedWords[index] || '') : '';
+          return (
+            <TypingWordToken
+              key={`${word}-${index}`}
+              word={word}
+              index={index}
+              state={state}
+              typed={typed}
+              setActiveWord={setActiveWord}
+            />
+          );
+        })}
+      </div>
+    </button>
+  );
+});
 
 export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
   const inputRef = useRef(null);
@@ -164,9 +213,10 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
   }, [fetchMeta]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    const activeClock = room?.status === 'playing' || room?.status === 'countdown' || practice.active;
+    const timer = window.setInterval(() => setNow(Date.now()), activeClock ? 250 : 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [practice.active, room?.status]);
 
   const applyRoom = useCallback((nextRoom) => {
     if (!nextRoom) return;

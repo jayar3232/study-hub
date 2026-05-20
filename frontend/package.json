@@ -1,7 +1,7 @@
 {
   "name": "syncrova-frontend",
   "private": true,
-  "version": "4.4.5",
+  "version": "4.4.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +14,7 @@
     "cap:sync": "npm run build && npx cap sync android",
     "android:apk:linux": "npm run cap:sync && cd android && ./gradlew assembleDebug",
     "android:apk:release:linux": "npm run android:sdk:check:linux && npm run cap:sync && cd android && ./gradlew assembleRelease && node ../scripts/publish-android-release.cjs",
+    "android:release:verify": "node scripts/verify-release.cjs",
     "android:open": "npm run cap:sync && npx cap open android",
     "android:apk": "npm run cap:sync && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=C:\\Program Files\\Android\\Android Studio\\jbr\\bin;%PATH%\" && gradlew.bat assembleDebug",
     "android:apk:release": "npm run cap:sync && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && set \"PATH=C:\\Program Files\\Android\\Android Studio\\jbr\\bin;%PATH%\" && gradlew.bat assembleRelease"

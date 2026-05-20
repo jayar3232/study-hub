@@ -9,7 +9,9 @@
     "data:reset": "node scripts/reset-user-data.js",
     "admin:set": "node scripts/set-developer-access.js",
     "storage:check": "node scripts/check-storage.js",
-    "storage:migrate:r2": "node scripts/migrate-supabase-to-r2.js"
+    "storage:migrate:r2": "node scripts/migrate-supabase-to-r2.js",
+    "storage:repair:local-r2": "node scripts/repair-local-media-to-r2.js",
+    "backup:plan": "node scripts/backup-plan.js"
   },
   "keywords": [],
   "author": "",

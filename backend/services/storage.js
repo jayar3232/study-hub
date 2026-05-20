@@ -58,8 +58,8 @@ const isR2Configured = Boolean(r2Endpoint && r2AccessKeyId && r2SecretAccessKey 
 
 const getActiveCloudProvider = () => {
   if (forceLocalStorage) return 'local';
-  if (requestedProvider === 'r2') return isR2Configured ? 'r2' : 'local';
-  if (requestedProvider === 'supabase') return isR2Configured ? 'r2' : 'local';
+  if (requestedProvider === 'r2') return 'r2';
+  if (requestedProvider === 'supabase') return 'r2';
   if (isR2Configured) return 'r2';
   return 'local';
 };
@@ -184,6 +184,13 @@ const streamToBuffer = async (body) => {
   return Buffer.concat(chunks);
 };
 
+const logStorageEvent = (event, details = {}) => {
+  const safeDetails = Object.fromEntries(
+    Object.entries(details).filter(([, value]) => value !== undefined && value !== '')
+  );
+  console.info(`[storage] ${event}`, safeDetails);
+};
+
 const uploadBufferLocally = async ({ buffer, originalName, folder }) => {
   const { filename, objectPath } = createObjectPath(folder, originalName);
   const localPath = localPathFromObjectPath(objectPath);
@@ -195,6 +202,11 @@ const uploadBufferLocally = async ({ buffer, originalName, folder }) => {
 
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.promises.writeFile(targetPath, buffer);
+  logStorageEvent('local-upload-ok', {
+    provider: 'local',
+    path: localPath.replace(/\\/g, '/'),
+    bytes: buffer.length
+  });
 
   return {
     filename,
@@ -211,7 +223,7 @@ const getObjectUrl = (provider, objectPath) => {
 
   if (storageProvider === 'r2' || storageProvider === 'supabase') {
     const encodedPath = encodeObjectPath(storedPath);
-    return r2PublicBaseUrl ? `${r2PublicBaseUrl}/${encodedPath}` : `/uploads/r2/${encodedPath}`;
+    return `/uploads/r2/${encodedPath}`;
   }
 
   if (storageProvider === 'local') {
@@ -243,11 +255,21 @@ const uploadObjectBuffer = async ({ buffer, objectPath, mimeType, provider = clo
       ContentType: mimeType || 'application/octet-stream',
       CacheControl: 'public, max-age=3600'
     }));
+    const head = await r2.send(new HeadObjectCommand({ Bucket: r2Bucket, Key: storedPath }));
+
+    logStorageEvent('r2-upload-ok', {
+      provider: 'r2',
+      path: storedPath,
+      bytes: head.ContentLength ?? buffer.length,
+      contentType: head.ContentType || mimeType || 'application/octet-stream'
+    });
 
     return {
       path: storedPath,
       provider: 'r2',
-      url: getObjectUrl('r2', storedPath)
+      url: getObjectUrl('r2', storedPath),
+      etag: head.ETag || '',
+      size: head.ContentLength ?? buffer.length
     };
   }
 
@@ -301,6 +323,7 @@ const deleteObject = async (objectPath, options = {}) => {
   const requestedDeleteProvider = normalizeProvider(options.provider || '');
   if (requestedDeleteProvider === 'local') {
     await deleteLocalObject(storedPath);
+    logStorageEvent('local-delete-ok', { provider: 'local', path: storedPath });
     return;
   }
 
@@ -312,10 +335,37 @@ const deleteObject = async (objectPath, options = {}) => {
   const storageProvider = ensureCloudProvider(requestedDeleteProvider || cloudStorageProvider);
   if (storageProvider === 'r2') {
     await r2.send(new DeleteObjectCommand({ Bucket: r2Bucket, Key: storedPath }));
+    logStorageEvent('r2-delete-ok', { provider: 'r2', path: storedPath });
     return;
   }
 
   throw new Error('Cloudflare R2 storage is not configured');
+};
+
+const objectExists = async (objectPath, options = {}) => {
+  const storedPath = cleanObjectPath(objectPath);
+  if (!storedPath) return false;
+
+  const storageProvider = normalizeProvider(options.provider || cloudStorageProvider);
+  if (storageProvider === 'local') {
+    const localPath = localPathFromObjectPath(storedPath);
+    const targetPath = path.join(uploadsRoot, localPath);
+    return targetPath.startsWith(`${uploadsRoot}${path.sep}`) && fs.existsSync(targetPath);
+  }
+
+  const cloudProvider = ensureCloudProvider(storageProvider);
+  if (cloudProvider === 'r2') {
+    try {
+      await r2.send(new HeadObjectCommand({ Bucket: r2Bucket, Key: storedPath }));
+      return true;
+    } catch (err) {
+      const statusCode = err?.$metadata?.httpStatusCode;
+      if (statusCode === 404 || err.name === 'NoSuchKey' || err.name === 'NotFound') return false;
+      throw err;
+    }
+  }
+
+  return false;
 };
 
 const readObjectBuffer = async (objectPath, options = {}) => {
@@ -444,6 +494,7 @@ module.exports = {
   getSupabaseObjectPathFromUrl,
   getStorageConfigStatus,
   isCloudStorageEnabled,
+  objectExists,
   readObjectBuffer,
   serveR2Object,
   uploadBuffer,

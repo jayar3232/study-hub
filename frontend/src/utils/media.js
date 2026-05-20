@@ -16,6 +16,37 @@ const SAME_ORIGIN_PORTS = new Set(['3000', '4173', '5002']);
 
 export const isAbsoluteUrl = (value = '') => /^(https?:|data:|blob:)/i.test(value);
 
+const isNativeShell = () => {
+  if (typeof window === 'undefined') return false;
+  return Boolean(window.Capacitor?.isNativePlatform?.()) ||
+    window.location.protocol === 'capacitor:' ||
+    window.location.protocol === 'ionic:';
+};
+
+const encodeObjectPath = (value = '') => String(value || '')
+  .split('/')
+  .map(part => encodeURIComponent(part))
+  .join('/');
+
+const getLegacySupabaseProxyPath = (url) => {
+  const markers = [
+    '/storage/v1/object/public/',
+    '/storage/v1/object/sign/',
+    '/storage/v1/object/'
+  ];
+  const marker = markers.find(item => url.pathname.includes(item));
+  if (!marker) return '';
+
+  try {
+    const afterMarker = decodeURIComponent(url.pathname.slice(url.pathname.indexOf(marker) + marker.length));
+    const objectPath = afterMarker.split('/').slice(1).join('/');
+    if (!objectPath || objectPath.includes('\0') || objectPath.split('/').some(part => part === '..')) return '';
+    return `/uploads/r2/${encodeObjectPath(objectPath)}`;
+  } catch {
+    return '';
+  }
+};
+
 export const getBackendOrigin = () => {
   const configured = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_ORIGIN || '';
   if (configured) return configured.replace(/\/+$/, '');
@@ -23,11 +54,7 @@ export const getBackendOrigin = () => {
   if (typeof window === 'undefined') return '';
 
   const { hostname, port, protocol } = window.location;
-  const isNativeShell = Boolean(window.Capacitor?.isNativePlatform?.()) ||
-    protocol === 'capacitor:' ||
-    protocol === 'ionic:';
-
-  if (isNativeShell) return DEFAULT_REMOTE_BACKEND;
+  if (isNativeShell()) return DEFAULT_REMOTE_BACKEND;
 
   const isLocalFrontend = LOCAL_HOSTS.has(hostname) || SAME_ORIGIN_PORTS.has(port);
   const configuredRemoteHosts = (import.meta.env.VITE_REMOTE_FRONTEND_HOSTS || '')
@@ -49,7 +76,24 @@ export const getBackendOrigin = () => {
 
 export const resolveMediaUrl = (value) => {
   if (!value) return '';
-  if (isAbsoluteUrl(value)) return value;
+  if (isAbsoluteUrl(value)) {
+    try {
+      const url = new URL(value);
+      const legacySupabaseProxyPath = getLegacySupabaseProxyPath(url);
+      if (legacySupabaseProxyPath) {
+        return `${getBackendOrigin()}${legacySupabaseProxyPath}`;
+      }
+      if (url.pathname.startsWith('/uploads')) {
+        const backendOrigin = getBackendOrigin();
+        if (backendOrigin && (isNativeShell() || LOCAL_HOSTS.has(url.hostname))) {
+          return `${backendOrigin}${url.pathname}`;
+        }
+      }
+    } catch {
+      return value;
+    }
+    return value;
+  }
 
   const path = value.startsWith('/') ? value : `/${value}`;
 

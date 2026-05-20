@@ -6,7 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
-const { cloudStorageProvider, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const Group = require('../models/Group');
 const Task = require('../models/Task');
 const GameSession = require('../models/GameSession');
@@ -222,13 +222,14 @@ router.put('/password', auth, async (req, res) => {
 });
 
 router.post('/avatar', auth, uploadAvatar, async (req, res) => {
+  let uploadedAvatar = null;
   try {
     if (!req.file || req.file.size === 0) {
       if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ msg: 'Please upload a valid image file' });
     }
 
-    const uploadedAvatar = isCloudStorageEnabled
+    uploadedAvatar = isCloudStorageEnabled
       ? await uploadBuffer({
           buffer: req.file.buffer,
           originalName: req.file.originalname,
@@ -242,20 +243,25 @@ router.post('/avatar', auth, uploadAvatar, async (req, res) => {
       avatarStoragePath: uploadedAvatar?.path || (isCloudStorageEnabled ? '' : `avatars/${req.file.filename}`),
       avatarStorageProvider: uploadedAvatar?.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
     }, { new: true }).select('-password');
-    res.json({ avatar: avatarUrl, user: toClientUser(user) });
+    const payloadUser = toClientUser(user);
+    res.json({ avatar: payloadUser.avatar, user: payloadUser });
   } catch (err) {
+    if (uploadedAvatar?.path) {
+      await deleteObject(uploadedAvatar.path, { provider: uploadedAvatar.provider }).catch(() => {});
+    }
     res.status(500).json({ msg: err.message });
   }
 });
 
 router.post('/cover-photo', auth, uploadCoverPhoto, async (req, res) => {
+  let uploadedCover = null;
   try {
     if (!req.file || req.file.size === 0) {
       if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ msg: 'Please upload a valid image file' });
     }
 
-    const uploadedCover = isCloudStorageEnabled
+    uploadedCover = isCloudStorageEnabled
       ? await uploadBuffer({
           buffer: req.file.buffer,
           originalName: req.file.originalname,
@@ -269,8 +275,12 @@ router.post('/cover-photo', auth, uploadCoverPhoto, async (req, res) => {
       coverPhotoStoragePath: uploadedCover?.path || (isCloudStorageEnabled ? '' : `covers/${req.file.filename}`),
       coverPhotoStorageProvider: uploadedCover?.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
     }, { new: true }).select('-password');
-    res.json({ coverPhoto: coverPhotoUrl, user: toClientUser(user) });
+    const payloadUser = toClientUser(user);
+    res.json({ coverPhoto: payloadUser.coverPhoto, user: payloadUser });
   } catch (err) {
+    if (uploadedCover?.path) {
+      await deleteObject(uploadedCover.path, { provider: uploadedCover.provider }).catch(() => {});
+    }
     res.status(500).json({ msg: err.message });
   }
 });

@@ -1,5 +1,18 @@
 const { getObjectUrl, getSupabaseObjectPathFromUrl } = require('../services/storage');
 
+const USER_AVATAR_MEDIA_FIELDS = 'name avatar avatarStoragePath avatarStorageProvider isDeveloper';
+const USER_PROFILE_MEDIA_FIELDS = [
+  USER_AVATAR_MEDIA_FIELDS,
+  'email',
+  'course',
+  'campus',
+  'coverPhoto',
+  'coverPhotoStoragePath',
+  'coverPhotoStorageProvider',
+  'lastSeen',
+  'studentVerificationStatus'
+].join(' ');
+
 const cloneObject = (value) => {
   if (!value) return value;
   if (typeof value.toObject === 'function') return value.toObject();
@@ -12,7 +25,18 @@ const resolveStoredMediaUrl = ({ url = '', storagePath = '', storageProvider = '
   if (provider && path) return getObjectUrl(provider, path) || url || '';
   const legacySupabasePath = getSupabaseObjectPathFromUrl(url);
   if (legacySupabasePath) return getObjectUrl('r2', legacySupabasePath) || url || '';
-  return url || '';
+
+  const rawUrl = String(url || '').trim();
+  if (!rawUrl) return '';
+  try {
+    const parsed = new URL(rawUrl, 'http://syncrova.local');
+    if (parsed.pathname.startsWith('/uploads/')) {
+      return parsed.pathname;
+    }
+  } catch {
+    // Keep the original value when it is not URL-shaped.
+  }
+  return rawUrl;
 };
 
 const serializeMediaUser = (user) => {
@@ -143,5 +167,7 @@ module.exports = {
   hydratePostMedia,
   hydrateStoryMedia,
   resolveStoredMediaUrl,
-  serializeMediaUser
+  serializeMediaUser,
+  USER_AVATAR_MEDIA_FIELDS,
+  USER_PROFILE_MEDIA_FIELDS
 };

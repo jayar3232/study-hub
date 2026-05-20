@@ -96,6 +96,11 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) return 'vendor-react';
             if (id.includes('framer-motion')) return 'vendor-motion';
+            if (id.includes('livekit-client')) return 'vendor-calls';
+            if (id.includes('socket.io-client')) return 'vendor-realtime';
+            if (id.includes('emoji-picker-react')) return 'vendor-emoji';
+            if (id.includes('@capacitor')) return 'vendor-capacitor';
+            if (id.includes('use-sound')) return 'vendor-audio';
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('three')) return 'vendor-three';
             if (id.includes('date-fns')) return 'vendor-utils';

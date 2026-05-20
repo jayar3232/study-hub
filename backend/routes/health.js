@@ -1,8 +1,9 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
-const { getStorageConfigStatus, isCloudStorageEnabled } = require('../services/storage');
+const { getStorageConfigStatus } = require('../services/storage');
 const { getLiveKitStatus } = require('../services/livekitConfig');
+const { getMediaDiagnostics, runStorageProbe } = require('../services/mediaDiagnostics');
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ const mongoStates = {
 };
 
 const getReleaseApkPath = () => {
-  const versionName = String(process.env.APP_VERSION_NAME || '4.4.4').trim() || '4.4.4';
+  const versionName = String(process.env.APP_VERSION_NAME || '4.4.7').trim() || '4.4.7';
   const safeVersion = versionName.replace(/[^a-zA-Z0-9._-]/g, '-');
   return `/releases/syncrova-${safeVersion}.apk`;
 };
@@ -33,6 +34,22 @@ router.get('/', auth, async (req, res) => {
   ).toLowerCase() === 'true';
   const livekitStatus = getLiveKitStatus();
   const livekitConfigured = Boolean(livekitStatus.livekitConfigured);
+  const deepMediaCheck = ['1', 'true', 'yes'].includes(String(req.query.deep || '').toLowerCase());
+  const runProbe = ['1', 'true', 'yes'].includes(String(req.query.probe || '').toLowerCase());
+  let media;
+  try {
+    media = await getMediaDiagnostics({
+      includeBrokenCheck: deepMediaCheck,
+      brokenLimit: 12
+    });
+  } catch (err) {
+    media = {
+      status: 'failed',
+      checkedAt: new Date().toISOString(),
+      message: err.message || 'Media diagnostics failed'
+    };
+  }
+  const storageProbe = runProbe ? await runStorageProbe() : null;
 
   res.json({
     ok: true,
@@ -50,6 +67,8 @@ router.get('/', auth, async (req, res) => {
       connectedClients: io?.engine?.clientsCount || 0
     },
     storage: getStorageConfigStatus(),
+    media,
+    storageProbe,
     calls: {
       turnConfigured: turnUrls.length > 0,
       turnCount: turnUrls.length,

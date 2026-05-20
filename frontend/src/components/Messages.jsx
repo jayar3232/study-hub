@@ -71,8 +71,8 @@ let socket;
 
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
 const MAX_MESSAGE_MEDIA_SELECTION = 10;
-const MESSAGE_RENDER_BATCH = 100;
-const MOBILE_MESSAGE_RENDER_BATCH = 48;
+const MESSAGE_RENDER_BATCH = 80;
+const MOBILE_MESSAGE_RENDER_BATCH = 36;
 const INITIAL_MESSAGE_PAGE_LIMIT = 80;
 const OLDER_MESSAGE_PAGE_LIMIT = 70;
 const CONVERSATION_ROW_HEIGHT = 90;
@@ -1088,6 +1088,21 @@ export default function Messages() {
       loadingOlderMessagesRef.current = false;
     }
   }, [hasOlderMessages, loading, messages, oldestMessageCursor, selectedUserId]);
+
+  const revealEarlierLocalMessages = useCallback(() => {
+    const thread = messageThreadRef.current;
+    const previousScrollHeight = thread?.scrollHeight || 0;
+    const previousScrollTop = thread?.scrollTop || 0;
+
+    setVisibleMessageCount(count => Math.min(messages.length, count + getMessageRenderBatch()));
+
+    requestAnimationFrame(() => {
+      const node = messageThreadRef.current;
+      if (!node) return;
+      const nextScrollHeight = node.scrollHeight;
+      node.scrollTop = previousScrollTop + (nextScrollHeight - previousScrollHeight);
+    });
+  }, [messages.length]);
 
   const emitCallSignal = useCallback((eventName, payload = {}) => {
     const activeSocket = socket || getSocket();
@@ -2584,7 +2599,8 @@ export default function Messages() {
   };
 
   const handleOpenNote = (item) => {
-    if (item?.isMe && !item?.hasNote) {
+    if (item?.isMe) {
+      setNoteText(item?.note?.text || myNote?.text || '');
       setShowNoteComposer(true);
       return;
     }
@@ -3013,6 +3029,26 @@ export default function Messages() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffMins < 1440) return format(msgDate, 'h:mm a');
     return formatDistanceToNow(msgDate, { addSuffix: true });
+  };
+
+  const getMessageDateKey = (date) => {
+    const msgDate = new Date(date);
+    if (Number.isNaN(msgDate.getTime())) return '';
+    return format(msgDate, 'yyyy-MM-dd');
+  };
+
+  const formatMessageDateLabel = (date) => {
+    const msgDate = new Date(date);
+    if (Number.isNaN(msgDate.getTime())) return '';
+    const todayKey = format(new Date(), 'yyyy-MM-dd');
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = format(yesterday, 'yyyy-MM-dd');
+    const messageKey = format(msgDate, 'yyyy-MM-dd');
+
+    if (messageKey === todayKey) return 'Today';
+    if (messageKey === yesterdayKey) return 'Yesterday';
+    return format(msgDate, 'MMM d, yyyy');
   };
 
   const getUserAvatar = (userData) => {
@@ -3506,7 +3542,12 @@ export default function Messages() {
       .reverse()
   ), [messages]);
 
-  const renderedMessages = useMemo(() => messages, [messages]);
+  const messageWindowingEnabled = !messageSearch && !focusedMessageId && !showPinnedPanel;
+  const renderedMessages = useMemo(() => {
+    if (!messageWindowingEnabled || messages.length <= visibleMessageCount) return messages;
+    return messages.slice(-visibleMessageCount);
+  }, [messageWindowingEnabled, messages, visibleMessageCount]);
+  const hiddenLocalMessageCount = messageWindowingEnabled ? Math.max(0, messages.length - renderedMessages.length) : 0;
   const renderedTimelineItems = useMemo(() => {
     const messageItems = renderedMessages.map(message => ({
       id: `message-${getEntityId(message)}`,
@@ -3514,20 +3555,43 @@ export default function Messages() {
       timestamp: new Date(message.createdAt || 0).getTime() || 0,
       message
     }));
-    const callItems = selectedConversationCallHistory.map(entry => ({
-      id: `call-${entry.id || entry.callId || entry.endedAt || entry.startedAt}`,
-      type: 'call',
-      timestamp: new Date(entry.endedAt || entry.startedAt || 0).getTime() || 0,
-      entry
-    }));
+    const oldestRenderedMessageTime = renderedMessages.length
+      ? (new Date(renderedMessages[0].createdAt || 0).getTime() || 0)
+      : 0;
+    const callItems = selectedConversationCallHistory
+      .map(entry => ({
+        id: `call-${entry.id || entry.callId || entry.endedAt || entry.startedAt}`,
+        type: 'call',
+        timestamp: new Date(entry.endedAt || entry.startedAt || 0).getTime() || 0,
+        entry
+      }))
+      .filter(item => !oldestRenderedMessageTime || item.timestamp >= oldestRenderedMessageTime);
 
-    return [...messageItems, ...callItems].sort((a, b) => {
+    const sortedItems = [...messageItems, ...callItems].sort((a, b) => {
       if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
       if (a.type === b.type) return 0;
       return a.type === 'call' ? 1 : -1;
     });
+
+    const timeline = [];
+    let previousDateKey = '';
+    sortedItems.forEach(timelineItem => {
+      const dateKey = getMessageDateKey(timelineItem.timestamp);
+      if (dateKey && dateKey !== previousDateKey) {
+        timeline.push({
+          id: `date-${dateKey}`,
+          type: 'date',
+          timestamp: timelineItem.timestamp,
+          label: formatMessageDateLabel(timelineItem.timestamp)
+        });
+        previousDateKey = dateKey;
+      }
+      timeline.push(timelineItem);
+    });
+    return timeline;
   }, [renderedMessages, selectedConversationCallHistory]);
-  const hiddenMessageCount = hasOlderMessages ? 1 : 0;
+  const hiddenMessageCount = hiddenLocalMessageCount + (hasOlderMessages ? 1 : 0);
+  const hiddenMessageStep = getMessageRenderBatch();
 
   useEffect(() => {
     if (!selectedUserId || !socket) return undefined;
@@ -4191,8 +4255,16 @@ export default function Messages() {
                 value={conversationSearch}
                 onChange={event => setConversationSearch(event.target.value)}
                 placeholder="Search messages"
-                className="messages-search-input w-full rounded-2xl border border-gray-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
+                className="messages-search-input w-full rounded-2xl border border-gray-200 bg-slate-50 py-3 pl-10 pr-12 text-sm outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-pink-500"
               />
+              <button
+                type="button"
+                onClick={() => setConversationFilter(conversationFilter === 'pinned' ? 'all' : 'pinned')}
+                className="messages-search-filter-button absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-gray-400 transition hover:bg-white/80 hover:text-white"
+                aria-label={conversationFilter === 'pinned' ? 'Show all chats' : 'Show pinned chats'}
+              >
+                <SlidersHorizontal size={18} />
+              </button>
             </div>
 
             <div className="messenger-notes-tray mt-3 -mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
@@ -4248,13 +4320,26 @@ export default function Messages() {
             </div>
 
             {showNoteComposer && (
-              <form onSubmit={handleSaveNote} className="mt-3 hidden rounded-2xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/50 dark:bg-blue-950/20 md:block">
+              <form onSubmit={handleSaveNote} className="note-composer-form mt-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/50 dark:bg-blue-950/20">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-2 text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">
                     <StickyNote size={14} />
                     Your note
                   </span>
-                  <span className="text-[11px] font-bold text-slate-400">1 day</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400">1 day</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNoteComposer(false);
+                        setNoteText(myNote?.text || '');
+                      }}
+                      className="grid h-7 w-7 place-items-center rounded-full text-slate-400 transition hover:bg-white hover:text-slate-700 dark:hover:bg-gray-900 dark:hover:text-white"
+                      aria-label="Close note composer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -4268,7 +4353,7 @@ export default function Messages() {
                     disabled={savingNote || !noteText.trim()}
                     className="rounded-xl bg-[#1877f2] px-3 py-2 text-xs font-black text-white disabled:opacity-45"
                   >
-                    Post
+                    {myNote ? 'Update' : 'Post'}
                   </button>
                   {myNote && (
                     <button type="button" onClick={handleClearNote} disabled={savingNote} className="rounded-xl px-2 text-xs font-black text-rose-500">
@@ -4384,13 +4469,28 @@ export default function Messages() {
                         : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
                     }`}
                   >
-                    <div className={`relative shrink-0 rounded-full ${presenceMeta.online ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-black' : ''}`}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setProfileUser(otherUser);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setProfileUser(otherUser);
+                      }}
+                      title={`View ${displayName}'s profile`}
+                      className={`conversation-profile-target relative shrink-0 cursor-pointer rounded-full ${presenceMeta.online ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-black' : ''}`}
+                    >
                       {renderAvatar(otherUser, 'h-12 w-12', 22)}
                       {presenceMeta.label ? (
                         <span
                           title={presenceMeta.title}
                           aria-label={presenceMeta.title}
-                          className={`absolute -bottom-1 left-1/2 z-10 max-w-[3.85rem] -translate-x-1/2 truncate rounded-full border px-1.5 py-[2px] text-[9px] font-black leading-none shadow-sm ${
+                          className={`conversation-presence-badge absolute -bottom-1 left-1/2 z-10 max-w-[3.85rem] -translate-x-1/2 truncate rounded-full border px-1.5 py-[2px] text-[9px] font-black leading-none shadow-sm ${
                             presenceMeta.online
                               ? 'border-emerald-100 bg-emerald-500 text-white dark:border-emerald-900'
                               : 'border-white bg-slate-950/90 text-white shadow-black/30 dark:border-white/15 dark:bg-black/92 dark:text-white dark:shadow-black/50'
@@ -4473,16 +4573,6 @@ export default function Messages() {
                 <div className="mobile-chat-call-actions flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => startSharedCall(selectedUser, 'audio')}
-                    disabled={!canStartCall}
-                    className="mobile-chat-icon-button mobile-chat-call-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300 dark:hover:bg-blue-950/30"
-                    aria-label="Start audio call"
-                    title={selectedIsOnline ? 'Audio call' : 'User must be online to call'}
-                  >
-                    <Phone size={18} />
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => startSharedCall(selectedUser, 'video')}
                     disabled={!canStartCall}
                     className="mobile-chat-icon-button mobile-chat-call-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300 dark:hover:bg-blue-950/30"
@@ -4490,6 +4580,16 @@ export default function Messages() {
                     title={selectedIsOnline ? 'Video call' : 'User must be online to call'}
                   >
                     <Video size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startSharedCall(selectedUser, 'audio')}
+                    disabled={!canStartCall}
+                    className="mobile-chat-icon-button mobile-chat-call-button rounded-full p-2 text-[#1877f2] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300 dark:hover:bg-blue-950/30"
+                    aria-label="Start audio call"
+                    title={selectedIsOnline ? 'Audio call' : 'User must be online to call'}
+                  >
+                    <Phone size={18} />
                   </button>
                 </div>
                 <button
@@ -4499,11 +4599,11 @@ export default function Messages() {
                   aria-label="Open chat details"
                   title="Chat details"
                 >
-                  <Info size={18} />
+                  <MoreVertical size={18} />
                 </button>
               </header>
 
-              <div className="border-b border-gray-200/80 bg-white/95 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/95">
+              <div className="mobile-chat-search-bar border-b border-gray-200/80 bg-white/95 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/95">
                 <div className="flex items-center gap-2">
                   <div className="relative min-w-0 flex-1">
                     <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -4593,16 +4693,30 @@ export default function Messages() {
                         <div className="mb-4 flex justify-center">
                           <button
                             type="button"
-                            onClick={loadOlderMessages}
-                            disabled={loadingOlderMessages}
+                            onClick={hiddenLocalMessageCount > 0 ? revealEarlierLocalMessages : loadOlderMessages}
+                            disabled={hiddenLocalMessageCount === 0 && loadingOlderMessages}
                             className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-[#1877f2] dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:text-sky-200"
                           >
-                            {loadingOlderMessages ? 'Loading earlier messages...' : 'Show earlier messages'}
+                            {hiddenLocalMessageCount > 0
+                              ? `Show ${Math.min(hiddenMessageStep, hiddenLocalMessageCount)} earlier messages`
+                              : (loadingOlderMessages ? 'Loading earlier messages...' : 'Show earlier messages')}
                           </button>
                         </div>
                       )}
 
                       {renderedTimelineItems.map((item) => {
+                        if (item.type === 'date') {
+                          return (
+                            <div key={item.id} className="message-date-divider my-5 flex items-center gap-4">
+                              <span className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
+                              <span className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-bold text-slate-500 shadow-sm dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-300">
+                                {item.label}
+                              </span>
+                              <span className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
+                            </div>
+                          );
+                        }
+
                         if (item.type === 'call') {
                           const entry = item.entry || {};
                           const CallIcon = entry.mode === 'video' ? Video : Phone;
@@ -4674,9 +4788,17 @@ export default function Messages() {
                               className={`message-row mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'} group ${focusedMessageId === messageId || isSearchMatch ? 'rounded-3xl bg-yellow-100/70 py-2 dark:bg-yellow-950/30' : ''}`}
                             >
                             {!isMe && (
-                              <div className="mr-2 mt-5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setProfileUser(sender);
+                                }}
+                                className="mr-2 mt-5 shrink-0 rounded-full transition hover:ring-2 hover:ring-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                aria-label={`View ${getDisplayName(sender, selectedDisplayName)} profile`}
+                              >
                                 {renderAvatar(sender, 'h-8 w-8', 16)}
-                              </div>
+                              </button>
                             )}
 
                             <div className={`max-w-[82%] md:max-w-[68%] ${isMe ? 'items-end' : 'items-start'}`}>
@@ -4741,6 +4863,11 @@ export default function Messages() {
                                       Pinned
                                     </span>
                                   )}
+                                  {!message.unsent && (
+                                    <span className={`message-bubble-time ${isMe && !isContextReply ? 'text-white/70' : 'text-gray-400 dark:text-white/45'}`}>
+                                      {formatMessageTime(message.createdAt)}
+                                    </span>
+                                  )}
                                 </div>
 
                                 {messageReactionBursts[messageId] && !message.unsent && (
@@ -4765,7 +4892,7 @@ export default function Messages() {
                               </div>
 
                               <div className={`mobile-message-actions ${hasReactions ? 'message-actions-has-reactions' : ''} mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                <span className="text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
+                                <span className="message-action-time text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
                                 <MessageStatus message={message} isLatestOwn={isLatestOwn} />
                                 {!message.unsent && (
                                   <>
@@ -5613,7 +5740,11 @@ export default function Messages() {
           <div className="note-viewer-overlay" onClick={() => setActiveNote(null)}>
             <div className="note-viewer-sheet" onClick={event => event.stopPropagation()}>
               <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setProfileUser(noteOwner)}
+                  className="flex min-w-0 items-center gap-3 rounded-2xl text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:hover:bg-gray-900"
+                >
                   {renderAvatar(noteOwner, 'h-12 w-12', 22)}
                   <div className="min-w-0">
                     <p className="truncate text-base font-black text-slate-950 dark:text-white">
@@ -5621,7 +5752,7 @@ export default function Messages() {
                     </p>
                     <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{expiresLabel}</p>
                   </div>
-                </div>
+                </button>
                 <button
                   type="button"
                   onClick={() => setActiveNote(null)}
@@ -5714,7 +5845,14 @@ export default function Messages() {
                     const commentId = getEntityId(comment);
                     return (
                       <div key={commentId} className="flex gap-2">
-                        {renderAvatar(comment.userId, 'h-8 w-8', 16)}
+                        <button
+                          type="button"
+                          onClick={() => setProfileUser(comment.userId)}
+                          className="h-8 w-8 shrink-0 rounded-full transition hover:ring-2 hover:ring-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                          aria-label={`View ${comment.userId?.name || 'Member'} profile`}
+                        >
+                          {renderAvatar(comment.userId, 'h-8 w-8', 16)}
+                        </button>
                         <div className="min-w-0 flex-1">
                           <div className="relative inline-block max-w-full rounded-2xl bg-slate-100 px-3 py-2 dark:bg-gray-900">
                             <div className="flex min-w-0 items-center gap-1.5">
