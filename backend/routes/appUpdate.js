@@ -32,8 +32,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.7').trim() || '4.4.7';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 54);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.8').trim() || '4.4.8';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 55);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -123,7 +123,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.7 adds the new dark glass Messages layout for chat list and conversations|Existing message actions stay available, including reply, react, copy, forward, edit, remove, and unsend|Cloudflare R2 remains the active media storage path for profile photos, posts, and message uploads'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.8 fixes Messages light mode readability on mobile|Message notes, reactions, replies, and profile previews remain available|This build keeps the Cloudflare R2 media storage path for profile photos, posts, and message uploads'
   });
 });
 

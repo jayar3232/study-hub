@@ -33,7 +33,6 @@ import {
   Send,
   SlidersHorizontal,
   Settings,
-  Smile,
   Star,
   StickyNote,
   Square,
@@ -408,7 +407,8 @@ const STORAGE_KEYS = {
   mutedChats: 'syncrova-muted-chats',
   pinnedChats: 'syncrova-pinned-chats',
   chatNicknames: 'syncrova-chat-nicknames',
-  chatThemes: 'syncrova-chat-themes'
+  chatThemes: 'syncrova-chat-themes',
+  chatBackgrounds: 'syncrova-chat-backgrounds'
 };
 
 const LEGACY_STORAGE_KEYS = {
@@ -416,7 +416,8 @@ const LEGACY_STORAGE_KEYS = {
   mutedChats: 'studenthub-muted-chats',
   pinnedChats: 'studenthub-pinned-chats',
   chatNicknames: 'studenthub-chat-nicknames',
-  chatThemes: 'studenthub-chat-themes'
+  chatThemes: 'studenthub-chat-themes',
+  chatBackgrounds: 'studenthub-chat-backgrounds'
 };
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '✅'];
@@ -453,6 +454,45 @@ const CHAT_THEMES = {
   }
 };
 
+const CHAT_BACKGROUNDS = {
+  default: {
+    label: 'Default',
+    description: 'Clean Syncrova surface',
+    className: 'chat-bg-default',
+    preview: 'linear-gradient(135deg, #f8fafc, #eef2f7)'
+  },
+  minimal: {
+    label: 'Minimal light',
+    description: 'Soft pattern',
+    className: 'chat-bg-minimal',
+    preview: 'radial-gradient(circle at 20% 20%, rgba(148, 163, 184, 0.24) 0 1px, transparent 1px), linear-gradient(135deg, #ffffff, #f1f5f9)'
+  },
+  darkGradient: {
+    label: 'Dark gradient',
+    description: 'Low-light focus',
+    className: 'chat-bg-dark-gradient',
+    preview: 'linear-gradient(135deg, #050506, #111827 55%, #0f172a)'
+  },
+  softBlue: {
+    label: 'Soft blue',
+    description: 'Calm blue wash',
+    className: 'chat-bg-soft-blue',
+    preview: 'linear-gradient(135deg, #dbeafe, #eff6ff 52%, #ffffff)'
+  },
+  classroom: {
+    label: 'Classroom',
+    description: 'Student theme',
+    className: 'chat-bg-classroom',
+    preview: 'linear-gradient(135deg, #ecfeff, #fef3c7 52%, #f8fafc)'
+  },
+  abstract: {
+    label: 'Abstract blur',
+    description: 'Subtle color wash',
+    className: 'chat-bg-abstract',
+    preview: 'radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.45), transparent 32%), radial-gradient(circle at 82% 20%, rgba(168, 85, 247, 0.3), transparent 30%), linear-gradient(135deg, #f8fafc, #eef2ff)'
+  }
+};
+
 export default function Messages() {
   const { user } = useAuth();
   const {
@@ -473,6 +513,7 @@ export default function Messages() {
   const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.pinnedChats, LEGACY_STORAGE_KEYS.pinnedChats));
   const [conversationNicknames, setConversationNicknames] = useState(() => readStoredObject(STORAGE_KEYS.chatNicknames, LEGACY_STORAGE_KEYS.chatNicknames));
   const [conversationThemes, setConversationThemes] = useState(() => readStoredObject(STORAGE_KEYS.chatThemes, LEGACY_STORAGE_KEYS.chatThemes));
+  const [conversationBackgrounds, setConversationBackgrounds] = useState(() => readStoredObject(STORAGE_KEYS.chatBackgrounds, LEGACY_STORAGE_KEYS.chatBackgrounds));
   const [selectedUser, setSelectedUser] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -665,6 +706,10 @@ export default function Messages() {
     updateStoredObject(STORAGE_KEYS.chatThemes, setConversationThemes, rawId, value === 'default' ? '' : value);
   }, [updateStoredObject]);
 
+  const updateConversationBackground = useCallback((rawId, value) => {
+    updateStoredObject(STORAGE_KEYS.chatBackgrounds, setConversationBackgrounds, rawId, value === 'default' ? '' : value);
+  }, [updateStoredObject]);
+
   const clearTargetUserParam = useCallback(() => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
@@ -679,6 +724,18 @@ export default function Messages() {
   }, [selectedUser]);
 
   useEffect(() => () => clearReactionPressTimer(), []);
+
+  useEffect(() => {
+    if (!actionMenuMessageId) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setActionMenuMessageId(null);
+        setEmojiPickerMessageId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [actionMenuMessageId]);
 
   const scrollThreadToBottomNow = useCallback(() => {
     const thread = messageThreadRef.current;
@@ -2830,6 +2887,8 @@ export default function Messages() {
   };
 
   const handleRemoveForMe = async (messageId) => {
+    if (!window.confirm('Remove this message for you?')) return;
+
     try {
       await api.delete(`/messages/${messageId}/me`);
       setMessages(prev => prev.filter(message => getEntityId(message) !== messageId));
@@ -2911,7 +2970,7 @@ export default function Messages() {
     try {
       const res = await api.put(`/messages/${messageId}/pin`);
       setMessages(prev => prev.map(message => getEntityId(message) === messageId ? res.data : message));
-      setShowPinnedPanel(res.data.pinned);
+      setShowPinnedPanel(false);
       toast.success(res.data.pinned ? 'Pinned' : 'Unpinned');
     } catch (err) {
       toast.error('Failed to pin');
@@ -2936,6 +2995,7 @@ export default function Messages() {
       const res = await api.post(`/messages/${messageId}/react`, { emoji });
       setMessages(prev => prev.map(message => getEntityId(message) === messageId ? res.data : message));
       setEmojiPickerMessageId(null);
+      setActionMenuMessageId(null);
     } catch (err) {
       toast.error('Failed to add reaction');
     }
@@ -2962,15 +3022,15 @@ export default function Messages() {
     }
   };
 
-  const startReactionPress = (messageId) => {
-    if (!isTouchReactionMode()) return;
+  const startMessageOptionsPress = (message, delay = 430) => {
+    if (!message || message.unsent) return;
     clearReactionPressTimer();
     reactionPressTimerRef.current = setTimeout(() => {
       setEmojiPickerMessageId(null);
-      setActionMenuMessageId(messageId);
+      setActionMenuMessageId(getEntityId(message));
       playUiSound('click', 0.1);
       navigator.vibrate?.(10);
-    }, 430);
+    }, delay);
   };
 
   const startSwipeReply = (event, message) => {
@@ -3114,7 +3174,20 @@ export default function Messages() {
     return '';
   }, [currentUserId, messages]);
 
-  const pinnedMessages = useMemo(() => messages.filter(message => message.pinned), [messages]);
+  const pinnedMessages = useMemo(() => (
+    messages
+      .filter(message => message.pinned && !message.unsent)
+      .sort((a, b) => (
+        new Date(b.updatedAt || b.createdAt || 0).getTime()
+        - new Date(a.updatedAt || a.createdAt || 0).getTime()
+      ))
+  ), [messages]);
+  const primaryPinnedMessage = pinnedMessages[0] || null;
+  const activeActionMessage = useMemo(() => (
+    actionMenuMessageId
+      ? messages.find(message => getEntityId(message) === actionMenuMessageId) || null
+      : null
+  ), [actionMenuMessageId, messages]);
 
   const scrollToPinnedMessage = (messageId) => {
     jumpToMessage(messageId);
@@ -3234,6 +3307,8 @@ export default function Messages() {
   const selectedDisplayName = selectedNickname || selectedUser?.name || 'User';
   const selectedThemeKey = selectedUserId ? conversationThemes[selectedUserId] || 'default' : 'default';
   const selectedTheme = CHAT_THEMES[selectedThemeKey] || CHAT_THEMES.default;
+  const selectedBackgroundKey = selectedUserId ? conversationBackgrounds[selectedUserId] || 'default' : 'default';
+  const selectedBackground = CHAT_BACKGROUNDS[selectedBackgroundKey] || CHAT_BACKGROUNDS.default;
   const selectedLastSeen = selectedUserId ? lastSeenByUser[selectedUserId] || selectedUser?.lastSeen : null;
   const callIsActive = callState !== 'idle';
   const callPartnerName = getDisplayName(callPartner, selectedDisplayName);
@@ -3870,6 +3945,33 @@ export default function Messages() {
     return null;
   };
 
+  const BackgroundSelector = ({ className = '' }) => (
+    <div className={`rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900 ${className}`}>
+      <label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400">
+        <ImageIcon size={14} />
+        Conversation background
+      </label>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {Object.entries(CHAT_BACKGROUNDS).map(([key, background]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => updateConversationBackground(selectedUserId, key)}
+            className={`chat-background-choice rounded-2xl border p-2 text-left text-xs font-black transition ${
+              selectedBackgroundKey === key
+                ? 'border-[#1877f2] bg-white text-slate-950 shadow-sm dark:bg-gray-950 dark:text-white'
+                : 'border-transparent bg-white/70 text-slate-500 hover:bg-white dark:bg-gray-950/60 dark:text-gray-400 dark:hover:bg-gray-950'
+            }`}
+          >
+            <span className="mb-1 block h-12 rounded-xl border border-white/60 shadow-inner dark:border-white/10" style={{ background: background.preview }} />
+            <span className="block truncate">{background.label}</span>
+            <span className="mt-0.5 block truncate text-[10px] font-bold opacity-65">{background.description}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   const ChatDetailsContent = ({ compact = false }) => (
     <div className={`${compact ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-6 lg:max-h-[calc(90svh-4.5rem)]' : ''}`}>
       <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
@@ -4026,6 +4128,8 @@ export default function Messages() {
             ))}
           </div>
         </div>
+
+        <BackgroundSelector />
 
         <section>
           <div className="mb-2 flex items-center justify-between">
@@ -4538,7 +4642,7 @@ export default function Messages() {
         </aside>
 
           {selectedUser ? (
-            <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70">
+            <section className={`mobile-conversation-panel ${selectedBackground.className} flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70`}>
               <header className="mobile-chat-header flex items-center gap-2 border-b border-gray-200/80 bg-white/95 px-3 py-3 dark:border-gray-800 dark:bg-gray-950/95 sm:gap-3 sm:px-4">
                 <button
                   onClick={() => setSelectedUser(null)}
@@ -4638,6 +4742,41 @@ export default function Messages() {
                   )}
                 </div>
               </div>
+
+              {primaryPinnedMessage && (
+                <div className="pinned-message-preview border-b border-slate-200/80 bg-white/95 px-3 py-2 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 sm:px-4">
+                  <div className="flex min-w-0 items-center gap-2 rounded-2xl px-2 py-2 transition hover:bg-slate-100/80 dark:hover:bg-gray-900">
+                    <button
+                      type="button"
+                      onClick={() => scrollToPinnedMessage(getEntityId(primaryPinnedMessage))}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-yellow-50 text-yellow-600 ring-1 ring-yellow-100 dark:bg-yellow-950/30 dark:text-yellow-200 dark:ring-yellow-900/50">
+                        <Pin size={16} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-black uppercase tracking-normal text-yellow-600 dark:text-yellow-200">
+                          Pinned message
+                        </span>
+                        <span className="block truncate text-sm font-bold text-slate-700 dark:text-gray-200">
+                          {getMessageSnippet(primaryPinnedMessage) || 'Attachment'}
+                        </span>
+                      </span>
+                      <span className="hidden shrink-0 text-xs font-bold text-slate-400 sm:inline">
+                        {formatMessageTime(primaryPinnedMessage.createdAt)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePin(getEntityId(primaryPinnedMessage))}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                      aria-label="Unpin message"
+                    >
+                      <PinOff size={15} />
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {showPinnedPanel && pinnedMessages.length > 0 && (
                   <div className="border-b border-yellow-200 bg-yellow-50/95 px-4 py-3 shadow-sm dark:border-yellow-900/60 dark:bg-yellow-950/20">
@@ -4812,9 +4951,15 @@ export default function Messages() {
                               <div
                                 onTouchStart={(event) => {
                                   if (message.unsent) return;
-                                  startReactionPress(messageId);
+                                  startMessageOptionsPress(message);
                                   startSwipeReply(event, message);
                                 }}
+                                onMouseDown={(event) => {
+                                  if (message.unsent || event.button !== 0 || isTouchReactionMode()) return;
+                                  startMessageOptionsPress(message, 520);
+                                }}
+                                onMouseUp={clearReactionPressTimer}
+                                onMouseLeave={clearReactionPressTimer}
                                 onTouchEnd={() => {
                                   clearReactionPressTimer();
                                   clearSwipeReply();
@@ -4828,7 +4973,7 @@ export default function Messages() {
                                   clearSwipeReply();
                                 }}
                                 onContextMenu={(event) => {
-                                  if (!isTouchReactionMode() || message.unsent) return;
+                                  if (message.unsent) return;
                                   event.preventDefault();
                                   setEmojiPickerMessageId(null);
                                   setActionMenuMessageId(messageId);
@@ -4894,133 +5039,6 @@ export default function Messages() {
                               <div className={`mobile-message-actions ${hasReactions ? 'message-actions-has-reactions' : ''} mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <span className="message-action-time text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
                                 <MessageStatus message={message} isLatestOwn={isLatestOwn} />
-                                {!message.unsent && (
-                                  <>
-                                    <button
-                                      onClick={() => {
-                                        setReplyingTo(message);
-                                        focusComposerInput();
-                                      }}
-                                      className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-[#1877f2] group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-sky-300"
-                                      aria-label="Reply"
-                                    >
-                                      <Reply size={13} />
-                                    </button>
-                                    <div className="relative">
-                                      <button
-                                        onClick={() => setEmojiPickerMessageId(emojiPickerMessageId === messageId ? null : messageId)}
-                                        className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-[#1877f2] group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-sky-300"
-                                        aria-label="React"
-                                      >
-                                        <Smile size={14} />
-                                      </button>
-                                      {emojiPickerMessageId === messageId && (
-                                        <div className={`mobile-reaction-picker reaction-motion-zone absolute bottom-7 z-30 w-72 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-gray-700 dark:bg-gray-900 ${isMe ? 'right-0' : 'left-0'}`}>
-                                          <div className="mb-1 flex items-center justify-between px-1">
-                                            <span className="text-xs font-black uppercase text-gray-400">React</span>
-                                            <button type="button" onClick={() => setEmojiPickerMessageId(null)} className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" aria-label="Close reactions">
-                                              <ArrowLeft size={15} />
-                                            </button>
-                                          </div>
-                                          <div className="grid grid-cols-4 gap-1">
-                                            {QUICK_REACTIONS.map(emoji => (
-                                              <button
-                                                key={emoji}
-                                                type="button"
-                                                onClick={() => handleReaction(messageId, emoji)}
-                                                className="emoji-pop-button reaction-motion-zone grid h-11 place-items-center rounded-xl text-2xl hover:bg-gray-100 dark:hover:bg-gray-800"
-                                              >
-                                                {emoji}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <button
-                                      onClick={() => handlePin(messageId)}
-                                      className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-yellow-500 group-hover:opacity-100 dark:hover:bg-gray-800"
-                                      aria-label={message.pinned ? 'Unpin message' : 'Pin message'}
-                                    >
-                                      {message.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                                    </button>
-                                  </>
-                                )}
-                                <div className="relative">
-                                  <button
-                                    onClick={() => setActionMenuMessageId(actionMenuMessageId === messageId ? null : messageId)}
-                                    className="rounded-full p-1 text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-gray-700 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                                    aria-label="Message actions"
-                                  >
-                                    <MoreVertical size={14} />
-                                  </button>
-                                  {actionMenuMessageId === messageId && (
-                                    <div className={`absolute bottom-7 z-30 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white text-sm shadow-xl dark:border-gray-700 dark:bg-gray-800 ${isMe ? 'right-0' : 'left-0'}`}>
-                                      {!message.unsent && (
-                                        <>
-                                          <button
-                                            onClick={() => handleReplyFromMenu(message)}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                          >
-                                            <Reply size={15} /> Reply
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setActionMenuMessageId(null);
-                                              setEmojiPickerMessageId(messageId);
-                                            }}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                          >
-                                            <Smile size={15} /> React
-                                          </button>
-                                          <button
-                                            onClick={() => handleCopyMessage(message)}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                          >
-                                            <Copy size={15} /> Copy
-                                          </button>
-                                          <button
-                                            onClick={() => handleForwardMessage(message)}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                          >
-                                            <Forward size={15} /> Forward
-                                          </button>
-                                        </>
-                                      )}
-                                      <button
-                                        onClick={() => {
-                                          setSelectedMessageInfo(message);
-                                          setActionMenuMessageId(null);
-                                        }}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                      >
-                                        <Info size={15} /> Message info
-                                      </button>
-                                      {isMe && message.text && !message.unsent && (
-                                        <button
-                                          onClick={() => startEditMessage(message)}
-                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                        >
-                                          <Edit3 size={15} /> Edit message
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={() => handleRemoveForMe(messageId)}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                                      >
-                                        <Trash2 size={15} /> Remove for you
-                                      </button>
-                                      {isMe && !message.unsent && (
-                                        <button
-                                          onClick={() => handleUnsendForEveryone(messageId)}
-                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
-                                        >
-                                          <X size={15} /> Unsend for everyone
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
                               </div>
                             </div>
                             </div>
@@ -5377,6 +5395,8 @@ export default function Messages() {
                   </div>
                 </div>
 
+                <BackgroundSelector className="mt-3" />
+
                 <div className="mt-4 space-y-2">
                   <button type="button" onClick={() => setProfileUser(selectedUser)} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 dark:text-gray-200 dark:hover:bg-gray-900">
                     <Info size={18} className="text-pink-500" />
@@ -5654,6 +5674,111 @@ export default function Messages() {
           </div>
         </div>
       )}
+
+      {activeActionMessage && typeof document !== 'undefined' && createPortal((() => {
+        const message = activeActionMessage;
+        const messageId = getEntityId(message);
+        const isMe = getEntityId(message.from) === currentUserId;
+        const snippet = getMessageSnippet(message) || (getMessageAttachments(message).length ? 'Attachment' : 'Message');
+
+        return (
+          <div
+            className="message-options-overlay fixed inset-0 z-[89] flex items-end justify-center bg-black/35 p-3 backdrop-blur-sm sm:items-center"
+            onClick={() => {
+              setActionMenuMessageId(null);
+              setEmojiPickerMessageId(null);
+            }}
+          >
+            <div
+              className="message-options-sheet w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="border-b border-slate-200/80 p-4 dark:border-gray-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Message options</p>
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-700 dark:text-gray-200">{snippet}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActionMenuMessageId(null)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                    aria-label="Close message options"
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+
+                {!message.unsent && (
+                  <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                    {QUICK_REACTIONS.map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => handleReaction(messageId, emoji)}
+                        className="emoji-pop-button reaction-motion-zone grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-xl transition hover:scale-105 hover:bg-slate-200 dark:bg-gray-900 dark:hover:bg-gray-800"
+                        aria-label={`React ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 p-3">
+                {!message.unsent && (
+                  <>
+                    <button type="button" onClick={() => handleReplyFromMenu(message)} className="message-options-action">
+                      <Reply size={17} /> Reply
+                    </button>
+                    <button type="button" onClick={() => handleCopyMessage(message)} className="message-options-action">
+                      <Copy size={17} /> Copy
+                    </button>
+                    <button type="button" onClick={() => handleForwardMessage(message)} className="message-options-action">
+                      <Forward size={17} /> Forward
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionMenuMessageId(null);
+                        handlePin(messageId);
+                      }}
+                      className="message-options-action"
+                    >
+                      {message.pinned ? <PinOff size={17} /> : <Pin size={17} />}
+                      {message.pinned ? 'Unpin' : 'Pin'}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMessageInfo(message);
+                    setActionMenuMessageId(null);
+                  }}
+                  className="message-options-action"
+                >
+                  <Info size={17} /> Info
+                </button>
+                {isMe && message.text && !message.unsent && (
+                  <button type="button" onClick={() => startEditMessage(message)} className="message-options-action">
+                    <Edit3 size={17} /> Edit
+                  </button>
+                )}
+                <button type="button" onClick={() => handleRemoveForMe(messageId)} className="message-options-action">
+                  <Trash2 size={17} /> Remove
+                </button>
+                {isMe && !message.unsent && (
+                  <button type="button" onClick={() => handleUnsendForEveryone(messageId)} className="message-options-action message-options-action-danger">
+                    <X size={17} /> Unsend
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })(), document.body)}
 
       {selectedMessageInfo && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
