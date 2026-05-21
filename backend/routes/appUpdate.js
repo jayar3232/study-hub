@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { getLiveKitStatus } = require('../services/livekitConfig');
+const { getStorageConfigStatus } = require('../services/storage');
 
 const router = express.Router();
 
@@ -130,6 +131,25 @@ router.get('/update', (req, res) => {
 router.get('/ice-servers', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(getIceServers());
+});
+
+router.get('/storage-status', (req, res) => {
+  const status = getStorageConfigStatus();
+
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    provider: status.provider,
+    requestedProvider: status.requestedProvider,
+    hostedRuntime: status.hostedRuntime,
+    enabled: status.enabled,
+    configured: status.configured,
+    status: status.status,
+    missing: status.missing,
+    r2EndpointConfigured: status.r2EndpointConfigured,
+    r2AccessKeyConfigured: status.r2AccessKeyConfigured,
+    r2SecretAccessKeyConfigured: status.r2SecretAccessKeyConfigured,
+    r2PublicUrlConfigured: status.r2PublicUrlConfigured
+  });
 });
 
 module.exports = router;
