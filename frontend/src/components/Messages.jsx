@@ -62,11 +62,13 @@ import { ListSkeleton } from './SkeletonLoader';
 import MediaViewer from './MediaViewer';
 import VideoThumbnail from './VideoThumbnail';
 import NativeMediaLibrarySheet from './NativeMediaLibrarySheet';
+import StoryViewer from './StoryViewer';
 import { isNativeMediaLibraryAvailable, nativeMediaAssetToFile } from '../utils/nativeMediaLibrary';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import AnimatedEmojiText from './AnimatedEmojiText';
 import { AppLogoMark, AppWordmark } from './AppLogo';
 import { CHAT_BACKGROUND_OPTIONS, DEFAULT_CHAT_BACKGROUND_ID, getChatBackground } from '../data/chatBackgroundPresets';
+import { getStoryListForActiveStory } from '../utils/stories';
 
 let socket;
 
@@ -102,6 +104,18 @@ const shouldPreloadAdjacentMedia = () => (
 );
 
 const getDisplayName = (entity, fallback = 'User') => entity?.name || fallback;
+const getStoryGroupPreview = (group) => group?.preview || group?.stories?.[0] || null;
+const hasViewedStory = (story, userId) => (
+  (story?.viewers || []).some(viewer => getEntityId(viewer.userId) === userId)
+);
+const isStoryGroupViewed = (group, userId) => {
+  const ownerId = getEntityId(group?.owner || group?.ownerId);
+  if (!group || !userId || ownerId === userId) return false;
+  const stories = Array.isArray(group.stories) && group.stories.length
+    ? group.stories
+    : [getStoryGroupPreview(group)].filter(Boolean);
+  return stories.length > 0 && stories.every(story => hasViewedStory(story, userId));
+};
 const getMessageAttachments = (message = {}) => {
   const attachments = Array.isArray(message.attachments) ? message.attachments.filter(item => item?.fileUrl) : [];
   if (attachments.length) return attachments;
@@ -541,6 +555,7 @@ export default function Messages() {
   const [savingNote, setSavingNote] = useState(false);
   const [userNotes, setUserNotes] = useState({});
   const [storyGroups, setStoryGroups] = useState([]);
+  const [activeStory, setActiveStory] = useState(null);
   const [activeNote, setActiveNote] = useState(null);
   const [noteReplyText, setNoteReplyText] = useState('');
   const [noteReactionBursts, setNoteReactionBursts] = useState({});
@@ -2798,7 +2813,62 @@ export default function Messages() {
     }, 720);
   };
 
+  const syncActiveStory = (updatedStory) => {
+    setActiveStory(prev => getEntityId(prev) === getEntityId(updatedStory) ? updatedStory : prev);
+    fetchUserNotes();
+    window.dispatchEvent(new CustomEvent('storiesUpdated'));
+  };
+
+  const openStory = async (story) => {
+    if (!story) return;
+    setActiveStory(story);
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/view`);
+      syncActiveStory(res.data);
+    } catch {
+      // Story viewing should still open even when the view counter request fails.
+    }
+  };
+
+  const reactToStory = async (story, emoji) => {
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/react`, { emoji });
+      syncActiveStory(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Reaction failed');
+    }
+  };
+
+  const commentOnStory = async (story, text) => {
+    const reply = String(text || '').trim();
+    if (!reply) return;
+    try {
+      const res = await api.post(`/stories/${getEntityId(story)}/comment`, { text: reply });
+      syncActiveStory(res.data?.story || res.data);
+      fetchConversations();
+      toast.success('Sent to messages');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Comment failed');
+    }
+  };
+
+  const deleteStory = async (storyId) => {
+    try {
+      await api.delete(`/stories/${storyId}`);
+      setActiveStory(null);
+      fetchUserNotes();
+      window.dispatchEvent(new CustomEvent('storiesUpdated'));
+      toast.success('My Day deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Delete failed');
+    }
+  };
+
   const handleOpenNote = (item) => {
+    if (item?.hasStory && !item?.hasNote) {
+      openStory(getStoryGroupPreview(item.storyGroup));
+      return;
+    }
     if (item?.isMe) {
       setNoteText(item?.note?.text || myNote?.text || '');
       setShowNoteComposer(true);
@@ -3762,19 +3832,25 @@ export default function Messages() {
     { id: 'pinned', label: 'Pinned', count: pinnedConversationIds.size },
     { id: 'requests', label: 'Requests', count: requestConversationCount }
   ]), [groups.length, mutedConversationIds.size, pinnedConversationIds.size, primaryConversationCount, requestConversationCount, totalConversationCount]);
+  const storyGroupByOwner = useMemo(() => (
+    new Map((storyGroups || [])
+      .map(group => [getEntityId(group.owner || group.ownerId), group])
+      .filter(([id]) => id))
+  ), [storyGroups]);
+  const activeStoryList = useMemo(() => (
+    getStoryListForActiveStory(storyGroups, activeStory)
+  ), [activeStory, storyGroups]);
   const noteTrayItems = useMemo(() => {
     const items = [];
-    const storyByOwner = new Map((storyGroups || [])
-      .map(group => [getEntityId(group.owner || group.ownerId), group])
-      .filter(([id]) => id));
 
     if (user) {
-      const myStoryGroup = storyByOwner.get(currentUserId);
+      const myStoryGroup = storyGroupByOwner.get(currentUserId);
       items.push({
         id: 'me',
         person: user,
         note: myNote,
         storyGroup: myStoryGroup,
+        storyViewed: isStoryGroupViewed(myStoryGroup, currentUserId),
         text: myNote?.text || (myStoryGroup ? 'My Day' : 'Create note'),
         isMe: true,
         hasNote: Boolean(myNote?.text),
@@ -3790,11 +3866,12 @@ export default function Messages() {
           id: getEntityId(note.userId),
           person: note.userId,
           note,
-          storyGroup: storyByOwner.get(getEntityId(note.userId)),
+          storyGroup: storyGroupByOwner.get(getEntityId(note.userId)),
+          storyViewed: isStoryGroupViewed(storyGroupByOwner.get(getEntityId(note.userId)), currentUserId),
           text: note.text,
           isMe: false,
           hasNote: true,
-          hasStory: storyByOwner.has(getEntityId(note.userId))
+          hasStory: storyGroupByOwner.has(getEntityId(note.userId))
         });
       });
 
@@ -3807,6 +3884,7 @@ export default function Messages() {
         person: group.owner,
         note: null,
         storyGroup: group,
+        storyViewed: isStoryGroupViewed(group, currentUserId),
         text: 'My Day',
         isMe: false,
         hasNote: false,
@@ -3815,7 +3893,7 @@ export default function Messages() {
     });
 
     return items;
-  }, [currentUserId, myNote, storyGroups, user, userNotes]);
+  }, [currentUserId, myNote, storyGroupByOwner, storyGroups, user, userNotes]);
 
   const activeConversationUsers = useMemo(() => (
     conversations
@@ -3823,11 +3901,11 @@ export default function Messages() {
       .filter(person => {
         const id = getEntityId(person);
         const hasNote = Boolean(userNotes[id]);
-        const hasStory = storyGroups.some(group => getEntityId(group.owner || group.ownerId) === id);
+        const hasStory = storyGroupByOwner.has(id);
         return id && id !== currentUserId && onlineUsers.has(id) && (hasNote || hasStory);
       })
       .slice(0, 10)
-  ), [conversations, currentUserId, onlineUsers, storyGroups, userNotes]);
+  ), [conversations, currentUserId, onlineUsers, storyGroupByOwner, userNotes]);
 
   const messageSearchMatches = useMemo(() => {
     const query = messageSearch.trim().toLowerCase();
@@ -4763,22 +4841,31 @@ export default function Messages() {
               </button>
               {noteTrayItems.map(item => {
                 const noteAvatar = renderAvatar(item.person, 'h-12 w-12', 20);
+                const storyOnly = item.hasStory && !item.hasNote;
+                const storyRingClass = item.hasStory
+                  ? item.storyViewed
+                    ? ' is-story-viewed'
+                    : ' is-story-unviewed'
+                  : '';
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => handleOpenNote(item)}
-                    className="messenger-note-head group w-[5.35rem] shrink-0 text-center"
+                    className={`messenger-note-head group w-[5.35rem] shrink-0 text-center ${storyOnly ? 'is-story-only' : ''}`}
+                    aria-label={storyOnly ? `View ${item.isMe ? 'your' : item.person?.name || 'friend'} My Day` : undefined}
                   >
                     <span className="messenger-note-card relative mx-auto flex min-h-[5.75rem] w-[5.25rem] flex-col items-center justify-end">
-                      <span className={`messenger-note-bubble line-clamp-2 min-h-7 max-w-[5.05rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
-                        item.hasNote
-                          ? 'bg-white text-slate-800 ring-slate-200 dark:bg-gray-900 dark:text-white dark:ring-gray-700'
-                          : 'bg-[#1877f2] text-white ring-blue-300'
-                      }`}>
-                        {item.text}
-                      </span>
-                      <span className="messenger-note-avatar mt-1 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950">
+                      {!storyOnly && (
+                        <span className={`messenger-note-bubble line-clamp-2 min-h-7 max-w-[5.05rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
+                          item.hasNote
+                            ? 'bg-white text-slate-800 ring-slate-200 dark:bg-gray-900 dark:text-white dark:ring-gray-700'
+                            : 'bg-[#1877f2] text-white ring-blue-300'
+                        }`}>
+                          {item.text}
+                        </span>
+                      )}
+                      <span className={`messenger-note-avatar mt-1 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950${storyRingClass}`}>
                         {noteAvatar}
                       </span>
                       {item.hasNote && (
@@ -4786,7 +4873,7 @@ export default function Messages() {
                           {getNoteTimeLeft(item.note?.expiresAt)}
                         </span>
                       )}
-                      {item.isMe && (
+                      {item.isMe && !storyOnly && (
                         <span className="messenger-note-add absolute bottom-0 right-3 z-20 grid h-5 w-5 place-items-center rounded-full bg-[#1877f2] text-white ring-2 ring-white dark:ring-gray-950">
                           <Plus size={12} strokeWidth={3} />
                         </span>
@@ -4958,6 +5045,9 @@ export default function Messages() {
                 const presenceMeta = getConversationPresenceMeta(otherUser);
                 const isTyping = typingUsers.has(otherUserId);
                 const isActive = selectedUserId === otherUserId;
+                const conversationStoryGroup = storyGroupByOwner.get(otherUserId);
+                const conversationHasStory = Boolean(conversationStoryGroup);
+                const conversationStoryViewed = isStoryGroupViewed(conversationStoryGroup, currentUserId);
                 const isFavorite = favoriteConversationIds.has(otherUserId);
                 const isMuted = mutedConversationIds.has(otherUserId);
                 const isPinned = pinnedConversationIds.has(otherUserId);
@@ -5011,7 +5101,7 @@ export default function Messages() {
                         setProfileUser(otherUser);
                       }}
                       title={`View ${displayName}'s profile`}
-                      className={`conversation-profile-target relative shrink-0 cursor-pointer rounded-full ${presenceMeta.online ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-black' : ''}`}
+                      className={`conversation-profile-target relative shrink-0 cursor-pointer rounded-full ${presenceMeta.online ? 'is-online' : ''} ${conversationHasStory ? 'has-story' : ''} ${conversationHasStory && !conversationStoryViewed ? 'has-unviewed-story' : ''}`}
                     >
                       {renderAvatar(otherUser, 'h-12 w-12', 22)}
                       {presenceMeta.label ? (
@@ -6858,6 +6948,18 @@ export default function Messages() {
           </div>
         );
       })(), document.body)}
+
+      <StoryViewer
+        story={activeStory}
+        stories={activeStoryList}
+        currentUser={user}
+        onClose={() => setActiveStory(null)}
+        onNavigate={openStory}
+        onReact={reactToStory}
+        onComment={commentOnStory}
+        onDelete={deleteStory}
+        zIndexClass="z-[120]"
+      />
 
       <MediaViewer
         media={currentMediaPreview}

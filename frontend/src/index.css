@@ -9746,6 +9746,90 @@ html.syncrova-native-app .mobile-message-actions button {
   -webkit-overflow-scrolling: touch;
 }
 
+.game-play-page.is-game-fullscreen .typing-race-game--active {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-header {
+  flex: 0 0 auto;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding: 0.75rem 0 8rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-main {
+  min-height: 0;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-play-panel,
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-practice-panel--active {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-board-scroll {
+  max-height: clamp(8rem, 34dvh, 16rem) !important;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-input {
+  scroll-margin-bottom: max(8rem, calc(env(safe-area-inset-bottom, 0px) + 7rem));
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-board-scroll {
+  max-height: clamp(9rem, 42dvh, 18rem) !important;
+}
+
+.game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-input-hint {
+  display: none;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-header {
+    padding: 0.75rem !important;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-body {
+    padding: 0.75rem !important;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-main {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-board {
+    scroll-margin-top: 0.75rem;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-board-scroll {
+    max-height: clamp(7.5rem, 30dvh, 13rem) !important;
+    font-size: 1.02rem !important;
+    line-height: 1.85rem !important;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-board-scroll {
+    max-height: clamp(8.5rem, 39dvh, 15rem) !important;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-input {
+    height: 3.35rem !important;
+    scroll-margin-bottom: max(10rem, calc(env(safe-area-inset-bottom, 0px) + 8rem));
+  }
+}
+
 @media (max-width: 767px) {
   .messages-pro-shell.mobile-messenger-shell {
     border: 0 !important;
@@ -11498,4 +11582,63 @@ html.syncrova-native-app .mobile-message-actions button {
 
 .messenger-note-head > span:last-child {
   min-height: 1.65rem;
+}
+
+.messenger-note-head.is-story-only {
+  width: 4.6rem !important;
+}
+
+.messenger-note-head.is-story-only > span.messenger-note-card {
+  min-height: 5.75rem !important;
+  width: 4.35rem !important;
+  justify-content: flex-end !important;
+}
+
+.messenger-note-head > span.messenger-note-card > span.messenger-note-avatar.is-story-unviewed,
+.messenger-note-head > span.messenger-note-card > span.messenger-note-avatar.is-story-viewed {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  box-shadow: 0 0 0 2px #ffffff, 0 8px 20px rgba(15, 23, 42, 0.12) !important;
+}
+
+.messenger-note-head > span.messenger-note-card > span.messenger-note-avatar.is-story-unviewed {
+  background: #1877f2;
+}
+
+.messenger-note-head > span.messenger-note-card > span.messenger-note-avatar.is-story-viewed {
+  background: #cbd5e1;
+}
+
+.dark .messenger-note-head > span.messenger-note-card > span.messenger-note-avatar.is-story-unviewed,
+.dark .messenger-note-head > span.messenger-note-card > span.messenger-note-avatar.is-story-viewed {
+  box-shadow: 0 0 0 2px #030712, 0 10px 24px rgba(0, 0, 0, 0.28) !important;
+}
+
+.messenger-note-head.is-story-only > span.messenger-note-card > span.messenger-note-avatar {
+  margin-top: 0 !important;
+}
+
+.conversation-profile-target.has-story {
+  padding: 3px;
+  background: #cbd5e1;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.conversation-profile-target.has-unviewed-story {
+  background: #1877f2;
+}
+
+.dark .conversation-profile-target.has-story {
+  box-shadow: 0 0 0 2px #020617;
+}
+
+.conversation-profile-target.is-online .conversation-presence-badge {
+  right: -0.28rem !important;
+  bottom: -0.18rem !important;
+  max-width: 2.7rem !important;
+  padding: 2px 5px !important;
+  font-size: 0.55rem !important;
+  line-height: 0.78rem !important;
 }

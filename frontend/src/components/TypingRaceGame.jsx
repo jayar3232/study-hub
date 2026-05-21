@@ -156,7 +156,7 @@ const TypingWordBoard = React.memo(function TypingWordBoard({ words, currentInde
   );
 });
 
-export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
+export default function TypingRaceGame({ stats, onScoreSaved, onExit, isFullscreen = false }) {
   const inputRef = useRef(null);
   const submittedRef = useRef(false);
   const finishedNoticeRef = useRef('');
@@ -482,10 +482,11 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
 
   const myResult = room?.me?.result;
   const rewardSummary = myResult?.rewardSummary;
+  const isActiveTypingRace = room?.status === 'playing' || (practice.active && !practice.gameOver);
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      <div className="grid gap-4 border-b border-slate-100 p-4 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+    <section className={`typing-race-game ${isActiveTypingRace ? 'typing-race-game--active' : ''} ${isFullscreen ? 'typing-race-game--fullscreen' : ''} overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950`}>
+      <div className="typing-race-header grid gap-4 border-b border-slate-100 p-4 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-sky-500/20">
             <Keyboard size={25} />
@@ -511,8 +512,8 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0 space-y-4">
+      <div className="typing-race-body grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="typing-race-main min-w-0 space-y-4">
           {!room && !practice.active && !practice.gameOver ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="grid gap-2 sm:grid-cols-4">
@@ -633,8 +634,8 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
           ) : null}
 
           {room?.status === 'playing' ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="typing-race-race-stack space-y-4">
+              <div className="typing-race-play-panel rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-black uppercase text-slate-500 dark:text-slate-400">Word {Math.min(typing.sentenceIndex + 1, sentences.length || 1)} / {sentences.length || 0}</p>
                   <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-[#0b57d0] ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">{formatClock(remaining)}</span>
@@ -659,9 +660,9 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
                   autoCorrect="off"
                   spellCheck="false"
                   placeholder={typing.submitted ? 'Submitted. Waiting for results...' : 'Type the word, then press Space'}
-                  className="mt-3 h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-black text-slate-900 outline-none transition focus:border-[#0b57d0] focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:disabled:bg-slate-900"
+                  className="typing-race-input mt-3 h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-black text-slate-900 outline-none transition focus:border-[#0b57d0] focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:disabled:bg-slate-900"
                 />
-                <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-400">Wrong letters turn red; Space moves to the next word without blocking your race.</p>
+                <p className="typing-race-input-hint mt-2 text-xs font-bold text-slate-500 dark:text-slate-400">Wrong letters turn red; Space moves to the next word without blocking your race.</p>
               </div>
               <div className="grid gap-3">
                 {room.players.map(player => {
@@ -724,7 +725,7 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
           ) : null}
 
           {(practice.active || practice.gameOver) ? (
-            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <div className={`typing-race-practice-panel ${practice.active && !practice.gameOver ? 'typing-race-practice-panel--active' : ''} rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-300">Practice Mode · Not ranked</p>
@@ -750,7 +751,7 @@ export default function TypingRaceGame({ stats, onScoreSaved, onExit }) {
                       onFocus={() => inputRef.current?.focus()}
                     />
                   </div>
-                  <input ref={inputRef} value={practice.input} onChange={handlePracticeInput} onPaste={blockPaste} autoComplete="off" autoCorrect="off" spellCheck="false" className="mt-3 h-14 w-full rounded-xl border border-emerald-500/20 bg-white px-4 text-base font-black text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 dark:bg-slate-950 dark:text-white" placeholder="Type the word, then press Space" />
+                  <input ref={inputRef} value={practice.input} onChange={handlePracticeInput} onPaste={blockPaste} autoComplete="off" autoCorrect="off" spellCheck="false" className="typing-race-input mt-3 h-14 w-full rounded-xl border border-emerald-500/20 bg-white px-4 text-base font-black text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 dark:bg-slate-950 dark:text-white" placeholder="Type the word, then press Space" />
                 </>
               )}
             </div>
