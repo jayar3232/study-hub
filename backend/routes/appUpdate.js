@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { getLiveKitStatus } = require('../services/livekitConfig');
 const { getStorageConfigStatus } = require('../services/storage');
+const { runStorageProbe } = require('../services/mediaDiagnostics');
 
 const router = express.Router();
 
@@ -133,8 +134,10 @@ router.get('/ice-servers', (req, res) => {
   res.json(getIceServers());
 });
 
-router.get('/storage-status', (req, res) => {
+router.get('/storage-status', async (req, res) => {
   const status = getStorageConfigStatus();
+  const runProbe = ['1', 'true', 'yes'].includes(String(req.query.probe || '').toLowerCase());
+  const storageProbe = runProbe ? await runStorageProbe() : null;
 
   res.set('Cache-Control', 'no-store');
   res.json({
@@ -148,7 +151,8 @@ router.get('/storage-status', (req, res) => {
     r2EndpointConfigured: status.r2EndpointConfigured,
     r2AccessKeyConfigured: status.r2AccessKeyConfigured,
     r2SecretAccessKeyConfigured: status.r2SecretAccessKeyConfigured,
-    r2PublicUrlConfigured: status.r2PublicUrlConfigured
+    r2PublicUrlConfigured: status.r2PublicUrlConfigured,
+    storageProbe
   });
 });
 
