@@ -14,8 +14,16 @@ const mongoStates = {
   3: 'disconnecting'
 };
 
+const bundledRelease = {
+  versionName: '4.4.13',
+  versionCode: 60
+};
+
 const getReleaseApkPath = () => {
-  const versionName = String(process.env.APP_VERSION_NAME || '4.4.9').trim() || '4.4.9';
+  const configuredVersionCode = Number(process.env.APP_VERSION_CODE);
+  const versionName = Number.isInteger(configuredVersionCode) && configuredVersionCode >= bundledRelease.versionCode
+    ? String(process.env.APP_VERSION_NAME || bundledRelease.versionName).trim() || bundledRelease.versionName
+    : bundledRelease.versionName;
   const safeVersion = versionName.replace(/[^a-zA-Z0-9._-]/g, '-');
   return `/releases/syncrova-${safeVersion}.apk`;
 };

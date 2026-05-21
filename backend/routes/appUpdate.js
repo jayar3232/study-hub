@@ -34,8 +34,45 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.13').trim() || '4.4.13';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 60);
+const bundledRelease = {
+  versionName: '4.4.13',
+  versionCode: 60
+};
+
+const getConfiguredVersionCode = () => {
+  const value = Number(process.env.APP_VERSION_CODE);
+  return Number.isInteger(value) && value > 0 ? value : 0;
+};
+
+const getReleaseInfo = () => {
+  const configuredVersionCode = getConfiguredVersionCode();
+  const canUseConfiguredRelease = configuredVersionCode >= bundledRelease.versionCode;
+
+  if (!canUseConfiguredRelease) {
+    return {
+      ...bundledRelease,
+      usesConfiguredRelease: false
+    };
+  }
+
+  return {
+    versionName: String(process.env.APP_VERSION_NAME || bundledRelease.versionName).trim() || bundledRelease.versionName,
+    versionCode: configuredVersionCode,
+    usesConfiguredRelease: true
+  };
+};
+
+const isConfiguredApkUrlAllowed = (apkUrl, releaseInfo) => {
+  if (!apkUrl) return false;
+  if (!releaseInfo.usesConfiguredRelease && getConfiguredVersionCode()) return false;
+
+  const safeVersion = String(releaseInfo.versionName || '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  const versionedApkPattern = /syncrova-([^/?#]+)\.apk/i;
+  const match = String(apkUrl).match(versionedApkPattern);
+
+  return !match || match[1] === safeVersion || match[1] === 'latest';
+};
+
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -108,11 +145,13 @@ const getIceServers = () => {
 };
 
 router.get('/update', (req, res) => {
-  const versionName = getReleaseVersionName();
-  const versionCode = getReleaseVersionCode();
+  const releaseInfo = getReleaseInfo();
+  const { versionName, versionCode } = releaseInfo;
   const releaseApk = getLocalReleaseApk(versionName);
-  const apkUrl = process.env.APP_APK_URL || releaseApk.urlPath;
-  const apkAvailable = Boolean(process.env.APP_APK_URL) || Boolean(releaseApk.filePath);
+  const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
+  const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
+  const apkUrl = useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath;
+  const apkAvailable = useConfiguredApkUrl || Boolean(releaseApk.filePath);
   const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
 
   res.set('Cache-Control', 'no-store');

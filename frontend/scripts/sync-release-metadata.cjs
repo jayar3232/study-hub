@@ -8,6 +8,7 @@ const capacitorConfigPath = path.join(frontendRoot, 'capacitor.config.json');
 const androidGradlePath = path.join(frontendRoot, 'android', 'app', 'build.gradle');
 const backendUpdateRoutePath = path.join(repoRoot, 'backend', 'routes', 'appUpdate.js');
 const backendAssistantRoutePath = path.join(repoRoot, 'backend', 'routes', 'assistant.js');
+const backendHealthRoutePath = path.join(repoRoot, 'backend', 'routes', 'health.js');
 const generatedReleaseDir = path.join(frontendRoot, 'src', 'generated');
 const generatedReleaseInfoPath = path.join(generatedReleaseDir, 'releaseInfo.js');
 
@@ -81,14 +82,14 @@ if (fs.existsSync(backendUpdateRoutePath)) {
   let backendUpdateRoute = readText(backendUpdateRoutePath);
   backendUpdateRoute = replaceRequired(
     backendUpdateRoute,
-    /const getReleaseVersionCode = \(\) => Number\(process\.env\.APP_VERSION_CODE \|\| \d+\)/,
-    `const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || ${versionCode})`,
+    /versionCode:\s*\d+/,
+    `versionCode: ${versionCode}`,
     'backend update versionCode'
   );
   backendUpdateRoute = replaceRequired(
     backendUpdateRoute,
-    /const getReleaseVersionName = \(\) => String\(process\.env\.APP_VERSION_NAME \|\| '[^']+'\)\.trim\(\) \|\| '[^']+';/,
-    `const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '${versionName}').trim() || '${versionName}';`,
+    /versionName:\s*'[^']+'/,
+    `versionName: '${versionName}'`,
     'backend update versionName'
   );
   writeText(backendUpdateRoutePath, backendUpdateRoute);
@@ -109,6 +110,23 @@ if (fs.existsSync(backendAssistantRoutePath)) {
     'backend assistant versionCode'
   );
   writeText(backendAssistantRoutePath, backendAssistantRoute);
+}
+
+if (fs.existsSync(backendHealthRoutePath)) {
+  let backendHealthRoute = readText(backendHealthRoutePath);
+  backendHealthRoute = replaceRequired(
+    backendHealthRoute,
+    /versionCode:\s*\d+/,
+    `versionCode: ${versionCode}`,
+    'backend health versionCode'
+  );
+  backendHealthRoute = replaceRequired(
+    backendHealthRoute,
+    /versionName:\s*'[^']+'/,
+    `versionName: '${versionName}'`,
+    'backend health versionName'
+  );
+  writeText(backendHealthRoutePath, backendHealthRoute);
 }
 
 console.log(`Release metadata synced: ${applicationId} v${versionName} (${versionCode})`);
