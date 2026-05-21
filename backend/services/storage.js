@@ -20,12 +20,33 @@ const supabaseBucket = cleanEnv(
 );
 
 const r2AccountId = cleanEnv(process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID);
-const r2AccessKeyId = cleanEnv(process.env.R2_ACCESS_KEY_ID || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID);
-const r2SecretAccessKey = cleanEnv(process.env.R2_SECRET_ACCESS_KEY || process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY);
-const r2Bucket = cleanEnv(process.env.R2_BUCKET_NAME || process.env.R2_BUCKET || process.env.CLOUDFLARE_R2_BUCKET_NAME);
+const r2AccessKeyId = cleanEnv(
+  process.env.R2_ACCESS_KEY_ID
+  || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  || process.env.AWS_ACCESS_KEY_ID
+  || process.env.S3_ACCESS_KEY_ID
+);
+const r2SecretAccessKey = cleanEnv(
+  process.env.R2_SECRET_ACCESS_KEY
+  || process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+  || process.env.AWS_SECRET_ACCESS_KEY
+  || process.env.S3_SECRET_ACCESS_KEY
+);
+const r2Bucket = cleanEnv(
+  process.env.R2_BUCKET_NAME
+  || process.env.R2_BUCKET
+  || process.env.CLOUDFLARE_R2_BUCKET_NAME
+  || process.env.AWS_BUCKET_NAME
+  || process.env.AWS_S3_BUCKET
+  || process.env.S3_BUCKET_NAME
+  || process.env.S3_BUCKET
+);
 const r2Endpoint = cleanEnv(
   process.env.R2_ENDPOINT
   || process.env.CLOUDFLARE_R2_ENDPOINT
+  || process.env.AWS_ENDPOINT_URL
+  || process.env.S3_ENDPOINT_URL
+  || process.env.S3_ENDPOINT
   || (r2AccountId ? `https://${r2AccountId}.r2.cloudflarestorage.com` : '')
 ).replace(/\/+$/, '');
 const r2PublicBaseUrl = cleanEnv(
@@ -452,18 +473,18 @@ const getMissingConfig = () => {
   if (cloudStorageProvider === 'r2') {
     return [
       !r2Endpoint && 'R2_ENDPOINT or R2_ACCOUNT_ID',
-      !r2AccessKeyId && 'R2_ACCESS_KEY_ID',
-      !r2SecretAccessKey && 'R2_SECRET_ACCESS_KEY',
-      !r2Bucket && 'R2_BUCKET_NAME'
+      !r2AccessKeyId && 'R2_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID',
+      !r2SecretAccessKey && 'R2_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY',
+      !r2Bucket && 'R2_BUCKET_NAME or S3_BUCKET_NAME'
     ].filter(Boolean);
   }
 
   if (!isCloudStorageEnabled) {
     return [
       !r2Endpoint && 'R2_ENDPOINT or R2_ACCOUNT_ID',
-      !r2AccessKeyId && 'R2_ACCESS_KEY_ID',
-      !r2SecretAccessKey && 'R2_SECRET_ACCESS_KEY',
-      !r2Bucket && 'R2_BUCKET_NAME'
+      !r2AccessKeyId && 'R2_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID',
+      !r2SecretAccessKey && 'R2_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY',
+      !r2Bucket && 'R2_BUCKET_NAME or S3_BUCKET_NAME'
     ].filter(Boolean);
   }
 
