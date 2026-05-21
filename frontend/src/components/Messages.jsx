@@ -2824,7 +2824,7 @@ export default function Messages() {
     setActiveStory(story);
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
-      syncActiveStory(res.data);
+      setActiveStory(prev => getEntityId(prev) === getEntityId(story) ? res.data : prev);
     } catch {
       // Story viewing should still open even when the view counter request fails.
     }
@@ -5193,7 +5193,7 @@ export default function Messages() {
                 >
                   <ArrowLeft size={21} strokeWidth={2.7} />
                 </button>
-                <button type="button" onClick={() => setProfileUser(selectedUser)} className="mobile-chat-avatar relative shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-pink-300" title="View profile">
+                <button type="button" onClick={() => setProfileUser(selectedUser)} className={`mobile-chat-avatar relative shrink-0 rounded-full ring-2 transition hover:ring-pink-300 ${selectedIsOnline ? 'is-online ring-emerald-400' : 'ring-transparent'}`} title="View profile">
                   {renderAvatar(selectedUser, 'h-12 w-12', 22)}
                   <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
                     selectedIsOnline ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]' : 'bg-gray-300 dark:bg-gray-600'

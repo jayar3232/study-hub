@@ -10,6 +10,7 @@ const {
 } = require('@aws-sdk/client-s3');
 
 const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
+const MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 const cleanEnv = (value = '') => String(value || '').trim();
 
@@ -276,7 +277,7 @@ const uploadObjectBuffer = async ({ buffer, objectPath, mimeType, provider = clo
       Key: storedPath,
       Body: buffer,
       ContentType: mimeType || 'application/octet-stream',
-      CacheControl: 'public, max-age=3600'
+      CacheControl: MEDIA_CACHE_CONTROL
     }));
     const head = await r2.send(new HeadObjectCommand({ Bucket: r2Bucket, Key: storedPath }));
 
@@ -419,7 +420,7 @@ const setObjectResponseHeaders = (res, result = {}) => {
   if (result.ETag) res.setHeader('ETag', result.ETag);
   if (result.LastModified) res.setHeader('Last-Modified', new Date(result.LastModified).toUTCString());
   res.setHeader('Accept-Ranges', result.AcceptRanges || 'bytes');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('Cache-Control', MEDIA_CACHE_CONTROL);
 };
 
 const getRouteObjectPath = (req) => {
@@ -456,6 +457,15 @@ const serveR2Object = async (req, res, next) => {
     if (result.ContentRange) res.status(206);
     setObjectResponseHeaders(res, result);
     if (!result.Body) return res.end();
+    result.Body.on('error', (error) => {
+      if (!res.headersSent) return next(error);
+      res.destroy(error);
+    });
+    res.on('close', () => {
+      if (!res.writableEnded && typeof result.Body.destroy === 'function') {
+        result.Body.destroy();
+      }
+    });
     return result.Body.pipe(res);
   } catch (err) {
     const statusCode = err?.$metadata?.httpStatusCode;

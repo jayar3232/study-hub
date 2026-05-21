@@ -781,7 +781,8 @@ const leaveBowDuelMatch = (socket, reason = 'left') => {
 };
 
 app.get('/api/presence/online', auth, (req, res) => {
-  res.json({ users: getOnlineUserIds() });
+  const users = getOnlineUserIds();
+  res.json({ users, userIds: users });
 });
 
 app.get('/api/presence/online/:userId', auth, async (req, res) => {

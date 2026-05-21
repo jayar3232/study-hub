@@ -33,7 +33,7 @@ export function PresenceProvider({ children }) {
       if (id) unique.set(id, person);
     });
 
-    setOnlineUserIds(onlineRes.data?.userIds || []);
+    setOnlineUserIds(onlineRes.data?.userIds || onlineRes.data?.users || []);
     setPeople([...unique.values()]);
     const loadedStories = Array.isArray(storiesRes.data) ? storiesRes.data : storiesRes.data?.stories || [];
     setStories(loadedStories);

@@ -9799,6 +9799,10 @@ html.syncrova-native-app .mobile-message-actions button {
     padding: 0.75rem !important;
   }
 
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-header {
+    display: none !important;
+  }
+
   .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-body {
     padding: 0.75rem !important;
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
@@ -9814,6 +9818,25 @@ html.syncrova-native-app .mobile-message-actions button {
     scroll-margin-top: 0.75rem;
   }
 
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-play-panel,
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-practice-panel--active {
+    display: flex;
+    max-height: calc(var(--syncrova-visual-height, 100svh) - 6.75rem - env(safe-area-inset-bottom, 0px));
+    min-height: 0;
+    flex-direction: column;
+    padding: 0.75rem !important;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-play-panel > .mt-3,
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-practice-panel--active > .mt-3 {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-race-stack > .grid {
+    display: none !important;
+  }
+
   .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-board-scroll {
     max-height: clamp(7.5rem, 30dvh, 13rem) !important;
     font-size: 1.02rem !important;
@@ -9821,7 +9844,7 @@ html.syncrova-native-app .mobile-message-actions button {
   }
 
   .game-play-page.is-game-fullscreen .typing-race-game--active:focus-within .typing-race-board-scroll {
-    max-height: clamp(8.5rem, 39dvh, 15rem) !important;
+    max-height: clamp(8rem, 29svh, 12rem) !important;
   }
 
   .game-play-page.is-game-fullscreen .typing-race-game--active .typing-race-input {
@@ -11626,12 +11649,26 @@ html.syncrova-native-app .mobile-message-actions button {
   box-shadow: 0 0 0 2px #ffffff;
 }
 
+.conversation-profile-target.is-online {
+  padding: 3px;
+  background: linear-gradient(135deg, #22c55e, #10b981);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 5px rgba(16, 185, 129, 0.2);
+}
+
 .conversation-profile-target.has-unviewed-story {
   background: #1877f2;
 }
 
+.conversation-profile-target.is-online.has-unviewed-story {
+  background: conic-gradient(#22c55e 0 35%, #1877f2 35% 100%);
+}
+
 .dark .conversation-profile-target.has-story {
   box-shadow: 0 0 0 2px #020617;
+}
+
+.dark .conversation-profile-target.is-online {
+  box-shadow: 0 0 0 2px #020617, 0 0 0 5px rgba(16, 185, 129, 0.28);
 }
 
 .conversation-profile-target.is-online .conversation-presence-badge {
@@ -11641,4 +11678,8 @@ html.syncrova-native-app .mobile-message-actions button {
   padding: 2px 5px !important;
   font-size: 0.55rem !important;
   line-height: 0.78rem !important;
+}
+
+.mobile-chat-avatar.is-online {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.24);
 }

@@ -168,7 +168,8 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     setActiveStory(story);
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
-      syncStory(res.data);
+      setStories(prev => prev.map(item => getEntityId(item) === getEntityId(res.data) ? res.data : item));
+      setActiveStory(prev => getEntityId(prev) === getEntityId(story) ? res.data : prev);
     } catch {
       // Viewing should stay smooth even if the analytics request fails.
     }

@@ -416,7 +416,8 @@ export default function Profile() {
     setActiveStory(story);
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
-      syncStory(res.data);
+      setStories(prev => prev.map(item => getEntityId(item) === getEntityId(res.data) ? res.data : item));
+      setActiveStory(prev => getEntityId(prev) === getEntityId(story) ? res.data : prev);
     } catch {
       // My Day viewer tracking should never block viewing media.
     }

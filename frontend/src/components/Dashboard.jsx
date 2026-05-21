@@ -612,7 +612,6 @@ export default function Dashboard() {
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
       setActiveStory(prev => getEntityId(prev) === getEntityId(story) ? res.data : prev);
-      window.dispatchEvent(new CustomEvent('storiesUpdated'));
     } catch {
       // Viewing should stay instant even when the counter request fails.
     }

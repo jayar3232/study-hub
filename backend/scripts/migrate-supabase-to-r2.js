@@ -25,6 +25,7 @@ const StudentVerification = require('../models/StudentVerification');
 const User = require('../models/User');
 
 const CONFIRMATION = 'MIGRATE_SUPABASE_TO_R2';
+const MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const args = process.argv.slice(2);
 const confirmIndex = args.indexOf('--confirm');
 const isConfirmed = confirmIndex !== -1 && args[confirmIndex + 1] === CONFIRMATION;
@@ -520,7 +521,7 @@ const copyObjects = async (context) => {
         Key: reference.objectPath,
         Body: buffer,
         ContentType: reference.mimeType || getExtensionMimeType(reference.objectPath),
-        CacheControl: 'public, max-age=3600'
+        CacheControl: MEDIA_CACHE_CONTROL
       }));
       result.copied += 1;
       console.log(`Copied ${result.copied + result.skippedExisting}/${context.references.size}: ${reference.objectPath}`);

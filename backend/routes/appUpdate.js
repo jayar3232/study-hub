@@ -35,8 +35,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.13',
-  versionCode: 60
+  versionName: '4.4.14',
+  versionCode: 61
 };
 
 const getConfiguredVersionCode = () => {
@@ -164,7 +164,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.13 keeps Typing Race words visible when the mobile keyboard opens|Verifies R2-backed media uploads with local fallback disabled|Refines Messenger story rings and active chat alignment'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.14 adds active green avatar rings in Chats|Keeps Typing Race words visible while the mobile keyboard is open|Reduces My Day media refetch pressure and verifies R2-backed uploads'
   });
 });
 

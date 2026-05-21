@@ -277,7 +277,10 @@ router.post('/:storyId/view', auth, async (req, res) => {
 
     await story.save();
     const hydratedStory = await populateStoryDocument(story);
-    req.app.get('io')?.emit('story-updated', hydratedStory);
+    const ownerId = getId(story.userId);
+    if (ownerId) {
+      req.app.get('io')?.to(`user_${ownerId}`).emit('story-updated', hydratedStory);
+    }
     res.json(hydratedStory);
   } catch (err) {
     res.status(500).json({ msg: err.message });

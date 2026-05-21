@@ -130,11 +130,26 @@ export default function GamePlayPage() {
     const root = document.documentElement;
     if (!focusMode) {
       root.classList.remove('game-focus-lock');
+      root.style.removeProperty('--syncrova-visual-height');
       return undefined;
     }
 
     root.classList.add('game-focus-lock');
-    return () => root.classList.remove('game-focus-lock');
+    const syncVisualHeight = () => {
+      const height = window.visualViewport?.height || window.innerHeight;
+      if (height) root.style.setProperty('--syncrova-visual-height', `${Math.round(height)}px`);
+    };
+    syncVisualHeight();
+    window.visualViewport?.addEventListener('resize', syncVisualHeight);
+    window.visualViewport?.addEventListener('scroll', syncVisualHeight);
+    window.addEventListener('resize', syncVisualHeight);
+    return () => {
+      root.classList.remove('game-focus-lock');
+      root.style.removeProperty('--syncrova-visual-height');
+      window.visualViewport?.removeEventListener('resize', syncVisualHeight);
+      window.visualViewport?.removeEventListener('scroll', syncVisualHeight);
+      window.removeEventListener('resize', syncVisualHeight);
+    };
   }, [focusMode]);
 
   useEffect(() => {
