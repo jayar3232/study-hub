@@ -116,7 +116,8 @@ export default function AppUpdatePrompt() {
             notes: payload.notes || 'New Syncrova update is ready.',
             required,
             apkUrl,
-            apkSize: Number(payload.apkSize || 0)
+            apkSize: Number(payload.apkSize || 0),
+            apkSha256: String(payload.apkSha256 || '')
           });
         }
       } catch {
@@ -171,6 +172,8 @@ export default function AppUpdatePrompt() {
         const result = await nativeUpdater.downloadAndInstall({
           url: withCacheBuster(update.apkUrl, update.versionCode),
           versionName: update.versionName,
+          versionCode: update.versionCode,
+          apkSha256: update.apkSha256,
           fileName: getUpdateFileName(update.versionName, update.versionCode)
         });
 

@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getLiveKitStatus } = require('../services/livekitConfig');
@@ -9,6 +10,7 @@ const router = express.Router();
 
 const publicReleaseDir = path.join(__dirname, '..', 'public', 'releases');
 const uploadedReleaseDir = path.join(__dirname, '..', 'uploads', 'releases');
+const apkHashCache = new Map();
 const DEFAULT_STUN_SERVERS = [
   'stun:stun.l.google.com:19302',
   'stun:stun1.l.google.com:19302',
@@ -35,8 +37,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.14',
-  versionCode: 61
+  versionName: '4.4.15',
+  versionCode: 62
 };
 
 const getConfiguredVersionCode = () => {
@@ -102,6 +104,27 @@ const getLocalReleaseApk = (versionName) => {
   };
 };
 
+const getFileSha256 = (filePath) => {
+  if (!filePath) return '';
+
+  try {
+    const stat = fs.statSync(filePath);
+    const cacheKey = `${filePath}:${stat.size}:${stat.mtimeMs}`;
+    if (apkHashCache.has(cacheKey)) return apkHashCache.get(cacheKey);
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(fs.readFileSync(filePath))
+      .digest('hex');
+
+    apkHashCache.clear();
+    apkHashCache.set(cacheKey, hash);
+    return hash;
+  } catch {
+    return '';
+  }
+};
+
 const parseList = (value = '') => String(value || '')
   .split(',')
   .map(item => item.trim())
@@ -153,6 +176,7 @@ router.get('/update', (req, res) => {
   const apkUrl = useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath;
   const apkAvailable = useConfiguredApkUrl || Boolean(releaseApk.filePath);
   const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
+  const apkSha256 = releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '';
 
   res.set('Cache-Control', 'no-store');
   res.json({
@@ -163,8 +187,9 @@ router.get('/update', (req, res) => {
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, true),
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
+    apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.14 adds active green avatar rings in Chats|Keeps Typing Race words visible while the mobile keyboard is open|Reduces My Day media refetch pressure and verifies R2-backed uploads'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.15 verifies the downloaded APK before install|Adds active green avatar rings in Chats|Keeps Typing Race words visible while the mobile keyboard is open|Reduces My Day media refetch pressure and verifies R2-backed uploads'
   });
 });
 
