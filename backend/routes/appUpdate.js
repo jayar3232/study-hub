@@ -34,8 +34,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.9').trim() || '4.4.9';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 56);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.10').trim() || '4.4.10';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 57);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -125,7 +125,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.9 adds more chat background choices inspired by Telegram-style aesthetics|Conversation backgrounds now stay shared, persisted, and readable in light and dark mode|Messages keeps Cloudflare R2 media storage for profile photos, posts, videos, and chat uploads'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.10 fixes upload routing so profile photos, posts, videos, and chat media use the active Cloudflare R2 backend|Removes stale API override behavior that could point uploads to the old backend|Keeps the R2 storage health probe available for production checks'
   });
 });
 

@@ -11,7 +11,7 @@ const getToken = () => localStorage.getItem('token') || '';
 
 export const getSocket = () => {
   if (!socket) {
-    socket = io(import.meta.env.VITE_SOCKET_URL || getDefaultSocketUrl(), {
+    socket = io(getDefaultSocketUrl(), {
       auth: { token: getToken() },
       transports: ['websocket', 'polling'],
       withCredentials: true,

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getBackendOrigin } from '../utils/media';
 
 const backendOrigin = getBackendOrigin();
-const apiBaseUrl = import.meta.env.VITE_API_URL || (backendOrigin ? `${backendOrigin}/api` : '/api');
+const apiBaseUrl = backendOrigin ? `${backendOrigin}/api` : '/api';
 
 const api = axios.create({
   baseURL: apiBaseUrl
