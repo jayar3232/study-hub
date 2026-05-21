@@ -34,8 +34,8 @@ const toAbsoluteUrl = (req, value) => {
   return `${getRequestOrigin(req)}${normalizedPath}`;
 };
 
-const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.11').trim() || '4.4.11';
-const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 58);
+const getReleaseVersionName = () => String(process.env.APP_VERSION_NAME || '4.4.12').trim() || '4.4.12';
+const getReleaseVersionCode = () => Number(process.env.APP_VERSION_CODE || 59);
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
@@ -125,7 +125,7 @@ router.get('/update', (req, res) => {
     apkUrl: toAbsoluteUrl(req, apkUrl),
     apkSize,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.11 removes the Syncrova assistant from the app shell|Improves Messenger-style Notes visibility and clearer chat backgrounds|Fixes rank record accuracy so highest rank cannot display below the current rank'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.12 sharpens conversation backgrounds and improves chat text readability|Centers new chat and group chat popups so action buttons stay visible|Compacts Create room and aligns it with Notes for a cleaner Messages screen'
   });
 });
 
