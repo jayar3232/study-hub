@@ -245,6 +245,15 @@ const cycloneRankKeys = new Set(['apex']);
 const wingRankKeys = new Set(['legend', 'apex']);
 
 export const getGamePalette = (rank) => palettes[rank?.key] || palettes.recruit;
+export const getGameRankPower = (rank) => {
+  const basePower = rankPower[rank?.key] ?? 0;
+  const apexStars = starRankKeys.has(rank?.key) ? Math.max(0, Number(rank?.apexStars) || 0) : 0;
+  const starPower = Math.min(0.99, Math.log1p(apexStars) / Math.log1p(STAR_POWER_REFERENCE));
+  return basePower + starPower;
+};
+export const resolveHighestGameRank = (currentRank, highestRank) => (
+  highestRank && getGameRankPower(highestRank) > getGameRankPower(currentRank) ? highestRank : currentRank
+);
 
 const lolRankIcons = {
   unranked: { file: 'unranked.png', label: 'Unranked' },
@@ -560,7 +569,7 @@ export function GameRankEmblem({ rank = fallbackRank, size = 'md', animated = fa
 
 export default function GameRankBadge({ stats, compact = false, showProgress = true }) {
   const rank = stats?.rank || fallbackRank;
-  const highestRank = stats?.highestRank;
+  const highestRank = resolveHighestGameRank(rank, stats?.highestRank);
   const nextRank = stats?.nextRank;
   const palette = getGamePalette(rank);
   const apexStars = Number(stats?.apexStars ?? rank?.apexStars ?? 0);

@@ -148,6 +148,15 @@ const isInSeason = (session, season) => {
 };
 
 const getRankByKey = (key) => GAME_RANKS.find(rank => rank.key === key) || GAME_RANKS[0];
+const getRankPower = (rank) => {
+  const index = GAME_RANKS.findIndex(item => item.key === rank?.key);
+  const basePower = index >= 0 ? index : 0;
+  const apexStars = rank?.key === 'apex' ? Math.max(0, Number(rank?.apexStars) || 0) : 0;
+  return basePower + (apexStars / 10000);
+};
+const getHigherRank = (first, second) => (
+  getRankPower(first) >= getRankPower(second) ? first : second
+);
 const getDemotedRank = (rank) => getRankByKey(DEMOTION_MAP[rank?.key] || 'recruit');
 const getRewardForRank = (rank) => GAME_REWARDS[rank?.key] || GAME_REWARDS.recruit;
 
@@ -211,6 +220,7 @@ const buildGameStats = (sessions = [], options = {}) => {
   );
   const seasonTotalScore = seasonStats.lifetimeScore;
   const rank = getGameRank(seasonRankScore, seasonRankScore);
+  const highestRank = getHigherRank(lifetimeStats.rank, rank.current);
 
   return {
     ...seasonStats,
@@ -228,8 +238,8 @@ const buildGameStats = (sessions = [], options = {}) => {
     maxApexStars: rank.maxApexStars,
     profileBorderTier: rank.profileBorderTier,
     nextProfileBorderAt: rank.nextProfileBorderAt,
-    highestRank: lifetimeStats.rank,
-    highestScore: lifetimeStats.highScore,
+    highestRank,
+    highestScore: Math.max(lifetimeStats.highScore, seasonRankScore),
     lifetimeScore: lifetimeStats.lifetimeScore,
     lifetimePlays: lifetimeStats.totalPlays,
     previousSeasonRank: previousStats.rank,

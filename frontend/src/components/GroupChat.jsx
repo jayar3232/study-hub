@@ -11,6 +11,7 @@ import {
   Reply,
   Search,
   Send,
+  Settings,
   Smile,
   Users,
   Video,
@@ -42,7 +43,7 @@ const getFileName = (value = '') => {
   }
 };
 
-export default function GroupChat({ groupId, group, members = [], onUserClick }) {
+export default function GroupChat({ groupId, group, members = [], onUserClick, background, onOpenSettings }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(GROUP_MESSAGE_RENDER_BATCH);
@@ -452,7 +453,6 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
     socket.on('group-message-updated', handleUpdate);
     socket.on('group-messages-seen', handleSeen);
     socket.on('message-deleted-for-everyone', handleDeleteForEveryone);
-
     return () => {
       socket.emit('leave-group', groupId);
       socket.off('receive-group-message', handleReceive);
@@ -469,6 +469,9 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
   const memberPreview = members.slice(0, 5);
   const memberCount = members.length || group?.members?.length || 0;
   const groupPhotoUrl = resolveMediaUrl(group?.photo);
+  const backgroundStyle = background?.image
+    ? { '--chat-background-image': `url("${background.image}")` }
+    : undefined;
 
   if (loading) {
     return (
@@ -514,6 +517,16 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
             >
               <Pin size={17} />
             </button>
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="grid h-10 w-10 place-items-center rounded-full border border-gray-200 text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#1877f2] dark:border-gray-700 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+                title="Group settings"
+              >
+                <Settings size={17} />
+              </button>
+            )}
             <span className="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300 sm:inline-flex">
               Live
             </span>
@@ -554,7 +567,10 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-white to-gray-50 p-3 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 sm:p-4">
+      <div
+        className={`group-chat-thread min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-white to-gray-50 p-3 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 sm:p-4 ${background?.className || ''}`}
+        style={backgroundStyle}
+      >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-50 text-pink-500 dark:bg-pink-950/30 dark:text-pink-300">
@@ -586,6 +602,15 @@ export default function GroupChat({ groupId, group, members = [], onUserClick })
             {renderedMessages.map((message) => {
               const messageId = getEntityId(message);
               const isMe = getEntityId(message.userId) === currentUserId;
+              if (message.system) {
+                return (
+                  <div key={messageId} className="flex justify-center">
+                    <span className="system-message-bubble max-w-[88%] rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-center text-[11px] font-black text-slate-600 shadow-sm backdrop-blur dark:border-white/10 dark:bg-black/45 dark:text-slate-200">
+                      {message.text}
+                    </span>
+                  </div>
+                );
+              }
 
               return (
                 <div key={messageId} className={`group flex ${isMe ? 'justify-end' : 'justify-start'}`}>

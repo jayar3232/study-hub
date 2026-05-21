@@ -51,13 +51,13 @@ export default function NewChatModal({ onClose, onSelectUser, title = 'New chat'
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm">
       <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 24, scale: 0.98 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
         transition={{ type: 'spring', damping: 24, stiffness: 280 }}
-        className="mobile-bottom-sheet w-full max-w-md overflow-hidden rounded-t-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-2xl"
+        className="flex max-h-[min(38rem,calc(100svh_-_2rem))] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-800">
           <div>
@@ -73,7 +73,7 @@ export default function NewChatModal({ onClose, onSelectUser, title = 'New chat'
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="min-h-0 flex-1 p-5">
           <div className="relative mb-4">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -86,7 +86,7 @@ export default function NewChatModal({ onClose, onSelectUser, title = 'New chat'
             />
           </div>
 
-          <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+          <div className="max-h-[min(24rem,calc(100svh_-_14rem))] space-y-1 overflow-y-auto pr-1">
             {loading && (
               <div className="space-y-2">
                 {[0, 1, 2].map(item => (

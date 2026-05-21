@@ -10877,6 +10877,19 @@ html.syncrova-native-app .mobile-message-actions button {
   min-width: 0;
 }
 
+.chat-background-preview {
+  aspect-ratio: 16 / 9;
+  height: auto !important;
+  min-height: 5.85rem;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+  box-shadow: none !important;
+  filter: none !important;
+  image-rendering: auto;
+  transform: translateZ(0);
+}
+
 .chat-background-preview-card.is-selected .chat-background-preview {
   outline: 2px solid rgba(24, 119, 242, 0.78);
   outline-offset: 2px;
@@ -11179,4 +11192,310 @@ html.syncrova-native-app .mobile-message-actions button {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.messenger-note-head {
+  width: 5.35rem !important;
+}
+
+.messenger-note-head > span.messenger-note-card {
+  height: auto !important;
+  min-height: 5.75rem !important;
+  width: 5.25rem !important;
+}
+
+.messenger-note-head > span.messenger-note-card > span.messenger-note-bubble {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 1;
+  display: -webkit-box !important;
+  width: max-content;
+  min-width: 2.55rem;
+  max-width: 5.1rem;
+  margin-inline: auto;
+  overflow: hidden;
+  text-align: left;
+  word-break: break-word;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.messenger-note-head > span.messenger-note-card > span.messenger-note-avatar {
+  position: relative !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.messenger-note-head > span.messenger-note-card > span.messenger-note-time {
+  max-width: 3.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dark .messenger-note-head > span.messenger-note-card > span.messenger-note-bubble {
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+}
+
+@media (max-width: 430px) {
+  .messenger-notes-tray {
+    gap: 0.72rem !important;
+    padding-block: 0.55rem 0.25rem !important;
+  }
+
+  .messenger-room-tile,
+  .messenger-note-head {
+    width: 4.85rem !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card {
+    min-height: 5.45rem !important;
+    width: 4.8rem !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card > span.messenger-note-bubble {
+    max-width: 4.7rem;
+    font-size: 0.64rem !important;
+  }
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-default .mobile-message-thread {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(2, 6, 23, 0.58)),
+    radial-gradient(circle at 16% 0%, rgba(24, 119, 242, 0.18), transparent 18rem),
+    linear-gradient(135deg, #111827, #1e293b 55%, #0f172a) !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-soft-blue .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-lagoon .mobile-message-thread {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.32), rgba(2, 6, 23, 0.58)),
+    radial-gradient(circle at 16% 8%, rgba(96, 165, 250, 0.38), transparent 17rem),
+    radial-gradient(circle at 76% 18%, rgba(45, 212, 191, 0.2), transparent 16rem),
+    linear-gradient(135deg, #082f49, #0f172a 58%, #020617) !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-lavender .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-prism .mobile-message-thread {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(2, 6, 23, 0.6)),
+    radial-gradient(circle at 18% 16%, rgba(168, 85, 247, 0.3), transparent 17rem),
+    radial-gradient(circle at 82% 22%, rgba(14, 165, 233, 0.22), transparent 16rem),
+    linear-gradient(135deg, #2e1065, #0f172a 62%, #020617) !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-peach .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-sunrise .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-love-notes .mobile-message-thread {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(2, 6, 23, 0.62)),
+    radial-gradient(circle at 20% 14%, rgba(251, 146, 60, 0.3), transparent 16rem),
+    radial-gradient(circle at 78% 22%, rgba(244, 63, 94, 0.18), transparent 15rem),
+    linear-gradient(135deg, #431407, #111827 58%, #020617) !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-mint .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-sage-paper .mobile-message-thread {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.34), rgba(2, 6, 23, 0.62)),
+    radial-gradient(circle at 24% 20%, rgba(34, 197, 94, 0.26), transparent 17rem),
+    radial-gradient(circle at 80% 14%, rgba(14, 165, 233, 0.16), transparent 15rem),
+    linear-gradient(135deg, #052e16, #0f172a 60%, #020617) !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-classroom .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-grid-paper .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-circuit .mobile-message-thread,
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-topographic .mobile-message-thread {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.36), rgba(2, 6, 23, 0.64)),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.11) 1px, transparent 1px) 0 0 / 2.4rem 2.4rem,
+    linear-gradient(0deg, rgba(125, 211, 252, 0.08) 1px, transparent 1px) 0 0 / 2.4rem 2.4rem,
+    radial-gradient(circle at 18% 8%, rgba(14, 165, 233, 0.22), transparent 16rem),
+    linear-gradient(135deg, #0f172a, #111827 60%, #020617) !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell [class*="chat-bg-"] .message-bubble:not(.own-message-bubble) {
+  background: rgba(24, 24, 27, 0.88) !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .mobile-message-thread,
+.group-chat-thread.chat-bg-image {
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.2), rgba(241, 245, 249, 0.32)),
+    var(--chat-background-image) center / cover no-repeat !important;
+  background-attachment: scroll !important;
+  background-position: center, center !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 100% 100%, cover !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-image .mobile-message-thread,
+.dark .group-chat-thread.chat-bg-image {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.22), rgba(2, 6, 23, 0.38)),
+    var(--chat-background-image) center / cover no-repeat !important;
+  background-attachment: scroll !important;
+  background-position: center, center !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 100% 100%, cover !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-tile .mobile-message-thread,
+.group-chat-thread.chat-bg-tile {
+  background-color: #272b2f !important;
+  background-image:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.1)),
+    var(--chat-background-image) !important;
+  background-attachment: scroll, scroll !important;
+  background-position: center, center top !important;
+  background-repeat: no-repeat, repeat !important;
+  background-size: 100% 100%, clamp(22rem, 72vw, 28rem) auto !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-tile .mobile-message-thread,
+.dark .group-chat-thread.chat-bg-tile {
+  background-color: #202429 !important;
+  background-image:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.02), rgba(2, 6, 23, 0.12)),
+    var(--chat-background-image) !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-bubble:not(.own-message-bubble),
+.group-chat-thread.chat-bg-image .rounded-bl-md {
+  border-color: rgba(226, 232, 240, 0.98) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #0f172a !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-bubble:not(.own-message-bubble),
+.dark .group-chat-thread.chat-bg-image .rounded-bl-md {
+  border-color: rgba(51, 65, 85, 0.95) !important;
+  background: rgba(17, 24, 39, 0.96) !important;
+  color: #f8fafc !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-bubble p,
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .my-day-reply-bubble p,
+.group-chat-thread.chat-bg-image :where(.rounded-bl-md, .rounded-br-md) p {
+  color: inherit !important;
+  font-weight: 650 !important;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .own-message-bubble {
+  text-shadow: 0 1px 1px rgba(15, 23, 42, 0.24);
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .own-message-bubble .opacity-75 {
+  opacity: 1 !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-row .mb-1.px-1 > span {
+  border: 1px solid rgba(226, 232, 240, 0.86);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #334155 !important;
+  padding: 0.16rem 0.46rem;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+  text-shadow: none;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-row .mb-1.px-1 > span {
+  border-color: rgba(51, 65, 85, 0.9);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-action-time {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: rgba(15, 23, 42, 0.82) !important;
+  padding: 0 !important;
+  text-shadow:
+    0 1px 1px rgba(255, 255, 255, 0.98),
+    0 0 3px rgba(255, 255, 255, 0.92);
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-action-time {
+  color: rgba(248, 250, 252, 0.9) !important;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.82),
+    0 0 4px rgba(0, 0, 0, 0.72);
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .system-message-bubble,
+.group-chat-thread.chat-bg-image .system-message-bubble {
+  border-color: rgba(226, 232, 240, 0.92) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #334155 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-image .system-message-bubble,
+.dark .group-chat-thread.chat-bg-image .system-message-bubble {
+  border-color: rgba(51, 65, 85, 0.88) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  color: #e2e8f0 !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-date-divider > span:nth-child(2) {
+  border-color: rgba(226, 232, 240, 0.92) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #334155 !important;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .chat-bg-image .message-date-divider > span:nth-child(2) {
+  border-color: rgba(51, 65, 85, 0.88) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  color: #e2e8f0 !important;
+}
+
+.messenger-notes-tray {
+  align-items: flex-start;
+}
+
+.messenger-room-tile {
+  width: 3.7rem !important;
+  padding-top: 2.25rem;
+}
+
+.messenger-note-head {
+  width: 5.35rem !important;
+}
+
+.messenger-room-tile > span:first-child {
+  width: 3rem !important;
+  height: 3rem !important;
+  margin-top: 0 !important;
+  border: 1px dashed rgba(148, 163, 184, 0.58) !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08) !important;
+}
+
+.messenger-room-tile > span:first-child svg {
+  width: 1.22rem !important;
+  height: 1.22rem !important;
+}
+
+.messenger-note-head > span.messenger-note-card {
+  width: 5.25rem !important;
+}
+
+.messenger-room-tile > span:last-child {
+  min-height: 1.15rem;
+  margin-top: 0.32rem !important;
+  font-size: 0.68rem !important;
+  line-height: 1.05 !important;
+}
+
+.messenger-note-head > span:last-child {
+  min-height: 1.65rem;
 }

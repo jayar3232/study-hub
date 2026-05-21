@@ -1211,7 +1211,7 @@ export default function Layout({ children }) {
         <div className={`relative flex shrink-0 items-center justify-center rounded-lg ${isMobile ? 'h-8 w-8' : 'h-8 w-8'} ${isActive ? 'bg-white shadow-sm dark:bg-white/10 dark:shadow-none' : 'bg-transparent group-hover/nav:bg-white/75 dark:group-hover/nav:bg-white/10'}`}>
           <item.icon size={isMobile ? 21 : 18} strokeWidth={isActive ? 2.6 : 2.25} />
           {badgeCount > 0 && (
-            <span className="absolute -top-1 -right-2 bg-blue-600 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center">
+            <span className={`absolute -top-1 -right-2 text-white text-xs rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center ${isMessages ? 'bg-red-500' : 'bg-blue-600'}`}>
               {badgeCount > 9 ? '9+' : badgeCount}
             </span>
           )}
@@ -1734,7 +1734,7 @@ export default function Layout({ children }) {
                 <item.icon size={21} strokeWidth={isActive ? 2.6 : 2.2} />
                 <span className="max-w-full truncate text-[10px] font-black leading-none">{item.mobileLabel || item.label}</span>
                 {badgeCount > 0 && (
-                  <span className="absolute right-1 top-0 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-blue-600 px-1 text-xs text-white">
+                  <span className={`absolute right-1 top-0 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-xs text-white ${isMessages ? 'bg-red-500' : 'bg-blue-600'}`}>
                     {badgeCount > 9 ? '9+' : badgeCount}
                   </span>
                 )}

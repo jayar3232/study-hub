@@ -38,7 +38,7 @@ import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
-import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
+import GameRankBadge, { GameRankEmblem, getProfileFrameClass, resolveHighestGameRank } from './GameRankBadge';
 import { CAMPUS_OPTIONS, COURSE_OPTIONS, SCHOOL_LOGO_SRC } from '../utils/academics';
 import { RELEASE_VERSION_NAME } from '../generated/releaseInfo';
 import { PageSkeleton } from './SkeletonLoader';
@@ -517,7 +517,7 @@ export default function Profile() {
   const rankStats = rankData?.me;
   const gameStats = gameData?.stats || gameData?.typingStats;
   const currentGameRank = gameStats?.rank;
-  const highestGameRank = gameStats?.highestRank || currentGameRank;
+  const highestGameRank = resolveHighestGameRank(currentGameRank, gameStats?.highestRank || currentGameRank);
   const currentPosition = gameData?.myRank?.position;
   const storyGroups = groupActiveStoriesByOwner(stories);
   const storyItems = storyGroups.flatMap(group => group.stories);

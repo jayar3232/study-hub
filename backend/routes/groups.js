@@ -11,10 +11,12 @@ const File = require('../models/File');
 const Memory = require('../models/Memory');
 const GroupNote = require('../models/GroupNote');
 const GroupInvite = require('../models/GroupInvite');
+const GroupChat = require('../models/GroupChat');
 const User = require('../models/User');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
 const { createNotification, createNotifications } = require('../services/notifications');
 const { createGroupActivity } = require('../services/activity');
+const { DEFAULT_CHAT_BACKGROUND_ID, normalizeChatBackgroundId } = require('../utils/chatBackgrounds');
 const router = express.Router();
 
 const groupPhotoUploadDir = path.join(__dirname, '..', 'uploads', 'groups');
@@ -27,6 +29,7 @@ const JOIN_CODE_LENGTH = 6;
 const MAX_JOIN_CODE_ATTEMPTS = 8;
 
 const isSameId = (left, right) => String(left?._id || left || '') === String(right?._id || right || '');
+const getEntityId = (value) => String(value?._id || value || '');
 const isGroupMember = (group, userId) => group?.members?.some(member => isSameId(member, userId));
 const canManageGroup = (group, userId) => (
   isSameId(group?.creator, userId) || group?.coCreators?.some(member => isSameId(member, userId))
@@ -124,13 +127,21 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Create a new group – only creator is member
+// Create a new group
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, description, subject } = req.body;
+    const { name, description, subject, memberIds = [] } = req.body;
     const trimmedName = name?.trim();
     if (!trimmedName) return res.status(400).json({ msg: 'Group name is required' });
     if (trimmedName.length > 80) return res.status(400).json({ msg: 'Group name must be 80 characters or less' });
+
+    const uniqueMemberIds = Array.from(new Set([
+      req.user,
+      ...(Array.isArray(memberIds) ? memberIds : [])
+    ].map(id => String(id || '')).filter(Boolean)));
+    if (uniqueMemberIds.some(id => !isValidObjectId(id))) {
+      return res.status(400).json({ msg: 'Choose valid group members' });
+    }
 
     const joinCode = await createUniqueJoinCode();
     const group = new Group({
@@ -138,11 +149,28 @@ router.post('/', auth, async (req, res) => {
       description: description?.trim() || '',
       subject: subject?.trim() || '',
       creator: req.user,
-      members: [req.user],
+      members: uniqueMemberIds,
       joinCode
     });
     await group.save();
     await group.populate('creator', 'name email avatar isDeveloper');
+    await group.populate('members', 'name email avatar isDeveloper');
+    if (uniqueMemberIds.length > 1) {
+      await createNotifications({
+        io: req.app.get('io'),
+        userIds: uniqueMemberIds.filter(id => id !== req.user),
+        actorId: req.user,
+        type: 'group',
+        title: `Added to ${group.name}`,
+        body: 'A new group chat is ready in Messages.',
+        href: '/messages',
+        meta: { groupId: group._id }
+      }).catch(() => {});
+    }
+    const io = req.app.get('io');
+    if (io) {
+      uniqueMemberIds.forEach(memberId => io.to(`user_${memberId}`).emit('group-updated', group));
+    }
     res.status(201).json(group);
   } catch (err) {
     console.error('POST /groups error:', err);
@@ -450,7 +478,63 @@ router.put('/:id', auth, async (req, res) => {
     await group.populate('creator', 'name email avatar isDeveloper');
     await group.populate('members', 'name email avatar isDeveloper');
     await group.populate('coCreators', 'name email avatar isDeveloper');
+    const io = req.app.get('io');
+    if (io) {
+      group.members.forEach(member => io.to(`user_${getEntityId(member)}`).emit('group-updated', group));
+    }
     res.json(group);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.put('/:id/background', auth, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.id);
+    if (!group) return res.status(404).json({ msg: 'Group not found' });
+    if (!isGroupMember(group, req.user)) return res.status(403).json({ msg: 'You are not a member of this group' });
+
+    const backgroundId = normalizeChatBackgroundId(req.body?.backgroundId);
+    if (!backgroundId) return res.status(400).json({ msg: 'Invalid conversation background' });
+
+    const previousBackgroundId = normalizeChatBackgroundId(group.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID;
+    const changed = previousBackgroundId !== backgroundId;
+    group.backgroundId = backgroundId;
+    await group.save();
+
+    let systemMessage = null;
+    if (changed) {
+      const actor = await User.findById(req.user).select('name email avatar isDeveloper').lean();
+      const actorName = actor?.name || 'Someone';
+      systemMessage = await GroupChat.create({
+        groupId: group._id,
+        userId: req.user,
+        text: backgroundId === DEFAULT_CHAT_BACKGROUND_ID
+          ? `${actorName} reset the group chat background.`
+          : `${actorName} changed the group chat background.`,
+        system: true,
+        systemType: 'background_changed',
+        systemData: { backgroundId, previousBackgroundId },
+        seenBy: [{ userId: req.user, seenAt: new Date() }]
+      });
+      systemMessage = await GroupChat.findById(systemMessage._id)
+        .populate('userId', 'name email avatar isDeveloper')
+        .populate('replyTo')
+        .lean();
+    }
+
+    await group.populate('creator', 'name email avatar isDeveloper');
+    await group.populate('members', 'name email avatar isDeveloper');
+    await group.populate('coCreators', 'name email avatar isDeveloper');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`group_${group._id}`).emit('group-updated', group);
+      group.members.forEach(member => io.to(`user_${getEntityId(member)}`).emit('group-updated', group));
+      if (systemMessage) io.to(`group_${group._id}`).emit('receive-group-message', systemMessage);
+    }
+
+    res.json({ group, backgroundId, changed, message: systemMessage });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -507,6 +591,10 @@ router.post('/:id/photo', auth, uploadGroupPhoto, async (req, res) => {
     await group.populate('creator', 'name email avatar isDeveloper');
     await group.populate('members', 'name email avatar isDeveloper');
     await group.populate('coCreators', 'name email avatar isDeveloper');
+    const io = req.app.get('io');
+    if (io) {
+      group.members.forEach(member => io.to(`user_${getEntityId(member)}`).emit('group-updated', group));
+    }
     res.json(group);
   } catch (err) {
     if (isCloudStorageEnabled && uploadedPhoto?.path) {

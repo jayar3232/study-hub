@@ -7,7 +7,7 @@ import api from '../services/api';
 import { resolveMediaUrl } from '../utils/media';
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import { useNavigate } from 'react-router-dom';
-import GameRankBadge, { GameRankEmblem, getProfileFrameClass } from './GameRankBadge';
+import GameRankBadge, { GameRankEmblem, getProfileFrameClass, resolveHighestGameRank } from './GameRankBadge';
 import { useAuth } from '../context/AuthContext';
 import StoryViewer from './StoryViewer';
 import VideoThumbnail from './VideoThumbnail';
@@ -146,7 +146,7 @@ export default function UserProfileModal({ isOpen, user, userId, onClose }) {
     ? `Last active ${formatDistanceToNow(new Date(profile.lastSeen), { addSuffix: true })}`
     : 'Activity not available';
   const currentGameRank = profile?.gameStats?.rank;
-  const highestGameRank = profile?.gameStats?.highestRank || currentGameRank;
+  const highestGameRank = resolveHighestGameRank(currentGameRank, profile?.gameStats?.highestRank || currentGameRank);
 
   const openMessages = () => {
     onClose?.();

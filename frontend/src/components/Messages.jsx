@@ -53,6 +53,7 @@ import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import { useCall } from '../context/CallContext';
 import NewChatModal from './NewChatModal';
+import GroupChat from './GroupChat';
 import UserProfileModal from './UserProfileModal';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
@@ -470,6 +471,7 @@ export default function Messages() {
   } = useCall();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [conversationSearch, setConversationSearch] = useState('');
   const [conversationFilter, setConversationFilter] = useState('all');
   const [acceptedFriendIds, setAcceptedFriendIds] = useState(null);
@@ -483,6 +485,7 @@ export default function Messages() {
   const [pendingBackgroundKey, setPendingBackgroundKey] = useState(DEFAULT_CHAT_BACKGROUND_ID);
   const [savingBackground, setSavingBackground] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(() => getMessageRenderBatch());
@@ -499,6 +502,17 @@ export default function Messages() {
   const [oldestMessageCursor, setOldestMessageCursor] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showGroupCreate, setShowGroupCreate] = useState(false);
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [groupDraftName, setGroupDraftName] = useState('');
+  const [groupMemberQuery, setGroupMemberQuery] = useState('');
+  const [groupMemberResults, setGroupMemberResults] = useState([]);
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupSettingsName, setGroupSettingsName] = useState('');
+  const [groupSettingsPhoto, setGroupSettingsPhoto] = useState(null);
+  const [groupSettingsBackgroundKey, setGroupSettingsBackgroundKey] = useState(DEFAULT_CHAT_BACKGROUND_ID);
+  const [savingGroupSettings, setSavingGroupSettings] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [presenceReady, setPresenceReady] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -526,6 +540,7 @@ export default function Messages() {
   const [showNoteComposer, setShowNoteComposer] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [userNotes, setUserNotes] = useState({});
+  const [storyGroups, setStoryGroups] = useState([]);
   const [activeNote, setActiveNote] = useState(null);
   const [noteReplyText, setNoteReplyText] = useState('');
   const [noteReactionBursts, setNoteReactionBursts] = useState({});
@@ -601,20 +616,21 @@ export default function Messages() {
   const currentUserId = getEntityId(user);
   const deferredConversationSearch = useDeferredValue(conversationSearch);
   const selectedUserId = getEntityId(selectedUser);
+  const selectedGroupId = getEntityId(selectedGroup);
   const targetUserId = searchParams.get('user');
   const targetDraftText = searchParams.get('draft') || '';
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     window.dispatchEvent(new CustomEvent('syncrova:mobile-chat-state', {
-      detail: { open: Boolean(selectedUser) }
+      detail: { open: Boolean(selectedUser || selectedGroup) }
     }));
     return () => {
       window.dispatchEvent(new CustomEvent('syncrova:mobile-chat-state', {
         detail: { open: false }
       }));
     };
-  }, [selectedUser]);
+  }, [selectedGroup, selectedUser]);
 
   const focusComposerInput = useCallback(() => {
     if (shouldAutoFocusComposer()) inputRef.current?.focus();
@@ -884,6 +900,19 @@ export default function Messages() {
         return;
       }
 
+      if (showGroupCreate) {
+        event.preventDefault();
+        setShowGroupCreate(false);
+        resetGroupCreateForm();
+        return;
+      }
+
+      if (showGroupSettings) {
+        event.preventDefault();
+        setShowGroupSettings(false);
+        return;
+      }
+
       if (showPinnedPanel) {
         event.preventDefault();
         setShowPinnedPanel(false);
@@ -905,8 +934,9 @@ export default function Messages() {
         return;
       }
 
-      if (selectedUser && isMobileMessagesViewport()) {
+      if ((selectedUser || selectedGroup) && isMobileMessagesViewport()) {
         event.preventDefault();
+        setSelectedGroup(null);
         setSelectedUser(null);
       }
     };
@@ -922,10 +952,13 @@ export default function Messages() {
     profileUser,
     replyingTo,
     selectedAttachment,
+    selectedGroup,
     selectedMessageInfo,
     selectedUser,
     showBackgroundPicker,
     showChatDetails,
+    showGroupCreate,
+    showGroupSettings,
     showModal,
     showPinnedPanel
   ]);
@@ -975,6 +1008,23 @@ export default function Messages() {
     }
   }, []);
 
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await api.get('/groups');
+      const items = Array.isArray(res.data) ? res.data : [];
+      setGroups(items);
+      setSelectedGroup(prev => {
+        const selectedId = getEntityId(prev);
+        if (!selectedId) return prev;
+        return items.find(group => getEntityId(group) === selectedId) || prev;
+      });
+      return items;
+    } catch (err) {
+      console.error('Groups failed', err);
+      return [];
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     api.get('/friends/summary')
@@ -995,9 +1045,10 @@ export default function Messages() {
 
   const fetchUserNotes = useCallback(async () => {
     try {
-      const [myNoteRes, activeNotesRes] = await Promise.all([
+      const [myNoteRes, activeNotesRes, storiesRes] = await Promise.all([
         api.get('/notes/me'),
-        api.get('/notes/active')
+        api.get('/notes/active'),
+        api.get('/stories/active/grouped').catch(() => ({ data: { groups: [] } }))
       ]);
 
       setMyNote(myNoteRes.data || null);
@@ -1007,6 +1058,7 @@ export default function Messages() {
         if (noteUserId) map[noteUserId] = note;
         return map;
       }, {}));
+      setStoryGroups(Array.isArray(storiesRes.data?.groups) ? storiesRes.data.groups : []);
     } catch (err) {
       console.error('User notes failed', err);
     }
@@ -2145,12 +2197,18 @@ export default function Messages() {
   useEffect(() => {
     const load = async () => {
       setInitialLoading(true);
-      await Promise.all([fetchConversations(), fetchUserNotes()]);
+      await Promise.all([fetchConversations(), fetchGroups(), fetchUserNotes()]);
       setInitialLoading(false);
     };
 
     load();
-  }, [fetchConversations, fetchUserNotes]);
+  }, [fetchConversations, fetchGroups, fetchUserNotes]);
+
+  useEffect(() => {
+    const refreshNotesAndStories = () => fetchUserNotes();
+    window.addEventListener('storiesUpdated', refreshNotesAndStories);
+    return () => window.removeEventListener('storiesUpdated', refreshNotesAndStories);
+  }, [fetchUserNotes]);
 
   useEffect(() => {
     if (!targetUserId || !currentUserId || initialLoading) return undefined;
@@ -2309,6 +2367,7 @@ export default function Messages() {
       if (!messageId || !belongsToCurrentUser) return;
 
       fetchConversations();
+      fetchGroups();
 
       if (belongsToOpenChat) {
         setMessages(prev => {
@@ -2416,6 +2475,17 @@ export default function Messages() {
       removeUserNoteFromState(payload);
     };
 
+    const onGroupUpdated = (group) => {
+      const groupId = getEntityId(group);
+      if (!groupId) return;
+      setGroups(prev => (
+        prev.some(item => getEntityId(item) === groupId)
+          ? prev.map(item => (getEntityId(item) === groupId ? { ...item, ...group } : item))
+          : [group, ...prev]
+      ));
+      setSelectedGroup(prev => (getEntityId(prev) === groupId ? { ...prev, ...group } : prev));
+    };
+
     socket.on('connect', announceOnline);
     socket.on('disconnect', onDisconnect);
     socket.on('online-users', onOnlineUsers);
@@ -2429,6 +2499,7 @@ export default function Messages() {
     socket.on('message-hidden', onMessageHidden);
     socket.on('conversation-deleted', onConversationDeleted);
     socket.on('conversation-background-updated', onConversationBackgroundUpdated);
+    socket.on('group-updated', onGroupUpdated);
     socket.on('user-note-updated', onUserNoteUpdated);
     socket.on('user-note-deleted', onUserNoteDeleted);
     if (socket.connected) {
@@ -2458,6 +2529,7 @@ export default function Messages() {
       socket.off('message-hidden', onMessageHidden);
       socket.off('conversation-deleted', onConversationDeleted);
       socket.off('conversation-background-updated', onConversationBackgroundUpdated);
+      socket.off('group-updated', onGroupUpdated);
       socket.off('user-note-updated', onUserNoteUpdated);
       socket.off('user-note-deleted', onUserNoteDeleted);
       clearInterval(heartbeat);
@@ -2466,6 +2538,7 @@ export default function Messages() {
     cacheConversationBackground,
     currentUserId,
     fetchConversations,
+    fetchGroups,
     fetchChatStreak,
     handleCallAnswer,
     handleCallIceCandidate,
@@ -2529,7 +2602,7 @@ export default function Messages() {
     };
     window.addEventListener('syncrova:mobile-refresh', refresh);
     return () => window.removeEventListener('syncrova:mobile-refresh', refresh);
-  }, [fetchChatStreak, fetchConversations, fetchMessages]);
+  }, [fetchChatStreak, fetchConversations, fetchGroups, fetchMessages]);
 
   useLayoutEffect(() => {
     if (loading || !messages.length || !selectedUserId || !openingConversationRef.current) return;
@@ -2740,8 +2813,152 @@ export default function Messages() {
           .then(res => syncUserNote(res.data))
           .catch(() => {});
       }
+      return;
+    }
+
+    if (item?.person) {
+      setProfileUser(item.person);
     }
   };
+
+  const toggleGroupMember = (person) => {
+    const personId = getEntityId(person);
+    if (!personId || personId === currentUserId) return;
+    setSelectedGroupMembers(prev => (
+      prev.some(member => getEntityId(member) === personId)
+        ? prev.filter(member => getEntityId(member) !== personId)
+        : [...prev, person]
+    ));
+  };
+
+  const resetGroupCreateForm = () => {
+    setGroupDraftName('');
+    setGroupMemberQuery('');
+    setGroupMemberResults([]);
+    setSelectedGroupMembers([]);
+    setCreatingGroup(false);
+  };
+
+  const createGroupChat = async (event) => {
+    event?.preventDefault?.();
+    const name = groupDraftName.trim();
+    if (!name) {
+      toast.error('Group name is required');
+      return;
+    }
+    if (selectedGroupMembers.length === 0) {
+      toast.error('Add at least one classmate');
+      return;
+    }
+
+    setCreatingGroup(true);
+    try {
+      const res = await api.post('/groups', {
+        name,
+        memberIds: selectedGroupMembers.map(member => getEntityId(member)).filter(Boolean)
+      });
+      const nextGroup = res.data;
+      setGroups(prev => [nextGroup, ...prev.filter(group => getEntityId(group) !== getEntityId(nextGroup))]);
+      setSelectedUser(null);
+      setSelectedGroup(nextGroup);
+      setShowGroupCreate(false);
+      resetGroupCreateForm();
+      toast.success('Group chat created');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to create group chat');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const openGroupSettings = () => {
+    if (!selectedGroup) return;
+    setGroupSettingsName(selectedGroup.name || '');
+    setGroupSettingsPhoto(null);
+    setGroupSettingsBackgroundKey(normalizeChatBackgroundKey(selectedGroup.backgroundId));
+    setShowGroupSettings(true);
+  };
+
+  const updateGroupInState = (nextGroup) => {
+    if (!nextGroup) return;
+    setGroups(prev => prev.map(group => (
+      getEntityId(group) === getEntityId(nextGroup) ? nextGroup : group
+    )));
+    setSelectedGroup(prev => (getEntityId(prev) === getEntityId(nextGroup) ? nextGroup : prev));
+  };
+
+  const saveGroupSettings = async (event) => {
+    event?.preventDefault?.();
+    if (!selectedGroupId) return;
+    const name = groupSettingsName.trim();
+    if (canManageSelectedGroup && !name) {
+      toast.error('Group name is required');
+      return;
+    }
+
+    setSavingGroupSettings(true);
+    try {
+      let nextGroup = selectedGroup;
+      if (canManageSelectedGroup && name !== (selectedGroup?.name || '')) {
+        const res = await api.put(`/groups/${selectedGroupId}`, {
+          name,
+          description: selectedGroup?.description || '',
+          subject: selectedGroup?.subject || ''
+        });
+        nextGroup = res.data;
+        updateGroupInState(nextGroup);
+      }
+
+      if (canManageSelectedGroup && groupSettingsPhoto) {
+        const formData = new FormData();
+        formData.append('photo', groupSettingsPhoto);
+        const res = await api.post(`/groups/${selectedGroupId}/photo`, formData);
+        nextGroup = res.data;
+        updateGroupInState(nextGroup);
+      }
+
+      const nextBackgroundId = normalizeChatBackgroundKey(groupSettingsBackgroundKey);
+      if (nextBackgroundId !== normalizeChatBackgroundKey(nextGroup?.backgroundId)) {
+        const res = await api.put(`/groups/${selectedGroupId}/background`, { backgroundId: nextBackgroundId });
+        nextGroup = res.data?.group || { ...nextGroup, backgroundId: nextBackgroundId };
+        updateGroupInState(nextGroup);
+      }
+
+      setShowGroupSettings(false);
+      toast.success('Group chat updated');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to update group chat');
+    } finally {
+      setSavingGroupSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showGroupCreate) return undefined;
+    const query = groupMemberQuery.trim();
+    if (!query) {
+      setGroupMemberResults([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      api.get(`/users/search?q=${encodeURIComponent(query)}`)
+        .then(res => {
+          if (cancelled) return;
+          setGroupMemberResults((Array.isArray(res.data) ? res.data : [])
+            .filter(person => getEntityId(person) !== currentUserId));
+        })
+        .catch(() => {
+          if (!cancelled) toast.error('User search failed');
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [currentUserId, groupMemberQuery, showGroupCreate]);
 
   const handleNoteReaction = async (note, emoji) => {
     const noteId = getEntityId(note);
@@ -3297,6 +3514,22 @@ export default function Messages() {
     });
   }, [acceptedFriendIds, conversationFilter, conversations, deferredConversationSearch, favoriteConversationIds, mutedConversationIds, pinnedConversationIds]);
 
+  const filteredGroups = useMemo(() => {
+    if (!['all', 'primary'].includes(conversationFilter)) return [];
+    const query = deferredConversationSearch.trim().toLowerCase();
+    return groups
+      .filter(group => {
+        if (!query) return true;
+        return [
+          group?.name,
+          group?.description,
+          group?.subject,
+          group?.joinCode
+        ].some(value => String(value || '').toLowerCase().includes(query));
+      })
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  }, [conversationFilter, deferredConversationSearch, groups]);
+
   const renderHighlightedText = (value = '', className = '') => {
     const text = String(value || '');
     const query = deferredConversationSearch.trim();
@@ -3381,6 +3614,19 @@ export default function Messages() {
     ? normalizeChatBackgroundKey(conversationBackgrounds[selectedUserId])
     : DEFAULT_CHAT_BACKGROUND_ID;
   const selectedBackground = getChatBackground(selectedBackgroundKey);
+  const selectedBackgroundStyle = selectedBackground?.image
+    ? { '--chat-background-image': `url("${selectedBackground.image}")` }
+    : undefined;
+  const selectedGroupBackgroundKey = normalizeChatBackgroundKey(selectedGroup?.backgroundId);
+  const selectedGroupBackground = getChatBackground(selectedGroupBackgroundKey);
+  const selectedGroupMembersList = selectedGroup?.members || [];
+  const canManageSelectedGroup = Boolean(
+    selectedGroupId
+    && (
+      getEntityId(selectedGroup?.creator) === currentUserId
+      || (selectedGroup?.coCreators || []).some(member => getEntityId(member) === currentUserId)
+    )
+  );
   const selectedLastSeen = selectedUserId ? lastSeenByUser[selectedUserId] || selectedUser?.lastSeen : null;
   const callIsActive = callState !== 'idle';
   const callPartnerName = getDisplayName(callPartner, selectedDisplayName);
@@ -3499,32 +3745,40 @@ export default function Messages() {
       return acceptedFriendIds.has(conversationId) && !mutedConversationIds.has(conversationId);
     }).length;
   }, [acceptedFriendIds, conversations, mutedConversationIds]);
+  const totalConversationCount = conversations.length + groups.length;
 
   const conversationFilters = useMemo(() => ([
-    { id: 'all', label: 'All', count: conversations.length },
+    { id: 'all', label: 'All', count: totalConversationCount },
     { id: 'requests', label: 'Requests', count: requestConversationCount },
     { id: 'pinned', label: 'Pinned', count: pinnedConversationIds.size },
     { id: 'unread', label: 'Unread', count: unreadTotal },
     { id: 'favorites', label: 'Favorites', count: favoriteConversationIds.size },
     { id: 'muted', label: 'Muted', count: mutedConversationIds.size }
-  ]), [conversations.length, favoriteConversationIds.size, mutedConversationIds.size, pinnedConversationIds.size, requestConversationCount, unreadTotal]);
+  ]), [favoriteConversationIds.size, mutedConversationIds.size, pinnedConversationIds.size, requestConversationCount, totalConversationCount, unreadTotal]);
   const mobileConversationFilters = useMemo(() => ([
-    { id: 'all', label: 'All', count: conversations.length },
-    { id: 'primary', label: 'Primary', count: primaryConversationCount },
+    { id: 'all', label: 'All', count: totalConversationCount },
+    { id: 'primary', label: 'Primary', count: primaryConversationCount + groups.length },
     { id: 'muted', label: 'Muted', count: mutedConversationIds.size },
     { id: 'pinned', label: 'Pinned', count: pinnedConversationIds.size },
     { id: 'requests', label: 'Requests', count: requestConversationCount }
-  ]), [conversations.length, mutedConversationIds.size, pinnedConversationIds.size, primaryConversationCount, requestConversationCount]);
+  ]), [groups.length, mutedConversationIds.size, pinnedConversationIds.size, primaryConversationCount, requestConversationCount, totalConversationCount]);
   const noteTrayItems = useMemo(() => {
     const items = [];
+    const storyByOwner = new Map((storyGroups || [])
+      .map(group => [getEntityId(group.owner || group.ownerId), group])
+      .filter(([id]) => id));
+
     if (user) {
+      const myStoryGroup = storyByOwner.get(currentUserId);
       items.push({
         id: 'me',
         person: user,
         note: myNote,
-        text: myNote?.text || 'Create note',
+        storyGroup: myStoryGroup,
+        text: myNote?.text || (myStoryGroup ? 'My Day' : 'Create note'),
         isMe: true,
-        hasNote: Boolean(myNote?.text)
+        hasNote: Boolean(myNote?.text),
+        hasStory: Boolean(myStoryGroup)
       });
     }
 
@@ -3536,24 +3790,44 @@ export default function Messages() {
           id: getEntityId(note.userId),
           person: note.userId,
           note,
+          storyGroup: storyByOwner.get(getEntityId(note.userId)),
           text: note.text,
           isMe: false,
-          hasNote: true
+          hasNote: true,
+          hasStory: storyByOwner.has(getEntityId(note.userId))
         });
       });
 
+    (storyGroups || []).forEach(group => {
+      const ownerId = getEntityId(group.owner || group.ownerId);
+      if (!ownerId || ownerId === currentUserId) return;
+      if (items.some(item => item.id === ownerId)) return;
+      items.push({
+        id: ownerId,
+        person: group.owner,
+        note: null,
+        storyGroup: group,
+        text: 'My Day',
+        isMe: false,
+        hasNote: false,
+        hasStory: true
+      });
+    });
+
     return items;
-  }, [currentUserId, myNote, user, userNotes]);
+  }, [currentUserId, myNote, storyGroups, user, userNotes]);
 
   const activeConversationUsers = useMemo(() => (
     conversations
       .map(conversation => conversation.user)
       .filter(person => {
         const id = getEntityId(person);
-        return id && id !== currentUserId && onlineUsers.has(id);
+        const hasNote = Boolean(userNotes[id]);
+        const hasStory = storyGroups.some(group => getEntityId(group.owner || group.ownerId) === id);
+        return id && id !== currentUserId && onlineUsers.has(id) && (hasNote || hasStory);
       })
       .slice(0, 10)
-  ), [conversations, currentUserId, onlineUsers]);
+  ), [conversations, currentUserId, onlineUsers, storyGroups, userNotes]);
 
   const messageSearchMatches = useMemo(() => {
     const query = messageSearch.trim().toLowerCase();
@@ -3790,6 +4064,34 @@ export default function Messages() {
           )}
         </div>
       </DeveloperAvatarFrame>
+    );
+  };
+
+  const renderGroupAvatar = (group, sizeClass = 'h-12 w-12') => {
+    const photoUrl = resolveMediaUrl(group?.photo);
+    const groupMembers = group?.members || [];
+    if (photoUrl) {
+      return (
+        <span className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 shadow-sm`}>
+          <img src={photoUrl} alt={group?.name || 'Group'} className="h-full w-full object-cover" />
+        </span>
+      );
+    }
+
+    return (
+      <span className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm`}>
+        {groupMembers.length > 1 ? (
+          <span className="flex -space-x-3">
+            {groupMembers.slice(0, 3).map(member => (
+              <span key={getEntityId(member)} className="rounded-full border-2 border-white/90">
+                {renderAvatar(member, 'h-8 w-8', 14)}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <Users size={22} />
+        )}
+      </span>
     );
   };
 
@@ -4283,7 +4585,7 @@ export default function Messages() {
   }
 
   return (
-    <div className={`messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20 ${selectedUser ? 'mobile-chat-selected' : ''}`}>
+    <div className={`messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20 ${selectedUser || selectedGroup ? 'mobile-chat-selected' : ''}`}>
       <div className="flex h-full min-h-0">
         <aside className="messages-tools-rail hidden w-56 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
           <div className="flex items-center gap-3 px-1 py-2">
@@ -4337,7 +4639,7 @@ export default function Messages() {
           </div>
         </aside>
 
-        <aside className={`${selectedUser ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[22rem] md:max-w-none md:flex xl:w-[23rem]`}>
+        <aside className={`${selectedUser || selectedGroup ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[22rem] md:max-w-none md:flex xl:w-[23rem]`}>
           <div className="border-b border-gray-200/80 p-3 dark:border-gray-800 md:p-4">
             <div className="messages-mobile-hero mb-4 flex items-center justify-between md:hidden">
               <div className="messages-mobile-brand flex min-w-0 items-center gap-2.5">
@@ -4398,7 +4700,7 @@ export default function Messages() {
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-xs font-black uppercase text-slate-500 dark:text-zinc-400">Active users</p>
                 <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20">
-                  {activeConversationUsers.length || onlineUsers.size} online
+                  {activeConversationUsers.length} visible
                 </span>
               </div>
               {activeConversationUsers.length > 0 ? (
@@ -4449,7 +4751,7 @@ export default function Messages() {
             <div className="messenger-notes-tray mt-3 -mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
               <button
                 type="button"
-                onClick={() => setShowModal(true)}
+                onClick={() => setShowGroupCreate(true)}
                 className="messenger-room-tile group w-[4.75rem] shrink-0 text-center"
               >
                 <span className="mx-auto grid h-[4.75rem] w-[4.75rem] place-items-center rounded-3xl bg-blue-50 text-[#1877f2] shadow-sm ring-1 ring-blue-100 transition group-hover:bg-blue-100 dark:bg-blue-950/25 dark:text-sky-200 dark:ring-blue-900/40">
@@ -4466,26 +4768,26 @@ export default function Messages() {
                     key={item.id}
                     type="button"
                     onClick={() => handleOpenNote(item)}
-                    className="messenger-note-head group w-[4.75rem] shrink-0 text-center"
+                    className="messenger-note-head group w-[5.35rem] shrink-0 text-center"
                   >
-                    <span className="relative mx-auto block h-[4.75rem] w-[4.75rem]">
-                      <span className={`absolute inset-x-0 top-0 z-10 mx-auto line-clamp-2 min-h-7 max-w-[4.45rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
+                    <span className="messenger-note-card relative mx-auto flex min-h-[5.75rem] w-[5.25rem] flex-col items-center justify-end">
+                      <span className={`messenger-note-bubble line-clamp-2 min-h-7 max-w-[5.05rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
                         item.hasNote
                           ? 'bg-white text-slate-800 ring-slate-200 dark:bg-gray-900 dark:text-white dark:ring-gray-700'
                           : 'bg-[#1877f2] text-white ring-blue-300'
                       }`}>
                         {item.text}
                       </span>
-                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950">
+                      <span className="messenger-note-avatar mt-1 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950">
                         {noteAvatar}
                       </span>
                       {item.hasNote && (
-                        <span className="absolute bottom-0 left-0 z-20 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-black text-white ring-2 ring-white dark:ring-gray-950">
+                        <span className="messenger-note-time absolute bottom-0 left-1 z-20 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-black text-white ring-2 ring-white dark:ring-gray-950">
                           {getNoteTimeLeft(item.note?.expiresAt)}
                         </span>
                       )}
                       {item.isMe && (
-                        <span className="absolute bottom-0 right-2 z-20 grid h-5 w-5 place-items-center rounded-full bg-[#1877f2] text-white ring-2 ring-white dark:ring-gray-950">
+                        <span className="messenger-note-add absolute bottom-0 right-3 z-20 grid h-5 w-5 place-items-center rounded-full bg-[#1877f2] text-white ring-2 ring-white dark:ring-gray-950">
                           <Plus size={12} strokeWidth={3} />
                         </span>
                       )}
@@ -4585,7 +4887,7 @@ export default function Messages() {
             onScroll={handleConversationListScroll}
             className="min-h-0 flex-1 overflow-y-auto p-2"
           >
-            {filteredConversations.length === 0 ? (
+            {filteredConversations.length === 0 && filteredGroups.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center px-6 text-center text-gray-500">
                 <div className="mb-3 rounded-full bg-pink-50 p-4 text-pink-600 dark:bg-pink-950/30 dark:text-pink-300">
                   <MessageCircle size={34} />
@@ -4602,10 +4904,54 @@ export default function Messages() {
             ) : (
               <div
                 style={{
-                  paddingTop: virtualizedConversationState.paddingTop,
                   paddingBottom: virtualizedConversationState.paddingBottom
                 }}
               >
+                {filteredGroups.length > 0 && (
+                  <div className="mb-2 space-y-1">
+                    <div className="px-2 pb-1 text-[11px] font-black uppercase tracking-normal text-slate-400 dark:text-slate-500">
+                      Group chats
+                    </div>
+                    {filteredGroups.map(group => {
+                      const groupId = getEntityId(group);
+                      const isActive = selectedGroupId === groupId;
+                      const memberCount = group.members?.length || 0;
+                      return (
+                        <button
+                          key={groupId}
+                          type="button"
+                          onClick={() => {
+                            setSelectedUser(null);
+                            setSelectedGroup(group);
+                          }}
+                          className={`conversation-list-row mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
+                            isActive
+                              ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/50'
+                              : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
+                          }`}
+                        >
+                          {renderGroupAvatar(group, 'h-12 w-12')}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              {renderHighlightedText(group.name || 'Group chat', 'truncate font-bold text-gray-950 dark:text-white')}
+                              <div className="shrink-0 text-xs text-gray-400">
+                                {memberCount} members
+                              </div>
+                            </div>
+                            <p className="mt-1 truncate text-sm text-gray-500">
+                              {group.backgroundId && group.backgroundId !== DEFAULT_CHAT_BACKGROUND_ID
+                                ? 'Custom chat background'
+                                : group.joinCode ? `Room code ${group.joinCode}` : 'Group conversation'}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {virtualizedConversationState.paddingTop > 0 && (
+                  <div style={{ height: virtualizedConversationState.paddingTop }} aria-hidden="true" />
+                )}
                 {virtualizedConversationState.items.map((conversation, localIndex) => {
                 const otherUser = conversation.user;
                 const otherUserId = getEntityId(otherUser);
@@ -4641,7 +4987,10 @@ export default function Messages() {
                   )}
                   <button
                     type="button"
-                    onClick={() => setSelectedUser(otherUser)}
+                    onClick={() => {
+                      setSelectedGroup(null);
+                      setSelectedUser(otherUser);
+                    }}
                     className={`conversation-list-row mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
                       isActive
                         ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/50'
@@ -4716,8 +5065,36 @@ export default function Messages() {
           </div>
         </aside>
 
-          {selectedUser ? (
-            <section className={`mobile-conversation-panel ${selectedBackground.className} flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70`}>
+          {selectedGroup ? (
+            <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 p-2 dark:bg-gray-950/70 md:p-3">
+              <div className="mb-2 flex items-center gap-2 md:hidden">
+                <button
+                  onClick={() => setSelectedGroup(null)}
+                  className="mobile-chat-icon-button flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+                  aria-label="Back to conversations"
+                >
+                  <ArrowLeft size={21} strokeWidth={2.7} />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">{selectedGroup.name || 'Group chat'}</p>
+                  <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{selectedGroupMembersList.length} members</p>
+                </div>
+              </div>
+              <GroupChat
+                key={selectedGroupId}
+                groupId={selectedGroupId}
+                group={selectedGroup}
+                members={selectedGroupMembersList}
+                onUserClick={setProfileUser}
+                background={selectedGroupBackground}
+                onOpenSettings={openGroupSettings}
+              />
+            </section>
+          ) : selectedUser ? (
+            <section
+              className={`mobile-conversation-panel ${selectedBackground.className} flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70`}
+              style={selectedBackgroundStyle}
+            >
               <header className="mobile-chat-header flex items-center gap-2 border-b border-gray-200/80 bg-white/95 px-3 py-3 dark:border-gray-800 dark:bg-gray-950/95 sm:gap-3 sm:px-4">
                 <button
                   onClick={() => setSelectedUser(null)}
@@ -5725,6 +6102,7 @@ export default function Messages() {
             setForwardingMessage(null);
           }}
           onSelectUser={(newUser) => {
+            setSelectedGroup(null);
             setSelectedUser(newUser);
             setShowModal(false);
             if (forwardingMessage) {
@@ -5738,6 +6116,245 @@ export default function Messages() {
             }
           }}
         />
+      )}
+
+      {showGroupCreate && (
+        <div className="fixed inset-0 z-[105] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={createGroupChat}
+            className="flex max-h-[min(42rem,calc(100svh_-_2rem))] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+              <div>
+                <h2 className="text-lg font-bold text-gray-950 dark:text-white">Create group chat</h2>
+                <p className="text-sm text-gray-500">Add classmates and start a shared conversation.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGroupCreate(false);
+                  resetGroupCreateForm();
+                }}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-white"
+                aria-label="Close group creator"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <label className="text-xs font-black uppercase text-slate-400">Group name</label>
+              <input
+                value={groupDraftName}
+                onChange={event => setGroupDraftName(event.target.value)}
+                maxLength={80}
+                placeholder="e.g. Math Study Group"
+                className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-950 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              />
+
+              {selectedGroupMembers.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedGroupMembers.map(member => (
+                    <button
+                      key={getEntityId(member)}
+                      type="button"
+                      onClick={() => toggleGroupMember(member)}
+                      className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2 py-1 text-xs font-black text-[#1877f2] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/40"
+                    >
+                      {renderAvatar(member, 'h-6 w-6', 12)}
+                      <span className="max-w-[9rem] truncate">{member.name}</span>
+                      <X size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <label className="mt-4 block text-xs font-black uppercase text-slate-400">Add members</label>
+              <div className="relative mt-2">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={groupMemberQuery}
+                  onChange={event => setGroupMemberQuery(event.target.value)}
+                  placeholder="Search by name or email"
+                  className="w-full rounded-full border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+
+              <div className="mt-3 max-h-72 space-y-1 overflow-y-auto pr-1">
+                {groupMemberQuery.trim() && groupMemberResults.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700">
+                    No matching users found.
+                  </div>
+                )}
+                {groupMemberResults.map(person => {
+                  const personId = getEntityId(person);
+                  const selected = selectedGroupMembers.some(member => getEntityId(member) === personId);
+                  return (
+                    <button
+                      key={personId}
+                      type="button"
+                      onClick={() => toggleGroupMember(person)}
+                      className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${
+                        selected
+                          ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/25 dark:ring-blue-900/40'
+                          : 'hover:bg-slate-50 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      {renderAvatar(person, 'h-11 w-11', 20)}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-semibold text-gray-950 dark:text-white">{person.name}</div>
+                        <div className="truncate text-sm text-gray-500">{person.email}</div>
+                      </div>
+                      <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-black ${
+                        selected ? 'bg-[#1877f2] text-white' : 'bg-slate-100 text-slate-400 dark:bg-gray-700'
+                      }`}>
+                        {selected ? <CheckCheck size={14} /> : <Plus size={13} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-gray-100 p-4 dark:border-gray-800">
+              <button
+                type="submit"
+                disabled={creatingGroup || !groupDraftName.trim() || selectedGroupMembers.length === 0}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1877f2] px-4 py-3 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-[#0f6ae8] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingGroup && <Loader2 size={16} className="animate-spin" />}
+                Create group chat
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {selectedGroup && showGroupSettings && (
+        <div className="fixed inset-0 z-[89] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <form
+            onSubmit={saveGroupSettings}
+            className="mobile-bottom-sheet flex max-h-[92svh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[1.65rem] border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-950 sm:rounded-[1.65rem]"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-gray-800">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Group chat settings</p>
+                <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">{selectedGroup.name}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGroupSettings(false)}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                aria-label="Close group settings"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+              <div>
+                <label className="text-xs font-black uppercase text-slate-400">Group name</label>
+                <input
+                  value={groupSettingsName}
+                  onChange={event => setGroupSettingsName(event.target.value)}
+                  maxLength={80}
+                  disabled={!canManageSelectedGroup}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-950 outline-none focus:border-blue-300 focus:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+                />
+                {!canManageSelectedGroup && (
+                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-gray-400">Only group admins can rename the group.</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase text-slate-400">Group photo</label>
+                <label className={`mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition dark:border-gray-800 dark:bg-gray-900 ${
+                  canManageSelectedGroup ? 'cursor-pointer hover:border-blue-200 hover:bg-white dark:hover:border-blue-900/60' : 'cursor-not-allowed opacity-70'
+                }`}>
+                  {renderGroupAvatar(selectedGroup, 'h-12 w-12')}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-black text-slate-950 dark:text-white">
+                      {groupSettingsPhoto ? groupSettingsPhoto.name : 'Choose a new photo'}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-500 dark:text-gray-400">Images up to 8MB</span>
+                  </span>
+                  <ImageIcon size={18} className="text-[#1877f2]" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={!canManageSelectedGroup}
+                    onChange={event => setGroupSettingsPhoto(event.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="text-xs font-black uppercase text-slate-400">Conversation background</label>
+                  <button
+                    type="button"
+                    onClick={() => setGroupSettingsBackgroundKey(DEFAULT_CHAT_BACKGROUND_ID)}
+                    className="text-xs font-black text-[#1877f2] disabled:opacity-50"
+                    disabled={groupSettingsBackgroundKey === DEFAULT_CHAT_BACKGROUND_ID}
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {CHAT_BACKGROUND_OPTIONS.map(background => {
+                    const selected = groupSettingsBackgroundKey === background.id;
+                    return (
+                      <button
+                        key={background.id}
+                        type="button"
+                        onClick={() => setGroupSettingsBackgroundKey(background.id)}
+                        className={`chat-background-preview-card rounded-2xl border p-2 text-left transition ${
+                          selected
+                            ? 'is-selected border-[#1877f2] bg-blue-50 text-slate-950 shadow-sm dark:bg-blue-950/20 dark:text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                        }`}
+                      >
+                        <span
+                          className="chat-background-preview mb-2 block h-20 rounded-xl border border-white/80 shadow-inner ring-1 ring-slate-200 dark:border-white/10 dark:ring-white/10"
+                          style={{ background: background.preview }}
+                          aria-hidden="true"
+                        />
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-sm font-black">{background.label}</span>
+                          {selected && (
+                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#1877f2] text-white">
+                              <CheckCheck size={14} />
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-zinc-950/95 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowGroupSettings(false)}
+                disabled={savingGroupSettings}
+                className="rounded-2xl px-4 py-2.5 text-sm font-black text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingGroupSettings || !groupSettingsName.trim()}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1877f2] px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-[#0f6ae8] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingGroupSettings && <Loader2 size={16} className="animate-spin" />}
+                Save changes
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       <NativeMediaLibrarySheet
