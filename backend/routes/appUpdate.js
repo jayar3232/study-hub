@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.29',
-  versionCode: 76
+  versionName: '4.4.30',
+  versionCode: 77
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.29 adds Messenger-style Android chat heads with an in-app on/off setting|Chat heads open the full Syncrova Messenger conversation when tapped|Messenger logo styling and incoming call sound effects are improved'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.30 fixes a Messenger conversation crash when opening chats|My Day rings on chat headers now load safely|Includes the latest chat head and incoming call sound improvements'
   });
 });
 

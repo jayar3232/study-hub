@@ -4216,9 +4216,6 @@ export default function Messages() {
   const selectedBackgroundStyle = selectedBackground?.image
     ? { '--chat-background-image': `url("${selectedBackground.image}")` }
     : undefined;
-  const selectedStoryGroup = selectedUserId ? storyGroupByOwner.get(selectedUserId) : null;
-  const selectedHasStory = Boolean(selectedStoryGroup);
-  const selectedStoryViewed = isStoryGroupViewed(selectedStoryGroup, currentUserId);
   const selectedGroupBackgroundKey = normalizeChatBackgroundKey(selectedGroup?.backgroundId);
   const selectedGroupBackground = getChatBackground(selectedGroupBackgroundKey);
   const selectedGroupBackgroundStyle = selectedGroupBackground?.image
@@ -4372,6 +4369,9 @@ export default function Messages() {
       .map(group => [getEntityId(group.owner || group.ownerId), group])
       .filter(([id]) => id))
   ), [storyGroups]);
+  const selectedStoryGroup = selectedUserId ? storyGroupByOwner.get(selectedUserId) : null;
+  const selectedHasStory = Boolean(selectedStoryGroup);
+  const selectedStoryViewed = isStoryGroupViewed(selectedStoryGroup, currentUserId);
   const activeStoryList = useMemo(() => (
     getStoryListForActiveStory(storyGroups, activeStory)
   ), [activeStory, storyGroups]);
