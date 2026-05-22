@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
+import { cancelIdleWork, requestIdleWork } from '../utils/performance';
 import MediaViewer from './MediaViewer';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import AnimatedEmojiText from './AnimatedEmojiText';
@@ -37,6 +38,12 @@ import UserProfileModal from './UserProfileModal';
 const QUICK_REACTIONS = ['\u{1F44D}', '\u2764\uFE0F', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F525}', '\u{1F44F}', '\u2705'];
 const MAX_HOME_POST_UPLOAD = 35 * 1024 * 1024;
 const HOME_VIDEO_AUTOPLAY_KEY = 'syncrova.home.videoAutoplay';
+const MOBILE_FEED_INITIAL_COUNT = 4;
+const DESKTOP_FEED_INITIAL_COUNT = 7;
+const MOBILE_FEED_LOAD_LIMIT = 32;
+const DESKTOP_FEED_LOAD_LIMIT = 54;
+const MOBILE_FEED_IDLE_VISIBLE_LIMIT = 10;
+const DESKTOP_FEED_IDLE_VISIBLE_LIMIT = 16;
 
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 
@@ -141,14 +148,20 @@ const useNearViewport = (rootMargin = '900px', eager = false) => {
 
 const getInitialFeedVisibleCount = () => (
   typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
-    ? 5
-    : 8
+    ? MOBILE_FEED_INITIAL_COUNT
+    : DESKTOP_FEED_INITIAL_COUNT
 );
 
 const getFeedLoadLimit = () => (
   typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
-    ? 36
-    : 60
+    ? MOBILE_FEED_LOAD_LIMIT
+    : DESKTOP_FEED_LOAD_LIMIT
+);
+
+const getFeedIdleVisibleLimit = () => (
+  typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
+    ? MOBILE_FEED_IDLE_VISIBLE_LIMIT
+    : DESKTOP_FEED_IDLE_VISIBLE_LIMIT
 );
 
 const getLocalMediaType = (file = {}) => {
@@ -580,8 +593,9 @@ const FeedVideoPlayer = React.memo(function FeedVideoPlayer({
   && prev.activeVideoKey === next.activeVideoKey
 ));
 
-const FeedImage = React.memo(function FeedImage({ src, alt, className = '', onClick }) {
+const FeedImage = React.memo(function FeedImage({ src, alt, className = '', onClick, eager = false, sizes = '(max-width: 767px) 92vw, 640px' }) {
   const [failed, setFailed] = useState(false);
+  const [viewportRef, isNearViewport] = useNearViewport('650px', eager);
 
   useEffect(() => {
     setFailed(false);
@@ -602,12 +616,25 @@ const FeedImage = React.memo(function FeedImage({ src, alt, className = '', onCl
     );
   }
 
+  if (!isNearViewport) {
+    return (
+      <span
+        ref={viewportRef}
+        aria-label={alt}
+        className={`feed-media-image-placeholder block min-h-52 w-full bg-slate-200/80 dark:bg-slate-900 ${className}`}
+      />
+    );
+  }
+
   return (
     <img
+      ref={viewportRef}
       src={src}
       alt={alt}
-      loading="lazy"
+      loading={eager ? 'eager' : 'lazy'}
       decoding="async"
+      fetchPriority={eager ? 'high' : 'auto'}
+      sizes={sizes}
       onError={() => setFailed(true)}
       className={className}
     />
@@ -616,6 +643,8 @@ const FeedImage = React.memo(function FeedImage({ src, alt, className = '', onCl
   prev.src === next.src
   && prev.alt === next.alt
   && prev.className === next.className
+  && prev.eager === next.eager
+  && prev.sizes === next.sizes
 ));
 
 const hasVideoAttachments = (attachments = []) => (
@@ -683,6 +712,8 @@ const FeedMediaGrid = React.memo(function FeedMediaGrid({
                 <FeedImage
                   src={src}
                   alt={label}
+                  eager={eagerMedia}
+                  sizes={isSingle ? '(max-width: 767px) 92vw, 680px' : '(max-width: 767px) 46vw, 320px'}
                   onClick={(event) => {
                     event.stopPropagation();
                     onOpenMedia(index, viewerItems);
@@ -765,6 +796,7 @@ export default function HomeFeed({
   const deepLinkHandledRef = useRef(false);
   const uploadProgressFrameRef = useRef(null);
   const pendingUploadProgressRef = useRef({ progress: 0, label: '' });
+  const feedIdleRevealRef = useRef(null);
   const currentUserId = getEntityId(currentUser);
   const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
   const filteredPosts = useMemo(
@@ -852,7 +884,29 @@ export default function HomeFeed({
       if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
     });
     if (uploadProgressFrameRef.current) window.cancelAnimationFrame(uploadProgressFrameRef.current);
+    cancelIdleWork(feedIdleRevealRef.current);
   }, []);
+
+  useEffect(() => {
+    cancelIdleWork(feedIdleRevealRef.current);
+    feedIdleRevealRef.current = null;
+
+    if (loading || !hasMoreVisiblePosts) return undefined;
+    const idleLimit = Math.min(filteredPosts.length, getFeedIdleVisibleLimit());
+    if (visibleCount >= idleLimit) return undefined;
+
+    feedIdleRevealRef.current = requestIdleWork(() => {
+      React.startTransition(() => {
+        setVisibleCount(count => Math.min(idleLimit, count + (isTouchFeedViewport() ? 2 : 3)));
+      });
+      feedIdleRevealRef.current = null;
+    }, { timeout: 900 });
+
+    return () => {
+      cancelIdleWork(feedIdleRevealRef.current);
+      feedIdleRevealRef.current = null;
+    };
+  }, [filteredPosts.length, hasMoreVisiblePosts, loading, visibleCount]);
 
   useEffect(() => () => {
     window.clearTimeout(reactionPressTimerRef.current);
@@ -1069,7 +1123,7 @@ export default function HomeFeed({
       if (mediaItems.length) {
         attachments = await Promise.all(mediaItems.map(async (item, index) => {
           const uploadFile = item.fileType === 'image'
-            ? await optimizeImageFile(item.file, { maxDimension: 1600, quality: 0.84, minBytes: 700 * 1024 })
+            ? await optimizeImageFile(item.file, { maxDimension: 2048, quality: 0.88, minBytes: 700 * 1024 })
             : item.file;
           const formData = new FormData();
           formData.append('file', uploadFile);

@@ -80,6 +80,11 @@ public class MainActivity extends BridgeActivity {
             WebView webView = getBridge() == null ? null : getBridge().getWebView();
             if (webView == null) return;
 
+            webView.setBackgroundColor(Color.TRANSPARENT);
+            webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            webView.setScrollbarFadingEnabled(true);
+            webView.setVerticalScrollBarEnabled(false);
+            webView.setHorizontalScrollBarEnabled(false);
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
 
@@ -91,6 +96,11 @@ public class MainActivity extends BridgeActivity {
             if (settings == null) return;
 
             settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            settings.setLoadsImagesAutomatically(true);
+            settings.setBlockNetworkImage(false);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 settings.setOffscreenPreRaster(false);
             }

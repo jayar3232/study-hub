@@ -827,7 +827,7 @@ export default function Dashboard() {
           {mobile && (
             <span className="dashboard-create-story-photo">
               {resolveMediaUrl(user?.avatar) ? (
-                <img src={resolveMediaUrl(user.avatar)} alt={user?.name || 'Your profile'} loading="lazy" />
+                <img src={resolveMediaUrl(user.avatar)} alt={user?.name || 'Your profile'} loading="lazy" decoding="async" />
               ) : (
                 <span>{user?.name?.charAt(0)?.toUpperCase() || 'U'}</span>
               )}
@@ -851,13 +851,13 @@ export default function Dashboard() {
               className="dashboard-story-card relative h-40 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-950 text-left shadow-sm ring-1 ring-slate-200 dark:ring-slate-800"
             >
               {story.fileType === 'image' ? (
-                <img src={storyUrl} alt={owner.name || 'Story'} className="h-full w-full object-cover" loading="lazy" />
+                <img src={storyUrl} alt={owner.name || 'Story'} className="h-full w-full object-cover" loading="lazy" decoding="async" />
               ) : (
                 <VideoThumbnail src={storyUrl} className="h-full w-full" iconSize={20} label={`${owner.name || 'Member'} story video`} />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/10 to-black/25" />
               <div className="absolute left-2 top-2 grid h-9 w-9 place-items-center overflow-hidden rounded-full border-2 border-[#0b57d0] bg-[#0b57d0] text-xs font-black text-white">
-                {owner.avatar ? <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} className="h-full w-full object-cover" /> : owner.name?.charAt(0)?.toUpperCase() || 'U'}
+                {owner.avatar ? <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : owner.name?.charAt(0)?.toUpperCase() || 'U'}
               </div>
               {group.count > 1 && (
                 <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-black text-white">

@@ -192,7 +192,12 @@ app.get(/^\/uploads\/r2\/(.+)$/, serveR2Object);
 app.use(/^\/(?:uploads\/)?releases\/syncrova-[^/]+\.apk$/i, redirectOutdatedReleaseApk);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   etag: true,
-  maxAge: '7d'
+  immutable: true,
+  maxAge: '30d',
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    res.setHeader('Accept-Ranges', 'bytes');
+  }
 }));
 app.use('/releases', express.static(path.join(__dirname, 'public', 'releases'), {
   etag: true,

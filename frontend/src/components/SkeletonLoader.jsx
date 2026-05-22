@@ -3,11 +3,11 @@ import React from 'react';
 const lineWidths = ['w-3/5', 'w-11/12', 'w-4/5'];
 
 export const SkeletonBlock = ({ className = '' }) => (
-  <span className={`skeleton-block block rounded-full bg-slate-200 dark:bg-slate-800 ${className}`} />
+  <span className={`skeleton-motion-zone skeleton-block block rounded-full bg-slate-200 dark:bg-slate-800 ${className}`} />
 );
 
 export const SkeletonCard = ({ lines = 3, media = false, compact = false }) => (
-  <div className={`mobile-skeleton-card rounded-[1.2rem] border border-slate-200 bg-white/92 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 ${compact ? 'space-y-3' : 'space-y-4'}`}>
+  <div className={`skeleton-motion-zone mobile-skeleton-card rounded-[1.2rem] border border-slate-200 bg-white/92 p-4 shadow-sm shadow-slate-200/45 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 ${compact ? 'space-y-3' : 'space-y-4'}`}>
     <div className="flex items-center gap-3">
       <SkeletonBlock className="h-11 w-11 shrink-0 rounded-2xl" />
       <div className="min-w-0 flex-1 space-y-2">
@@ -82,7 +82,7 @@ export const PageSkeleton = ({ variant = 'default', rows = 5 }) => {
 };
 
 export const GroupSkeleton = () => (
-  <div className="bg-white dark:bg-gray-800 rounded-xl p-5 animate-pulse">
+  <div className="skeleton-motion-zone bg-white dark:bg-gray-800 rounded-xl p-5 animate-pulse">
     <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-3"></div>
     <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
     <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
@@ -94,7 +94,7 @@ export const GroupSkeleton = () => (
 );
 
 export const PostSkeleton = () => (
-  <div className="bg-white dark:bg-gray-800 rounded-xl p-5 animate-pulse">
+  <div className="skeleton-motion-zone bg-white dark:bg-gray-800 rounded-xl p-5 animate-pulse">
     <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-3"></div>
     <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded w-full mb-3"></div>
     <div className="flex gap-2">
@@ -105,7 +105,7 @@ export const PostSkeleton = () => (
 );
 
 export const MessageSkeleton = () => (
-  <div className="flex justify-start mb-3 animate-pulse">
+  <div className="skeleton-motion-zone flex justify-start mb-3 animate-pulse">
     <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full mr-2"></div>
     <div className="flex-1">
       <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 mb-2"></div>

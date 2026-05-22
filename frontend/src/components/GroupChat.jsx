@@ -1,5 +1,4 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   CheckCheck,
   FileText,
@@ -33,7 +32,7 @@ let socket;
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🔥', '👏', '✅'];
 const GROUP_MESSAGE_RENDER_BATCH = 140;
-const MOBILE_GROUP_MESSAGE_RENDER_BATCH = 52;
+const MOBILE_GROUP_MESSAGE_RENDER_BATCH = 30;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 const getGroupMessageRenderBatch = () => (
   typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
@@ -502,6 +501,39 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
       });
     });
 
+    const seenBatcher = createFrameBatcher((batch) => {
+      const seenByMessageId = new Map();
+      batch.forEach(({ groupId: seenGroupId, messageIds = [], seenBy }) => {
+        if (getEntityId(seenGroupId) !== getEntityId(groupId) || !seenBy?.userId) return;
+        messageIds.forEach(messageId => {
+          const id = getEntityId(messageId);
+          if (!id) return;
+          const entries = seenByMessageId.get(id) || [];
+          entries.push(seenBy);
+          seenByMessageId.set(id, entries);
+        });
+      });
+      if (!seenByMessageId.size) return;
+
+      React.startTransition(() => {
+        setMessages(prev => prev.map(message => {
+          const entries = seenByMessageId.get(getEntityId(message));
+          if (!entries?.length) return message;
+          const existingSeen = message.seenBy || [];
+          const nextSeen = [...existingSeen];
+          const existingIds = new Set(existingSeen.map(entry => getEntityId(entry?.userId || entry)));
+          entries.forEach(entry => {
+            const readerId = getEntityId(entry?.userId || entry);
+            if (readerId && !existingIds.has(readerId)) {
+              existingIds.add(readerId);
+              nextSeen.push(entry);
+            }
+          });
+          return nextSeen.length === existingSeen.length ? message : { ...message, seenBy: nextSeen };
+        }));
+      });
+    });
+
     const handleReceive = (message) => {
       if (getEntityId(message.groupId) !== getEntityId(groupId)) return;
       receiveBatcher.push(message);
@@ -513,20 +545,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
     };
 
     const handleSeen = ({ groupId: seenGroupId, messageIds = [], seenBy }) => {
-      if (getEntityId(seenGroupId) !== getEntityId(groupId) || !seenBy?.userId) return;
-
-      const seenMessageIds = new Set(messageIds.map(String));
-      const readerId = getEntityId(seenBy.userId);
-
-      setMessages(prev => prev.map(message => {
-        if (!seenMessageIds.has(getEntityId(message))) return message;
-
-        const existingSeen = message.seenBy || [];
-        const alreadySeen = existingSeen.some(entry => getEntityId(entry?.userId || entry) === readerId);
-        if (alreadySeen) return message;
-
-        return { ...message, seenBy: [...existingSeen, seenBy] };
-      }));
+      seenBatcher.push({ groupId: seenGroupId, messageIds, seenBy });
     };
 
     const handleDeleteForEveryone = (messageId) => {
@@ -545,6 +564,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
       socket.off('message-deleted-for-everyone', handleDeleteForEveryone);
       receiveBatcher.cancel();
       updateBatcher.cancel();
+      seenBatcher.cancel();
     };
   }, [groupId, currentUserId]);
 
@@ -906,15 +926,14 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
             />
           </div>
 
-          <motion.button
-            whileTap={{ scale: 0.95 }}
+          <button
             onClick={() => selectedMedia ? sendMediaMessage(selectedMedia, mediaType) : sendTextMessage(newMessage)}
             disabled={uploading || (!selectedMedia && !newMessage.trim())}
             className="message-composer-send"
             aria-label="Send message"
           >
             {uploading ? <Info size={19} /> : <Send size={19} />}
-          </motion.button>
+          </button>
         </div>
 
         {!embedded && <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold text-gray-400">

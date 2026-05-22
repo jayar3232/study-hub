@@ -13,6 +13,7 @@ const TUNNEL_HOST_SUFFIXES = [
   '.devtunnels.ms'
 ];
 const SAME_ORIGIN_PORTS = new Set(['3000', '4173', '5002']);
+const MEDIA_QUALITY_KEY = 'syncrova.media.quality';
 
 export const isAbsoluteUrl = (value = '') => /^(https?:|data:|blob:)/i.test(value);
 
@@ -104,11 +105,46 @@ export const resolveMediaUrl = (value) => {
   return path;
 };
 
-export const optimizeImageFile = async (
-  file,
-  { maxDimension = 1600, quality = 0.82, minBytes = 900 * 1024 } = {}
-) => {
+const getMediaQualityPreference = () => {
+  if (typeof window === 'undefined') return 'balanced';
+  try {
+    const value = window.localStorage.getItem(MEDIA_QUALITY_KEY);
+    return ['balanced', 'high', 'original'].includes(value) ? value : 'balanced';
+  } catch {
+    return 'balanced';
+  }
+};
+
+const resolveImageOptimizationOptions = (options = {}) => {
+  const explicitMaxDimension = Object.prototype.hasOwnProperty.call(options, 'maxDimension');
+  const explicitQuality = Object.prototype.hasOwnProperty.call(options, 'quality');
+  const explicitMinBytes = Object.prototype.hasOwnProperty.call(options, 'minBytes');
+  const preference = options.useQualityPreference === false ? 'balanced' : getMediaQualityPreference();
+
+  if (preference === 'original') {
+    return { skip: true };
+  }
+
+  let maxDimension = explicitMaxDimension ? options.maxDimension : 1600;
+  let quality = explicitQuality ? options.quality : 0.82;
+  let minBytes = explicitMinBytes ? options.minBytes : 900 * 1024;
+
+  if (preference === 'high') {
+    if (!explicitMaxDimension) maxDimension = 2048;
+    if (!explicitQuality) quality = 0.88;
+    if (!explicitMinBytes) minBytes = 650 * 1024;
+  } else if (!explicitQuality) {
+    quality = 0.84;
+  }
+
+  return { maxDimension, quality, minBytes };
+};
+
+export const optimizeImageFile = async (file, options = {}) => {
+  const { skip, maxDimension, quality, minBytes } = resolveImageOptimizationOptions(options);
+
   if (
+    skip ||
     typeof window === 'undefined' ||
     !file?.type?.startsWith('image/') ||
     file.size < minBytes ||
@@ -137,6 +173,8 @@ export const optimizeImageFile = async (
     const context = canvas.getContext('2d', { alpha: file.type === 'image/png' });
     if (!context) return file;
 
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
     const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, quality));

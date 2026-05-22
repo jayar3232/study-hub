@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.23',
-  versionCode: 70
+  versionName: '4.4.24',
+  versionCode: 71
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.23 smooths Home, Messages, Profile, Games, and Gallery scrolling|Defers offscreen media to reduce Android memory spikes and frame drops|Keeps the custom media picker and APK update routing aligned'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.24 removes non-essential animations for steadier mobile FPS|Home, My Day, and media-heavy feeds now do less offscreen paint work|Message reaction emojis now stay visible under chat bubbles'
   });
 });
 

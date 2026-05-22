@@ -58,9 +58,18 @@
 
 /* ---------- Base ---------- */
 @layer base {
+  html {
+    text-rendering: geometricPrecision;
+    font-kerning: normal;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   * {
     scroll-behavior: auto;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
@@ -70,6 +79,21 @@
     overflow-x: hidden;
     overscroll-behavior-y: none;
     -webkit-text-size-adjust: 100%;
+    font-synthesis-weight: none;
+    letter-spacing: 0;
+    text-rendering: geometricPrecision;
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    image-rendering: auto;
+  }
+
+  img,
+  video {
+    object-position: center;
   }
 
   html,
@@ -3700,6 +3724,11 @@
 }
 
 .reaction-motion-zone {
+  will-change: auto;
+}
+
+.reaction-burst,
+.emoji-pop-button:active {
   will-change: transform, opacity;
 }
 
@@ -3753,6 +3782,22 @@
 
 .message-reaction-pill {
   animation: syncrovaReactionGlow 900ms ease both, syncrovaEmojiPop 280ms cubic-bezier(.2, 1.2, .42, 1);
+  align-items: center;
+  line-height: 1;
+}
+
+.message-reaction-pill .emoji-pop-button {
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.message-reaction-pill .animated-noto-emoji {
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0;
+  vertical-align: -0.08em;
+  animation: none !important;
 }
 
 html.syncrova-native-app .desktop-topbar,
@@ -3779,15 +3824,26 @@ html.syncrova-native-app .mobile-bottom-nav {
   scroll-behavior: auto !important;
 }
 
-.app-no-motion :where(*, *::before, *::after):not(.rank-motion-zone):not(.rank-motion-zone *):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.developer-motion-zone):not(.developer-motion-zone *):not(.animated-noto-emoji),
-.app-no-motion :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.rank-motion-zone):not(.rank-motion-zone *):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.developer-motion-zone):not(.developer-motion-zone *):not(.animated-noto-emoji) {
+.app-no-motion :where(*, *::before, *::after):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji),
+.app-no-motion :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji),
+html :where(*, *::before, *::after):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji),
+html :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji) {
   animation: none !important;
   transition-property: none !important;
   transition-duration: 0s !important;
   transition-delay: 0s !important;
 }
 
-.app-no-motion :where([class*="backdrop-blur"], [class*="blur-"], [class*="drop-shadow"], .glass-card):not(.rank-motion-zone):not(.rank-motion-zone *) {
+.skeleton-motion-zone.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+}
+
+.skeleton-block::after {
+  animation: mobileSkeletonSweep 1.25s ease-in-out infinite !important;
+}
+
+.app-no-motion :where([class*="backdrop-blur"], [class*="blur-"], [class*="drop-shadow"], .glass-card),
+html :where([class*="backdrop-blur"], [class*="blur-"], [class*="drop-shadow"], .glass-card) {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
   filter: none !important;
@@ -3879,10 +3935,34 @@ html.syncrova-frame-unstable :where(
   .conversation-list-row,
   .notification-panel-row,
   .feed-card-comments,
+  .dashboard-story-panel,
+  .dashboard-story-rail,
+  .dashboard-story-card,
+  .dashboard-create-story-card,
+  .messenger-note-head,
+  .messenger-note-card,
   .mobile-comment-sheet-list > *,
   .mobile-upload-queue,
   .message-options-sheet {
     contain: layout paint style;
+  }
+
+  .dashboard-story-card,
+  .dashboard-create-story-card,
+  .messenger-note-head {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 12rem;
+    overflow-anchor: none;
+  }
+
+  .dashboard-story-card :where(img, video),
+  .dashboard-create-story-photo img,
+  .messenger-note-head img,
+  .feed-card img,
+  .feed-card video {
+    image-rendering: auto;
+    backface-visibility: hidden;
+    will-change: auto;
   }
 
   .feed-card-comments > *,
@@ -3906,7 +3986,6 @@ html.syncrova-frame-unstable :where(
   .feed-video-player,
   .reel-player-shell {
     contain: layout paint;
-    transform: translateZ(0);
     backface-visibility: hidden;
   }
 }
@@ -10953,7 +11032,9 @@ html.syncrova-native-app .mobile-message-actions button {
   }
 
   .messages-pro-shell.mobile-messenger-shell .message-reaction-pill {
-    bottom: -0.68rem !important;
+    position: relative !important;
+    inset: auto !important;
+    z-index: 8 !important;
     border-color: var(--messenger-border) !important;
     background: var(--messenger-surface-strong) !important;
     color: var(--messenger-text) !important;
@@ -10963,7 +11044,7 @@ html.syncrova-native-app .mobile-message-actions button {
   .messages-pro-shell.mobile-messenger-shell .mobile-message-actions {
     min-height: 1.4rem !important;
     max-width: 78% !important;
-    margin-top: 0.42rem !important;
+    margin-top: 0.2rem !important;
     gap: 0.34rem !important;
     row-gap: 0.22rem !important;
     flex-wrap: wrap !important;
@@ -12035,7 +12116,7 @@ html.syncrova-native-app .mobile-message-actions button {
 .message-album-attachment :where(img, video),
 .group-chat-thread :where(img, video) {
   backface-visibility: hidden;
-  transform: translateZ(0);
+  will-change: auto;
 }
 
 .mobile-message-thread .message-row,
@@ -12069,7 +12150,6 @@ html.syncrova-native-app .mobile-message-actions button {
   .mobile-message-thread img,
   .mobile-message-thread video {
     backface-visibility: hidden;
-    transform: translateZ(0);
     will-change: auto;
   }
 }
@@ -12138,5 +12218,219 @@ html.syncrova-native-app .mobile-message-actions button {
   .messages-pro-shell.mobile-messenger-shell .mobile-chat-icon-button svg {
     height: 1rem !important;
     width: 1rem !important;
+  }
+}
+
+.message-reaction-overlay,
+.message-reaction-viewer-overlay {
+  touch-action: manipulation;
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.message-reaction-sheet,
+.message-reaction-viewer {
+  contain: layout paint style;
+}
+
+.message-reaction-viewer {
+  max-height: min(78svh, 30rem);
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+.feed-media-image-placeholder {
+  min-height: clamp(13rem, 42vw, 24rem);
+  background:
+    linear-gradient(135deg, rgba(226, 232, 240, 0.88), rgba(241, 245, 249, 0.96)),
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.7), transparent 32%);
+  background-blend-mode: normal;
+  contain: layout paint style;
+}
+
+.dark .feed-media-image-placeholder {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.96)),
+    radial-gradient(circle at 28% 22%, rgba(148, 163, 184, 0.18), transparent 32%);
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .dashboard-facebook-mobile .feed-card,
+  .home-feed--facebook-mobile .feed-card,
+  .mobile-page .feed-card,
+  .dashboard-story-panel--fb-mobile .dashboard-story-card,
+  .dashboard-story-panel--fb-mobile .dashboard-create-story-card,
+  .messenger-note-head,
+  .conversation-list-row,
+  .mobile-message-thread .message-row,
+  .group-chat-thread .group-message-row {
+    content-visibility: auto !important;
+    contain: layout paint style !important;
+    overflow-anchor: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+
+  .dashboard-facebook-mobile .feed-card,
+  .home-feed--facebook-mobile .feed-card,
+  .mobile-page .feed-card {
+    contain-intrinsic-size: 1px 28rem !important;
+  }
+
+  .dashboard-facebook-mobile .feed-card--has-media,
+  .home-feed--facebook-mobile .feed-card--has-media,
+  .mobile-page .feed-card--has-media {
+    contain-intrinsic-size: 1px 42rem !important;
+  }
+
+  .mobile-message-thread .message-row,
+  .group-chat-thread .group-message-row {
+    contain-intrinsic-size: 1px 7rem !important;
+  }
+
+  .dashboard-story-panel--fb-mobile .dashboard-story-card,
+  .dashboard-story-panel--fb-mobile .dashboard-create-story-card,
+  .messenger-note-head {
+    contain-intrinsic-size: 1px 12rem !important;
+  }
+
+  .dashboard-facebook-mobile .feed-card,
+  .home-feed--facebook-mobile .feed-card,
+  .dashboard-story-panel--fb-mobile .dashboard-story-card,
+  .dashboard-story-panel--fb-mobile .dashboard-create-story-card,
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-bubble,
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar,
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .message-bubble,
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .my-day-reply-bubble,
+  .conversation-list-row,
+  .message-reaction-pill {
+    box-shadow: none !important;
+    filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .feed-media-tile,
+  .feed-video-player,
+  .message-media-attachment,
+  .message-album-attachment,
+  .story-viewer-media,
+  .mobile-message-thread img,
+  .mobile-message-thread video {
+    contain: layout paint !important;
+    backface-visibility: hidden !important;
+    will-change: auto !important;
+  }
+
+  .feed-card img,
+  .mobile-message-thread img,
+  .conversation-list-row img,
+  .messenger-note-head img {
+    transform: none !important;
+    will-change: auto !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread,
+  .dashboard-story-rail,
+  .messenger-notes-tray,
+  .home-feed {
+    scroll-behavior: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .messages-pro-shell.mobile-messenger-shell,
+  .dashboard-facebook-mobile,
+  .home-feed--facebook-mobile {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-header,
+  .messages-pro-shell.mobile-messenger-shell .message-composer-footer,
+  .dashboard-facebook-mobile .feed-card,
+  .home-feed--facebook-mobile .feed-card,
+  .mobile-page .feed-card,
+  .conversation-list-row {
+    background-clip: padding-box !important;
+    border-color: rgba(203, 213, 225, 0.74) !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-header {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.97)) !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread {
+    background:
+      linear-gradient(180deg, rgba(248, 251, 255, 0.62), rgba(244, 248, 253, 0.36)),
+      var(--messenger-page) !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .message-bubble,
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .my-day-reply-bubble {
+    background-clip: padding-box !important;
+    outline: 1px solid rgba(255, 255, 255, 0.72);
+    text-shadow: 0 0.015em 0 rgba(255, 255, 255, 0.18);
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .own-message-bubble {
+    background: linear-gradient(145deg, #1688ff 0%, #0571f5 54%, #005bd6 100%) !important;
+    outline-color: rgba(255, 255, 255, 0.2);
+    text-shadow: 0 0.012em 0 rgba(0, 0, 0, 0.16);
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .message-bubble p,
+  .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .my-day-reply-bubble p,
+  .dashboard-facebook-mobile .feed-card-body p,
+  .home-feed--facebook-mobile .feed-card-body p {
+    text-wrap: pretty;
+  }
+
+  .dashboard-facebook-mobile .feed-card,
+  .home-feed--facebook-mobile .feed-card,
+  .mobile-page .feed-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(249, 251, 255, 0.98)) !important;
+  }
+
+  .dashboard-facebook-mobile .feed-card img,
+  .dashboard-facebook-mobile .feed-card video,
+  .home-feed--facebook-mobile .feed-card img,
+  .home-feed--facebook-mobile .feed-card video,
+  .message-media-attachment :where(img, video),
+  .message-album-attachment :where(img, video),
+  .story-viewer-media {
+    image-rendering: auto !important;
+    background-color: rgba(226, 232, 240, 0.72);
+    border-color: rgba(255, 255, 255, 0.68);
+  }
+
+  .message-reaction-viewer,
+  .message-reaction-sheet {
+    border-color: rgba(203, 213, 225, 0.82) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  }
+
+  .dark .messages-pro-shell.mobile-messenger-shell .mobile-chat-header,
+  .dark .messages-pro-shell.mobile-messenger-shell .message-composer-footer,
+  .dark .message-reaction-viewer,
+  .dark .message-reaction-sheet {
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(3, 7, 18, 0.98)) !important;
+    border-color: rgba(255, 255, 255, 0.09) !important;
+  }
+
+  .dark .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .message-bubble,
+  .dark .messages-pro-shell.mobile-messenger-shell .mobile-message-thread .my-day-reply-bubble {
+    outline-color: rgba(255, 255, 255, 0.08);
+    text-shadow: none;
+  }
+
+  .dark .dashboard-facebook-mobile .feed-card,
+  .dark .home-feed--facebook-mobile .feed-card,
+  .dark .mobile-page .feed-card {
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(3, 7, 18, 0.98)) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
   }
 }

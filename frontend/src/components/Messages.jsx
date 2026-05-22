@@ -77,9 +77,9 @@ let socket;
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
 const MAX_MESSAGE_MEDIA_SELECTION = 10;
 const MESSAGE_RENDER_BATCH = 80;
-const MOBILE_MESSAGE_RENDER_BATCH = 36;
-const INITIAL_MESSAGE_PAGE_LIMIT = 80;
-const OLDER_MESSAGE_PAGE_LIMIT = 70;
+const MOBILE_MESSAGE_RENDER_BATCH = 24;
+const INITIAL_MESSAGE_PAGE_LIMIT = 64;
+const OLDER_MESSAGE_PAGE_LIMIT = 56;
 const CONVERSATION_ROW_HEIGHT = 90;
 const CONVERSATION_VIRTUAL_OVERSCAN = 6;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
@@ -548,6 +548,7 @@ export default function Messages() {
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [emojiPickerMessageId, setEmojiPickerMessageId] = useState(null);
+  const [reactionViewerMessageId, setReactionViewerMessageId] = useState(null);
   const [messageReactionBursts, setMessageReactionBursts] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -779,7 +780,7 @@ export default function Messages() {
   useEffect(() => () => clearReactionPressTimer(), []);
 
   useEffect(() => {
-    if (!actionMenuMessageId) return undefined;
+    if (!actionMenuMessageId && !emojiPickerMessageId) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setActionMenuMessageId(null);
@@ -788,7 +789,7 @@ export default function Messages() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [actionMenuMessageId]);
+  }, [actionMenuMessageId, emojiPickerMessageId]);
 
   useEffect(() => {
     if (!showBackgroundPicker) return undefined;
@@ -930,6 +931,12 @@ export default function Messages() {
         return;
       }
 
+      if (reactionViewerMessageId) {
+        event.preventDefault();
+        setReactionViewerMessageId(null);
+        return;
+      }
+
       if (showBackgroundPicker) {
         event.preventDefault();
         setShowBackgroundPicker(false);
@@ -1000,6 +1007,7 @@ export default function Messages() {
     mediaPreview,
     profileUser,
     replyingTo,
+    reactionViewerMessageId,
     selectedAttachment,
     selectedGroup,
     selectedMessageInfo,
@@ -2409,14 +2417,54 @@ export default function Messages() {
       }
     };
 
-    let realtimeRefreshFrameId = 0;
+    let realtimeRefreshTimerId = 0;
+    let readBatchFrameId = 0;
+    let chatStreakTimerId = 0;
+    const pendingReadUserIds = new Set();
+    const pendingStreakUserIds = new Set();
+
     const scheduleRealtimeRefresh = () => {
-      if (realtimeRefreshFrameId || typeof window === 'undefined') return;
-      realtimeRefreshFrameId = window.requestAnimationFrame(() => {
-        realtimeRefreshFrameId = 0;
+      if (typeof window === 'undefined') {
         fetchConversations();
         fetchGroups();
+        return;
+      }
+      if (realtimeRefreshTimerId) return;
+      realtimeRefreshTimerId = window.setTimeout(() => {
+        realtimeRefreshTimerId = 0;
+        React.startTransition(() => {
+          fetchConversations();
+          fetchGroups();
+        });
+      }, isMobileMessagesViewport() ? 220 : 120);
+    };
+
+    const scheduleMarkChatAsRead = (userId) => {
+      const id = getEntityId(userId);
+      if (!id) return;
+      pendingReadUserIds.add(id);
+      if (readBatchFrameId || typeof window === 'undefined') return;
+      readBatchFrameId = window.requestAnimationFrame(() => {
+        readBatchFrameId = 0;
+        const ids = Array.from(pendingReadUserIds);
+        pendingReadUserIds.clear();
+        ids.forEach(markChatAsRead);
       });
+    };
+
+    const scheduleChatStreakRefresh = (userId) => {
+      const id = getEntityId(userId);
+      if (!id) return;
+      pendingStreakUserIds.add(id);
+      if (chatStreakTimerId || typeof window === 'undefined') return;
+      chatStreakTimerId = window.setTimeout(() => {
+        chatStreakTimerId = 0;
+        const selectedId = getEntityId(selectedUserRef.current);
+        const ids = Array.from(pendingStreakUserIds);
+        pendingStreakUserIds.clear();
+        const targetId = ids.includes(selectedId) ? selectedId : ids[ids.length - 1];
+        if (targetId) fetchChatStreak(targetId);
+      }, isMobileMessagesViewport() ? 900 : 500);
     };
 
     const openMessageBatcher = createFrameBatcher((batch) => {
@@ -2450,6 +2498,49 @@ export default function Messages() {
       setOtherUserTyping(false);
     });
 
+    const updatedMessageBatcher = createFrameBatcher((batch) => {
+      const selectedId = getEntityId(selectedUserRef.current);
+      if (!selectedId) return;
+
+      const latestById = new Map();
+      batch.forEach(updatedMessage => {
+        const fromId = getEntityId(updatedMessage.from);
+        const toId = getEntityId(updatedMessage.to);
+        const belongsToOpenChat = (
+          (fromId === selectedId && toId === currentUserId) ||
+          (toId === selectedId && fromId === currentUserId)
+        );
+        const messageId = getEntityId(updatedMessage);
+        if (belongsToOpenChat && messageId) latestById.set(messageId, updatedMessage);
+      });
+      if (!latestById.size) return;
+
+      React.startTransition(() => {
+        setMessages(prev => prev.map(message => latestById.get(getEntityId(message)) || message));
+      });
+    });
+
+    const readReceiptBatcher = createFrameBatcher((batch) => {
+      const latestReadByReader = new Map();
+      batch.forEach(({ readerId, senderId, readAt }) => {
+        if (getEntityId(senderId) !== currentUserId) return;
+        const reader = getEntityId(readerId);
+        if (reader) latestReadByReader.set(reader, readAt);
+      });
+      if (!latestReadByReader.size) return;
+
+      React.startTransition(() => {
+        setMessages(prev => prev.map(message => {
+          const recipientId = getEntityId(message.to);
+          if (getEntityId(message.from) === currentUserId && latestReadByReader.has(recipientId)) {
+            const readAt = latestReadByReader.get(recipientId);
+            return { ...message, read: true, readAt: readAt || message.readAt };
+          }
+          return message;
+        }));
+      });
+    });
+
     const onReceiveMessage = (message) => {
       const fromId = getEntityId(message.from);
       const toId = getEntityId(message.to);
@@ -2470,9 +2561,9 @@ export default function Messages() {
 
         if (fromId !== currentUserId && !message.system) {
           if (soundEnabled && !mutedConversationIds.has(fromId)) playUiSound('message', 0.5);
-          markChatAsRead(fromId);
+          scheduleMarkChatAsRead(fromId);
         }
-        fetchChatStreak(fromId === currentUserId ? toId : fromId);
+        scheduleChatStreakRefresh(fromId === currentUserId ? toId : fromId);
       } else if (toId === currentUserId && fromId !== currentUserId && !message.system) {
         if (!mutedConversationIds.has(fromId)) {
           if (soundEnabled) playUiSound('message', 0.5);
@@ -2482,34 +2573,12 @@ export default function Messages() {
     };
 
     const onMessagesRead = ({ readerId, senderId, readAt }) => {
-      if (getEntityId(senderId) !== currentUserId) return;
-      const reader = getEntityId(readerId);
-
-      setMessages(prev => prev.map(message => {
-        if (getEntityId(message.from) === currentUserId && getEntityId(message.to) === reader) {
-          return { ...message, read: true, readAt: readAt || message.readAt };
-        }
-
-        return message;
-      }));
+      readReceiptBatcher.push({ readerId, senderId, readAt });
       scheduleRealtimeRefresh();
     };
 
     const onMessageUpdated = (updatedMessage) => {
-      const fromId = getEntityId(updatedMessage.from);
-      const toId = getEntityId(updatedMessage.to);
-      const selectedId = getEntityId(selectedUserRef.current);
-      const belongsToOpenChat = selectedId && (
-        (fromId === selectedId && toId === currentUserId) ||
-        (toId === selectedId && fromId === currentUserId)
-      );
-
-      if (belongsToOpenChat) {
-        setMessages(prev => prev.map(message => (
-          getEntityId(message) === getEntityId(updatedMessage) ? updatedMessage : message
-        )));
-      }
-
+      updatedMessageBatcher.push(updatedMessage);
       scheduleRealtimeRefresh();
     };
 
@@ -2624,7 +2693,11 @@ export default function Messages() {
       socket.off('user-note-updated', onUserNoteUpdated);
       socket.off('user-note-deleted', onUserNoteDeleted);
       openMessageBatcher.cancel();
-      if (realtimeRefreshFrameId) window.cancelAnimationFrame(realtimeRefreshFrameId);
+      updatedMessageBatcher.cancel();
+      readReceiptBatcher.cancel();
+      if (realtimeRefreshTimerId) window.clearTimeout(realtimeRefreshTimerId);
+      if (readBatchFrameId) window.cancelAnimationFrame(readBatchFrameId);
+      if (chatStreakTimerId) window.clearTimeout(chatStreakTimerId);
       clearInterval(heartbeat);
     };
   }, [
@@ -3399,6 +3472,7 @@ export default function Messages() {
   const handleReplyFromMenu = (message) => {
     setReplyingTo(message);
     setActionMenuMessageId(null);
+    setEmojiPickerMessageId(null);
     focusComposerInput();
   };
 
@@ -3448,6 +3522,7 @@ export default function Messages() {
       setMessages(prev => prev.map(message => getEntityId(message) === messageId ? res.data : message));
       setEmojiPickerMessageId(null);
       setActionMenuMessageId(null);
+      setReactionViewerMessageId(null);
     } catch (err) {
       toast.error('Failed to add reaction');
     }
@@ -3460,6 +3535,13 @@ export default function Messages() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const openReactionViewer = (messageId) => {
+    if (!messageId) return;
+    setEmojiPickerMessageId(null);
+    setActionMenuMessageId(null);
+    setReactionViewerMessageId(messageId);
   };
 
   const isTouchReactionMode = () => (
@@ -3478,8 +3560,8 @@ export default function Messages() {
     if (!message || message.unsent || message.system) return;
     clearReactionPressTimer();
     reactionPressTimerRef.current = setTimeout(() => {
-      setEmojiPickerMessageId(null);
-      setActionMenuMessageId(getEntityId(message));
+      setActionMenuMessageId(null);
+      setEmojiPickerMessageId(getEntityId(message));
       playUiSound('click', 0.1);
       navigator.vibrate?.(10);
     }, delay);
@@ -3640,6 +3722,16 @@ export default function Messages() {
       ? messages.find(message => getEntityId(message) === actionMenuMessageId) || null
       : null
   ), [actionMenuMessageId, messages]);
+  const activeReactionMessage = useMemo(() => (
+    emojiPickerMessageId
+      ? messages.find(message => getEntityId(message) === emojiPickerMessageId) || null
+      : null
+  ), [emojiPickerMessageId, messages]);
+  const reactionViewerMessage = useMemo(() => (
+    reactionViewerMessageId
+      ? messages.find(message => getEntityId(message) === reactionViewerMessageId) || null
+      : null
+  ), [reactionViewerMessageId, messages]);
 
   const scrollToPinnedMessage = (messageId) => {
     jumpToMessage(messageId);
@@ -4254,7 +4346,7 @@ export default function Messages() {
       <DeveloperAvatarFrame user={person}>
         <div className={`${sizeClass} relative overflow-hidden rounded-full bg-gradient-to-br from-[#1877f2] to-[#00b2ff] shadow-sm`}>
           {avatar ? (
-            <img src={avatar} alt={getDisplayName(person)} className="h-full w-full object-cover" />
+            <img src={avatar} alt={getDisplayName(person)} loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-white">
               <User size={iconSize} />
@@ -4271,7 +4363,7 @@ export default function Messages() {
     if (photoUrl) {
       return (
         <span className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 shadow-sm`}>
-          <img src={photoUrl} alt={group?.name || 'Group'} className="h-full w-full object-cover" />
+          <img src={photoUrl} alt={group?.name || 'Group'} loading="lazy" decoding="async" className="h-full w-full object-cover" />
         </span>
       );
     }
@@ -4375,14 +4467,16 @@ export default function Messages() {
               const content = (
                 <span className="relative block aspect-square overflow-hidden rounded-xl bg-slate-900">
                   {attachment.fileType === 'image' ? (
-                    <img
-                      src={itemUrl}
-                      alt={attachment.fileName || 'Album photo'}
-                      loading="lazy"
-                      decoding="async"
-                      draggable={false}
-                      onLoad={keepOpeningThreadPinned}
-                      className="h-full w-full object-cover"
+	                    <img
+	                      src={itemUrl}
+	                      alt={attachment.fileName || 'Album photo'}
+	                      loading="lazy"
+	                      decoding="async"
+	                      fetchPriority="low"
+	                      sizes="(max-width: 767px) 40vw, 220px"
+	                      draggable={false}
+	                      onLoad={keepOpeningThreadPinned}
+	                      className="h-full w-full object-cover"
                     />
                   ) : attachment.fileType === 'video' ? (
                     <VideoThumbnail
@@ -4450,14 +4544,16 @@ export default function Messages() {
           }`}
           aria-label="View photo"
         >
-          <img
-            src={mediaUrl}
-            alt={primaryAttachment.fileName || 'Attachment'}
-            loading="lazy"
-            decoding="async"
-            draggable={false}
-            onLoad={keepOpeningThreadPinned}
-            className={`${isMyDayReply ? 'max-h-72 rounded-[1rem]' : 'max-h-80'} w-full object-contain`}
+	          <img
+	            src={mediaUrl}
+	            alt={primaryAttachment.fileName || 'Attachment'}
+	            loading="lazy"
+	            decoding="async"
+	            fetchPriority="low"
+	            sizes="(max-width: 767px) 76vw, 420px"
+	            draggable={false}
+	            onLoad={keepOpeningThreadPinned}
+	            className={`${isMyDayReply ? 'max-h-72 rounded-[1rem]' : 'max-h-80'} w-full object-contain`}
           />
         </button>
       );
@@ -5760,20 +5856,31 @@ export default function Messages() {
                                   </span>
                                 )}
 
-                                {hasReactions && (
-                                  <div className={`message-reaction-pill reaction-motion-zone absolute -bottom-4 ${isMe ? 'right-2' : 'left-2'} flex gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0.5 text-xs shadow-md dark:border-gray-700 dark:bg-gray-800`}>
-                                    {reactions.map((reaction, index) => (
-                                      <button
-                                        key={`${reaction.emoji}-${index}`}
-                                        onClick={() => handleRemoveReaction(messageId, reaction.emoji)}
-                                        className="emoji-pop-button reaction-motion-zone rounded-full px-0.5 hover:opacity-80"
-                                      >
-                                        <AnimatedEmojiText text={reaction.emoji} />
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
+
+                              {hasReactions && (
+                                <div className={`message-reaction-pill reaction-motion-zone -mt-2 mb-0.5 flex min-h-[1.45rem] w-fit items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0 text-xs leading-none shadow-md dark:border-gray-700 dark:bg-gray-800 ${isMe ? 'ml-auto mr-2' : 'ml-2'}`}>
+                                  {reactions.map((reaction, index) => (
+                                    <button
+                                      key={`${reaction.emoji}-${index}`}
+                                      type="button"
+                                      onClick={() => openReactionViewer(messageId)}
+                                      className="emoji-pop-button reaction-motion-zone grid h-5 w-5 place-items-center rounded-full leading-none hover:opacity-80"
+                                      aria-label="View message reactions"
+                                    >
+                                      <AnimatedEmojiText text={reaction.emoji} />
+                                    </button>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => openReactionViewer(messageId)}
+                                    className="reaction-motion-zone grid h-5 min-w-5 place-items-center rounded-full px-1 text-[11px] font-black leading-none text-slate-500 dark:text-slate-300"
+                                    aria-label="View who reacted"
+                                  >
+                                    {reactions.length}
+                                  </button>
+                                </div>
+                              )}
 
                               <div className={`mobile-message-actions ${hasReactions ? 'message-actions-has-reactions' : ''} mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <span className="message-action-time text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
@@ -6863,6 +6970,57 @@ export default function Messages() {
         );
       })(), document.body)}
 
+      {activeReactionMessage && typeof document !== 'undefined' && createPortal((() => {
+        const message = activeReactionMessage;
+        const messageId = getEntityId(message);
+        const snippet = getMessageSnippet(message) || (getMessageAttachments(message).length ? 'Attachment' : 'Message');
+
+        return (
+          <div
+            className="message-reaction-overlay fixed inset-0 z-[89] flex items-end justify-center bg-black/20 p-3 sm:items-center"
+            onClick={() => setEmojiPickerMessageId(null)}
+          >
+            <div
+              className="message-reaction-sheet w-full max-w-sm overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-950"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="border-b border-slate-100 px-4 py-3 dark:border-gray-800">
+                <p className="line-clamp-1 text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">React to message</p>
+                <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-600 dark:text-gray-300">{snippet}</p>
+              </div>
+              <div className="reaction-motion-zone flex items-center justify-center gap-2 px-3 py-3">
+                {QUICK_REACTIONS.map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => handleReaction(messageId, emoji)}
+                    className="emoji-pop-button reaction-motion-zone grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-[1.45rem] dark:bg-gray-900"
+                    aria-label={`React ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-3 dark:border-gray-800">
+                <button type="button" onClick={() => handleReplyFromMenu(message)} className="message-options-action">
+                  <Reply size={17} /> Reply
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmojiPickerMessageId(null);
+                    setActionMenuMessageId(messageId);
+                  }}
+                  className="message-options-action"
+                >
+                  <MoreVertical size={17} /> More
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })(), document.body)}
+
       {selectedMessageInfo && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
           <div className="mobile-bottom-sheet w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-gray-800 dark:bg-gray-950 sm:rounded-3xl">
@@ -6930,6 +7088,65 @@ export default function Messages() {
           </div>
         </div>
       )}
+
+      {reactionViewerMessage && typeof document !== 'undefined' && createPortal((
+        <div className="message-reaction-viewer-overlay fixed inset-0 z-[91] flex items-center justify-center bg-black/40 p-4" onClick={() => setReactionViewerMessageId(null)}>
+          <div className="message-reaction-viewer w-[min(92vw,28rem)] max-w-md rounded-[1.55rem] border border-slate-200 bg-white p-4 shadow-xl dark:border-gray-800 dark:bg-gray-950" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-[#1877f2] dark:text-sky-300">Reactions</p>
+                <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">
+                  {reactionViewerMessage.reactions?.length || 0} reacted
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReactionViewerMessageId(null)}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 dark:bg-gray-900 dark:text-gray-300"
+                aria-label="Close reactions"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-4 max-h-[min(55svh,20rem)] space-y-2 overflow-y-auto pr-1">
+              {reactionViewerMessage.reactions?.length ? reactionViewerMessage.reactions.map((reaction, index) => {
+                const reactor = reaction.userId || {};
+                const reactorId = getEntityId(reactor);
+                const isOwnReaction = reactorId === currentUserId;
+                return (
+                  <div key={`${reactorId || 'reactor'}-${reaction.emoji}-${index}`} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2 dark:bg-gray-900">
+                    <div className="relative shrink-0">
+                      {renderAvatar(reactor, 'h-11 w-11', 18)}
+                      <span className="reaction-motion-zone absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-white text-sm shadow-sm ring-1 ring-slate-200 dark:bg-gray-950 dark:ring-gray-700">
+                        <AnimatedEmojiText text={reaction.emoji} />
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-slate-950 dark:text-white">
+                        {isOwnReaction ? 'You' : getDisplayName(reactor, 'Member')}
+                      </p>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-gray-400">Reacted with {reaction.emoji}</p>
+                    </div>
+                    {isOwnReaction && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveReaction(getEntityId(reactionViewerMessage), reaction.emoji)}
+                        className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-600 ring-1 ring-slate-200 dark:bg-gray-950 dark:text-gray-200 dark:ring-gray-800"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                );
+              }) : (
+                <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-500 dark:border-gray-800 dark:text-gray-400">
+                  No reactions yet.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      ), document.body)}
 
       {activeNote && typeof document !== 'undefined' && createPortal((() => {
         const noteId = getEntityId(activeNote);
