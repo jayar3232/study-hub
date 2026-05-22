@@ -205,7 +205,7 @@ router.get('/update', (req, res) => {
   const { releaseInfo, releaseApk, apkUrl, apkAvailable, externalDownload, downloadPageUrl } = getReleaseDownload();
   const { versionName, versionCode } = releaseInfo;
   const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
-  const apkSha256 = externalDownload ? '' : (releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '');
+  const apkSha256 = releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '';
 
   res.set('Cache-Control', 'no-store');
   res.json({
