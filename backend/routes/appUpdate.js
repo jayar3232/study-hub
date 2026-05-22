@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.25',
-  versionCode: 72
+  versionName: '4.4.26',
+  versionCode: 73
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.25 fixes mobile home scrolling on phones|Home feed and My Day visuals no longer show the awkward mobile scroll box|Mobile dashboard touch handling is smoother and more reliable'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.26 adds playable voice messages|Nickname updates now sync to both people in chat|Messenger and main APK builds include the latest chat fixes'
   });
 });
 
