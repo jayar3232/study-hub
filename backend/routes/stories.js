@@ -7,6 +7,7 @@ const auth = require('../middleware/auth');
 const Story = require('../models/Story');
 const Message = require('../models/Message');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { createImageVariants } = require('../services/mediaVariants');
 const { createNotification } = require('../services/notifications');
 const { hydrateStoryMedia } = require('../utils/mediaUrls');
 const router = express.Router();
@@ -92,6 +93,12 @@ const getStoryTime = (story) => {
 };
 
 const toPlainStory = (story) => (typeof story?.toObject === 'function' ? story.toObject() : story);
+
+const getMediaVariantEntries = (variants = {}) => (
+  variants && typeof variants === 'object'
+    ? Object.values(variants).filter(Boolean)
+    : []
+);
 
 const groupStoriesByOwner = (stories = []) => {
   const groups = new Map();
@@ -182,9 +189,14 @@ router.post('/', auth, uploadStory, async (req, res) => {
         })
       : {
           filename: req.file.filename,
-          path: '',
+          path: `stories/${req.file.filename}`,
           url: `/uploads/stories/${req.file.filename}`
         };
+    const mediaVariants = await createImageVariants({
+      file: req.file,
+      uploadedFile,
+      folder: `users/${req.user}/stories`
+    }).catch(() => ({}));
 
     const story = new Story({
       userId: req.user,
@@ -199,6 +211,7 @@ router.post('/', auth, uploadStory, async (req, res) => {
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
       storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local'),
+      mediaVariants,
       expiresAt: new Date(Date.now() + STORY_DURATION_MS)
     });
 
@@ -364,6 +377,13 @@ router.delete('/:storyId', auth, async (req, res) => {
       const localPath = path.join(__dirname, '..', story.fileUrl);
       fs.unlink(localPath, () => {});
     }
+    getMediaVariantEntries(story.mediaVariants).forEach(variant => {
+      if (['supabase', 'r2'].includes(variant.storageProvider) && variant.storagePath) {
+        deleteObject(variant.storagePath, { provider: variant.storageProvider }).catch(() => {});
+      } else if (variant.fileUrl?.startsWith('/uploads/')) {
+        fs.unlink(path.join(__dirname, '..', variant.fileUrl), () => {});
+      }
+    });
 
     req.app.get('io')?.emit('story-deleted', { storyId: story._id, userId: story.userId });
     res.json({ msg: 'Story deleted' });

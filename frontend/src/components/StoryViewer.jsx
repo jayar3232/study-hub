@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Eye, Heart, Loader2, MessageCircle, Send, Trash2, X } from 'lucide-react';
-import { resolveMediaUrl } from '../utils/media';
+import { resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 import { formatStoryAge } from '../utils/stories';
 
 const STORY_REACTIONS = ['❤️', '😂', '🔥', '👏', '😮'];
@@ -285,7 +285,7 @@ export default function StoryViewer({
 
         <div className="story-viewer-stage relative min-h-0 overflow-hidden bg-black">
           {currentStory.fileType === 'image' ? (
-            <img src={resolveMediaUrl(currentStory.fileUrl)} alt={currentStory.caption || 'My Day'} decoding="async" className="story-viewer-media h-full w-full object-contain" />
+            <img src={resolveMediaVariantUrl(currentStory, ['large', 'feed', 'thumb'])} alt={currentStory.caption || 'My Day'} decoding="async" className="story-viewer-media h-full w-full object-contain" />
           ) : (
             <video key={getEntityId(currentStory)} src={resolveMediaUrl(currentStory.fileUrl)} controls autoPlay playsInline preload="metadata" className="story-viewer-media h-full w-full object-contain" />
           )}

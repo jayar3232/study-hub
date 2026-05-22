@@ -11,6 +11,7 @@ const { createNotification, createNotifications } = require('../services/notific
 const { createGroupActivity } = require('../services/activity');
 const { getMentionedMemberIds } = require('../services/mentions');
 const { cloudStorageProvider, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { createImageVariants } = require('../services/mediaVariants');
 const { hydratePostMedia } = require('../utils/mediaUrls');
 const router = express.Router();
 
@@ -22,12 +23,42 @@ fs.mkdirSync(postUploadDir, { recursive: true });
 
 const MAX_POST_UPLOAD_SIZE = 35 * 1024 * 1024;
 const BLOCKED_EXTENSIONS = new Set(['.bat', '.cmd', '.com', '.exe', '.msi', '.ps1', '.scr', '.sh']);
+const POST_COMMENT_PREVIEW_LIMIT = 3;
 
 const normalizeId = (value) => String(value?._id || value?.id || value || '');
 const parseLimit = (value, fallback = 60, max = 100) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(1, Math.min(max, Math.floor(number)));
+};
+
+const encodePostCursor = (post = {}) => {
+  const time = new Date(post.createdAt || 0).getTime();
+  const id = normalizeId(post._id);
+  return Number.isFinite(time) && time > 0 && id ? `${time}_${id}` : '';
+};
+
+const parsePostCursor = (value = '') => {
+  const [timeValue, id] = String(value || '').split('_');
+  const time = Number(timeValue);
+  if (!Number.isFinite(time) || time <= 0 || !isValidObjectId(id)) return null;
+  return { createdAt: new Date(time), id: new mongoose.Types.ObjectId(id) };
+};
+
+const getPostCursorFilter = (cursorValue) => {
+  const cursor = parsePostCursor(cursorValue);
+  if (!cursor) return null;
+  return {
+    $or: [
+      { createdAt: { $lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, _id: { $lt: cursor.id } }
+    ]
+  };
+};
+
+const withCursorFilter = (query, cursorValue) => {
+  const cursorFilter = getPostCursorFilter(cursorValue);
+  return cursorFilter ? { $and: [query, cursorFilter] } : query;
 };
 
 const localStorage = multer.diskStorage({
@@ -90,8 +121,27 @@ const normalizeAttachment = (value = {}) => {
     mimeType: String(value.mimeType || '').trim().slice(0, 120),
     fileSize: Number(value.fileSize || 0),
     storagePath: String(value.storagePath || '').trim(),
-    storageProvider
+    storageProvider,
+    variants: normalizeMediaVariants(value.variants || value.mediaVariants)
   };
+};
+
+const normalizeMediaVariants = (variants = {}) => {
+  if (!variants || typeof variants !== 'object') return {};
+  return Object.entries(variants).reduce((acc, [key, value]) => {
+    const variant = typeof value === 'string' ? { fileUrl: value } : value;
+    const fileUrl = String(variant?.fileUrl || variant?.url || '').trim();
+    if (!fileUrl) return acc;
+    const storageProvider = ['local', 'supabase', 'r2'].includes(variant.storageProvider) ? variant.storageProvider : '';
+    acc[String(key).trim().slice(0, 40)] = {
+      fileUrl,
+      mimeType: String(variant.mimeType || 'image/webp').trim().slice(0, 120),
+      fileSize: Number(variant.fileSize || 0),
+      storagePath: String(variant.storagePath || '').trim(),
+      storageProvider
+    };
+    return acc;
+  }, {});
 };
 
 const normalizeAttachments = (attachments, legacyAttachment = {}) => {
@@ -166,6 +216,32 @@ const populatePost = async (post) => {
   return hydratePostMedia(post);
 };
 
+const toPostPayload = (post, { summary = false } = {}) => {
+  const hydrated = hydratePostMedia(post);
+  if (!summary) return hydrated;
+
+  const comments = Array.isArray(hydrated.comments) ? hydrated.comments : [];
+  const commentsPreview = comments.slice(-POST_COMMENT_PREVIEW_LIMIT);
+  return {
+    ...hydrated,
+    comments: commentsPreview,
+    commentsPreview,
+    commentCount: comments.length,
+    commentsTruncated: comments.length > commentsPreview.length
+  };
+};
+
+const toPostPagePayload = (posts = [], limit, { summary = false } = {}) => {
+  const itemsSource = posts.slice(0, limit);
+  const items = itemsSource.map(post => toPostPayload(post, { summary }));
+  const hasMore = posts.length > limit;
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore ? encodePostCursor(itemsSource[itemsSource.length - 1]) : ''
+  };
+};
+
 router.post('/upload', auth, uploadPostMedia, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ msg: 'No file uploaded' });
@@ -179,9 +255,14 @@ router.post('/upload', auth, uploadPostMedia, async (req, res) => {
         })
       : {
           filename: req.file.filename,
-          path: '',
+          path: `posts/${req.file.filename}`,
           url: `/uploads/posts/${req.file.filename}`
         };
+    const variants = await createImageVariants({
+      file: req.file,
+      uploadedFile,
+      folder: `posts/${req.user}`
+    }).catch(() => ({}));
 
     res.status(201).json({
       fileUrl: uploadedFile.url,
@@ -190,7 +271,8 @@ router.post('/upload', auth, uploadPostMedia, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local'),
+      variants
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -201,24 +283,27 @@ router.get('/home', auth, async (req, res) => {
   try {
     const friendIds = await getAcceptedFriendIds(req.user);
     const limit = parseLimit(req.query.limit, 36, 80);
-    const posts = await Post.find({
+    const summary = req.query.summary === '1';
+    const paged = req.query.paged === '1';
+    const query = withCursorFilter({
       scope: 'timeline',
       $or: [
         { userId: req.user },
         { privacy: 'public' },
         { privacy: 'friends', userId: { $in: friendIds } }
       ]
-    })
+    }, req.query.cursor);
+    const posts = await Post.find(query)
       .populate('userId', POST_AUTHOR_FIELDS)
       .populate('comments.userId', USER_MEDIA_FIELDS)
       .populate('comments.reactions.userId', USER_MEDIA_FIELDS)
       .populate('reactions.userId', USER_MEDIA_FIELDS)
       .populate('taggedUsers', USER_MEDIA_FIELDS)
-      .sort({ createdAt: -1 })
-      .limit(limit)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(paged ? limit + 1 : limit)
       .lean();
 
-    res.json(posts.map(hydratePostMedia));
+    res.json(paged ? toPostPagePayload(posts, limit, { summary }) : posts.map(post => toPostPayload(post, { summary })));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -235,7 +320,8 @@ router.post('/home', auth, async (req, res) => {
       mimeType,
       fileSize,
       storagePath,
-      storageProvider
+      storageProvider,
+      variants: req.body.variants || req.body.mediaVariants
     });
     const primaryAttachment = attachments[0] || {};
     if (!text && !attachments.length) return res.status(400).json({ msg: 'Write something or attach media first' });
@@ -258,6 +344,7 @@ router.post('/home', auth, async (req, res) => {
       fileSize: Number(primaryAttachment.fileSize || 0),
       storagePath: primaryAttachment.storagePath || '',
       storageProvider: primaryAttachment.storageProvider || '',
+      mediaVariants: primaryAttachment.variants || normalizeMediaVariants(req.body.mediaVariants || req.body.variants),
       attachments
     });
 
@@ -274,6 +361,7 @@ router.get('/feed', auth, async (req, res) => {
     const groupIds = groups.map(group => group._id);
     if (!groupIds.length) return res.json([]);
     const limit = parseLimit(req.query.limit, 36, 100);
+    const summary = req.query.summary === '1';
 
     const posts = await Post.find({ groupId: { $in: groupIds } })
       .populate('groupId', 'name subject description')
@@ -286,7 +374,7 @@ router.get('/feed', auth, async (req, res) => {
       .limit(limit)
       .lean();
 
-    res.json(posts.map(hydratePostMedia));
+    res.json(posts.map(post => toPostPayload(post, { summary })));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
@@ -370,6 +458,19 @@ router.post('/', auth, async (req, res) => {
       });
     }
     res.status(201).json(await populatePost(post));
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/:postId', auth, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.postId)) return res.status(404).json({ msg: 'Post not found' });
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ msg: 'Post not found' });
+    const access = await ensurePostViewer(post, req.user);
+    if (!access) return res.status(403).json({ msg: 'You cannot view this post' });
+    res.json(await populatePost(post));
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }

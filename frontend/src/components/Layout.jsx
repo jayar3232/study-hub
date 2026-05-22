@@ -194,6 +194,7 @@ export default function Layout({ children }) {
   const useFacebookMobileHome = isDashboardRoute;
   const hideMobileBottomNav = mobileChatRouteOpen;
   const hideMobileTopbar = location.pathname.startsWith('/messages');
+  const enableMobilePullRefresh = !useFacebookMobileHome && !mobileChatRouteOpen;
 
   const pageMeta = (() => {
     const arenaGameTitle = {
@@ -1147,7 +1148,7 @@ export default function Layout({ children }) {
   };
 
   const handleAppTouchStart = (event) => {
-    if (!isMobileViewport() || pullRefresh.refreshing) return;
+    if (!enableMobilePullRefresh || !isMobileViewport() || pullRefresh.refreshing) return;
     if (event.currentTarget.scrollTop > 2) return;
     const touch = event.touches?.[0];
     if (!touch) return;
@@ -1155,6 +1156,7 @@ export default function Layout({ children }) {
   };
 
   const handleAppTouchMove = (event) => {
+    if (!enableMobilePullRefresh) return;
     const gesture = pullGestureRef.current;
     if (!gesture.tracking || pullRefresh.refreshing) return;
     const touch = event.touches?.[0];

@@ -8,6 +8,7 @@ const DirectConversation = require('../models/DirectConversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const { cloudStorageProvider, deleteObject, isCloudStorageEnabled, uploadBuffer } = require('../services/storage');
+const { createImageVariants } = require('../services/mediaVariants');
 const { createNotification } = require('../services/notifications');
 const { hydrateMessageMedia, serializeMediaUser } = require('../utils/mediaUrls');
 const { DEFAULT_CHAT_BACKGROUND_ID, normalizeChatBackgroundId } = require('../utils/chatBackgrounds');
@@ -129,8 +130,27 @@ const getMessageAttachments = (message = {}) => {
     mimeType: message.mimeType,
     fileSize: message.fileSize,
     storagePath: message.storagePath,
-    storageProvider: message.storageProvider
+    storageProvider: message.storageProvider,
+    variants: message.mediaVariants || {}
   }];
+};
+
+const normalizeMediaVariants = (variants = {}) => {
+  if (!variants || typeof variants !== 'object') return {};
+  return Object.entries(variants).reduce((acc, [key, value]) => {
+    const variant = typeof value === 'string' ? { fileUrl: value } : value;
+    const fileUrl = String(variant?.fileUrl || variant?.url || '').trim();
+    if (!fileUrl) return acc;
+    const storageProvider = ['local', 'supabase', 'r2'].includes(variant.storageProvider) ? variant.storageProvider : '';
+    acc[String(key).trim().slice(0, 40)] = {
+      fileUrl,
+      mimeType: String(variant.mimeType || 'image/webp').trim().slice(0, 120),
+      fileSize: Math.max(0, Number(variant.fileSize) || 0),
+      storagePath: String(variant.storagePath || '').trim(),
+      storageProvider
+    };
+    return acc;
+  }, {});
 };
 
 const sanitizeAttachment = (attachment = {}, userId = '') => {
@@ -156,7 +176,8 @@ const sanitizeAttachment = (attachment = {}, userId = '') => {
     mimeType: String(attachment.mimeType || '').slice(0, 120),
     fileSize: Math.max(0, Number(attachment.fileSize) || 0),
     storagePath,
-    storageProvider: storagePath ? storageProvider : (fileUrl.startsWith('/uploads/messages/') ? 'local' : '')
+    storageProvider: storagePath ? storageProvider : (fileUrl.startsWith('/uploads/messages/') ? 'local' : ''),
+    variants: normalizeMediaVariants(attachment.variants || attachment.mediaVariants)
   };
 };
 
@@ -205,9 +226,14 @@ router.post('/upload', auth, uploadSingleFile, async (req, res) => {
         })
       : {
           filename: req.file.filename,
-          path: '',
+          path: `messages/${req.file.filename}`,
           url: `/uploads/messages/${req.file.filename}`
         };
+    const variants = await createImageVariants({
+      file: req.file,
+      uploadedFile,
+      folder: `messages/${req.user}`
+    }).catch(() => ({}));
 
     res.status(201).json({
       fileUrl: uploadedFile.url,
@@ -216,7 +242,8 @@ router.post('/upload', auth, uploadSingleFile, async (req, res) => {
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       storagePath: uploadedFile.path,
-      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local')
+      storageProvider: uploadedFile.provider || (isCloudStorageEnabled ? cloudStorageProvider : 'local'),
+      variants
     });
   } catch (err) {
     res.status(500).json({ msg: err.message });
@@ -596,7 +623,8 @@ router.post('/', auth, async (req, res) => {
       mimeType,
       fileSize,
       storagePath,
-      storageProvider
+      storageProvider,
+      variants: req.body.variants || req.body.mediaVariants
     }, req.user);
     const normalizedAttachments = postedAttachments.length
       ? postedAttachments
@@ -619,6 +647,7 @@ router.post('/', auth, async (req, res) => {
       fileSize: primaryAttachment?.fileSize || 0,
       storagePath: primaryAttachment?.storagePath || '',
       storageProvider: primaryAttachment?.storageProvider || '',
+      mediaVariants: primaryAttachment?.variants || {},
       attachments: normalizedAttachments
     });
     await message.save();
@@ -785,6 +814,11 @@ router.delete('/:messageId/everyone', auth, async (req, res) => {
       if (['supabase', 'r2'].includes(attachment.storageProvider) && attachment.storagePath) {
         storagePaths.add(`${attachment.storageProvider}:${attachment.storagePath}`);
       }
+      Object.values(attachment.variants || {}).forEach(variant => {
+        if (['supabase', 'r2'].includes(variant.storageProvider) && variant.storagePath) {
+          storagePaths.add(`${variant.storageProvider}:${variant.storagePath}`);
+        }
+      });
     });
     await Promise.all([...storagePaths].map(storageReference => {
       const [provider, ...pathParts] = storageReference.split(':');
@@ -802,6 +836,7 @@ router.delete('/:messageId/everyone', auth, async (req, res) => {
     message.fileSize = 0;
     message.storagePath = '';
     message.storageProvider = '';
+    message.mediaVariants = {};
     message.attachments = [];
     message.reactions = [];
     await message.save();

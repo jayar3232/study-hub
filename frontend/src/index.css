@@ -12434,3 +12434,151 @@ html.syncrova-native-app .mobile-message-actions button {
     border-color: rgba(255, 255, 255, 0.08) !important;
   }
 }
+
+@media (max-width: 767px), (pointer: coarse) {
+  .app-main--mobile-fb-home {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scrollbar-width: none;
+  }
+
+  .app-main--mobile-fb-home::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .app-main--mobile-fb-home > .app-page-content,
+  .dashboard-facebook-mobile,
+  .home-feed--facebook-mobile {
+    overflow: visible !important;
+    contain: none !important;
+    transform: none !important;
+  }
+
+  .dashboard-facebook-mobile .feed-card,
+  .home-feed--facebook-mobile .feed-card,
+  .dashboard-story-panel--fb-mobile .dashboard-story-card,
+  .dashboard-story-panel--fb-mobile .dashboard-create-story-card {
+    content-visibility: visible !important;
+    contain: layout paint !important;
+    contain-intrinsic-size: auto !important;
+    overflow-anchor: auto !important;
+  }
+
+  .home-feed--facebook-mobile .home-feed-mobile-slot,
+  .dashboard-story-panel--fb-mobile {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .messenger-notes-tray {
+    align-items: flex-start !important;
+    gap: 0.62rem !important;
+    padding-block: 0.18rem 0.06rem !important;
+  }
+
+  .messenger-note-head,
+  .messenger-note-head > span.messenger-note-card,
+  .messenger-room-tile {
+    content-visibility: visible !important;
+    contain: none !important;
+    contain-intrinsic-size: auto !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    filter: none !important;
+    overflow: visible !important;
+  }
+
+  .messenger-note-head {
+    width: 4.62rem !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card {
+    min-height: 4.92rem !important;
+    width: 4.58rem !important;
+    justify-content: flex-end !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-bubble {
+    max-width: 4.32rem !important;
+    min-height: 1.2rem !important;
+    margin-bottom: 0.18rem !important;
+    border: 1px solid rgba(226, 232, 240, 0.86) !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+    box-shadow: none !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar {
+    margin-top: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-unviewed,
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-viewed {
+    padding: 2px !important;
+    box-shadow: 0 0 0 2px #ffffff !important;
+  }
+
+  .messenger-note-head > button:last-child {
+    min-height: 1.36rem !important;
+    margin-top: 0.2rem !important;
+  }
+
+  .messenger-note-add {
+    bottom: 0.04rem !important;
+    right: 0.5rem !important;
+  }
+
+  .dark .messenger-note-head > span.messenger-note-card > button.messenger-note-bubble {
+    border-color: rgba(51, 65, 85, 0.84) !important;
+    background: rgba(15, 23, 42, 0.92) !important;
+  }
+
+  .dark .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-unviewed,
+  .dark .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-viewed {
+    box-shadow: 0 0 0 2px #030712 !important;
+  }
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  *,
+  *::before,
+  *::after {
+    scrollbar-width: none !important;
+    scrollbar-color: transparent transparent !important;
+    scrollbar-gutter: auto !important;
+    -ms-overflow-style: none !important;
+  }
+
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-corner {
+    display: none !important;
+    background: transparent !important;
+    border: 0 !important;
+  }
+
+  html.syncrova-native-app *,
+  html.syncrova-native-app *::before,
+  html.syncrova-native-app *::after {
+    scrollbar-width: none !important;
+    scrollbar-color: transparent transparent !important;
+    scrollbar-gutter: auto !important;
+    -ms-overflow-style: none !important;
+  }
+}

@@ -11,6 +11,7 @@ const StorySchema = new mongoose.Schema({
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
   storageProvider: { type: String, enum: ['local', 'supabase', 'r2'], default: 'local' },
+  mediaVariants: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   reactions: [{
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     emoji: { type: String, required: true },

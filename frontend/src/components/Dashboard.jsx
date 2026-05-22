@@ -27,7 +27,7 @@ import {
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { usePresence } from '../context/PresenceContext';
-import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
+import { optimizeImageFile, resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
 import { formatStoryAge, getStoryListForActiveStory, groupActiveStoriesByOwner } from '../utils/stories';
 import { GameRankEmblem } from './GameRankBadge';
@@ -842,7 +842,9 @@ export default function Dashboard() {
         {storyRail.map(group => {
           const story = group.preview;
           const owner = group.owner || story.userId || {};
-          const storyUrl = resolveMediaUrl(story.fileUrl);
+          const storyUrl = story.fileType === 'image'
+            ? resolveMediaVariantUrl(story, ['thumb', 'feed', 'large'])
+            : resolveMediaUrl(story.fileUrl);
           return (
             <button
               key={group.ownerId}

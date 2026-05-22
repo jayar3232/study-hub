@@ -76,7 +76,32 @@ const hydrateMediaAsset = (asset = {}, urlField = 'fileUrl') => {
     storagePath: object.storagePath,
     storageProvider: object.storageProvider
   });
+  object.variants = hydrateMediaVariants(object.variants || object.mediaVariants || {});
   return object;
+};
+
+const hydrateMediaVariants = (variants = {}) => {
+  if (!variants || typeof variants !== 'object') return {};
+
+  return Object.entries(variants).reduce((acc, [key, value]) => {
+    const variant = typeof value === 'string'
+      ? { fileUrl: value }
+      : cloneObject(value);
+    if (!variant || typeof variant !== 'object') return acc;
+
+    const fileUrl = resolveStoredMediaUrl({
+      url: variant.fileUrl || variant.url,
+      storagePath: variant.storagePath,
+      storageProvider: variant.storageProvider
+    });
+    if (!fileUrl) return acc;
+
+    acc[key] = {
+      ...variant,
+      fileUrl
+    };
+    return acc;
+  }, {});
 };
 
 const hydrateGroupMedia = (group) => {
@@ -110,6 +135,7 @@ const hydratePostMedia = (post) => {
   const hydratedPrimary = hydrateMediaAsset(object, 'fileUrl');
   object.fileUrl = hydratedPrimary.fileUrl || '';
   object.attachments = (object.attachments || []).map(attachment => hydrateMediaAsset(attachment, 'fileUrl'));
+  object.mediaVariants = hydrateMediaVariants(object.mediaVariants || hydratedPrimary.variants || object.attachments[0]?.variants || {});
   return object;
 };
 
@@ -124,6 +150,7 @@ const hydrateStoryMedia = (story) => {
 
   const hydrated = hydrateMediaAsset(object, 'fileUrl');
   object.fileUrl = hydrated.fileUrl || '';
+  object.mediaVariants = hydrateMediaVariants(object.mediaVariants || hydrated.variants || {});
   return object;
 };
 
@@ -141,6 +168,7 @@ const hydrateMessageMedia = (message) => {
   const hydratedPrimary = hydrateMediaAsset(object, 'fileUrl');
   object.fileUrl = hydratedPrimary.fileUrl || '';
   object.attachments = (object.attachments || []).map(attachment => hydrateMediaAsset(attachment, 'fileUrl'));
+  object.mediaVariants = hydrateMediaVariants(object.mediaVariants || hydratedPrimary.variants || object.attachments[0]?.variants || {});
   return object;
 };
 
@@ -162,6 +190,7 @@ module.exports = {
   hydrateGalleryMedia,
   hydrateGroupMedia,
   hydrateMediaAsset,
+  hydrateMediaVariants,
   hydrateMediaUserInPlace,
   hydrateMessageMedia,
   hydratePostMedia,

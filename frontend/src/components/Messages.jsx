@@ -55,7 +55,7 @@ import { useCall } from '../context/CallContext';
 import NewChatModal from './NewChatModal';
 import GroupChat from './GroupChat';
 import UserProfileModal from './UserProfileModal';
-import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
+import { optimizeImageFile, resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
 import { playUiSound } from '../utils/sound';
 import { ListSkeleton } from './SkeletonLoader';
@@ -142,7 +142,8 @@ const getMessageAttachments = (message = {}) => {
     mimeType: message.mimeType,
     fileSize: message.fileSize,
     storagePath: message.storagePath,
-    storageProvider: message.storageProvider
+    storageProvider: message.storageProvider,
+    variants: message.mediaVariants || {}
   }];
 };
 
@@ -4450,7 +4451,9 @@ export default function Messages() {
 
     const attachments = getMessageAttachments(message);
     const primaryAttachment = attachments[0] || message;
-    const mediaUrl = resolveMediaUrl(primaryAttachment.fileUrl);
+    const mediaUrl = primaryAttachment.fileType === 'image'
+      ? resolveMediaVariantUrl(primaryAttachment, ['feed', 'large', 'thumb'])
+      : resolveMediaUrl(primaryAttachment.fileUrl);
 
     if (attachments.length > 1) {
       const visibleAttachments = attachments.slice(0, 4);
@@ -4461,7 +4464,9 @@ export default function Messages() {
           <div className={`grid gap-1 ${visibleAttachments.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
             {visibleAttachments.map((attachment, index) => {
               const isMedia = ['image', 'video'].includes(attachment.fileType);
-              const itemUrl = resolveMediaUrl(attachment.fileUrl);
+              const itemUrl = attachment.fileType === 'image'
+                ? resolveMediaVariantUrl(attachment, ['thumb', 'feed', 'large'])
+                : resolveMediaUrl(attachment.fileUrl);
               const isLastWithMore = extraCount > 0 && index === visibleAttachments.length - 1;
 
               const content = (
@@ -4814,7 +4819,9 @@ export default function Messages() {
               {sharedMediaItems.slice(0, 8).map(message => {
                 const mediaAttachmentIndex = getMessageAttachments(message).findIndex(attachment => ['image', 'video'].includes(attachment.fileType));
                 const mediaAttachment = getMessageAttachments(message)[mediaAttachmentIndex] || getMessageAttachments(message)[0] || message;
-                const mediaUrl = resolveMediaUrl(mediaAttachment.fileUrl);
+                const mediaUrl = mediaAttachment.fileType === 'image'
+                  ? resolveMediaVariantUrl(mediaAttachment, ['thumb', 'feed', 'large'])
+                  : resolveMediaUrl(mediaAttachment.fileUrl);
                 return (
                   <button
                     key={getEntityId(message)}
@@ -6272,7 +6279,9 @@ export default function Messages() {
                     {sharedMediaItems.slice(0, 6).map(message => {
                         const mediaAttachmentIndex = getMessageAttachments(message).findIndex(attachment => ['image', 'video'].includes(attachment.fileType));
                         const mediaAttachment = getMessageAttachments(message)[mediaAttachmentIndex] || getMessageAttachments(message)[0] || message;
-                        const mediaUrl = resolveMediaUrl(mediaAttachment.fileUrl);
+                        const mediaUrl = mediaAttachment.fileType === 'image'
+                          ? resolveMediaVariantUrl(mediaAttachment, ['thumb', 'feed', 'large'])
+                          : resolveMediaUrl(mediaAttachment.fileUrl);
                         return (
                           <button
                             key={getEntityId(message)}

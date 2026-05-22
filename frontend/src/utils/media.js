@@ -115,6 +115,26 @@ const getMediaQualityPreference = () => {
   }
 };
 
+export const resolveMediaVariantUrl = (asset = {}, preferred = ['feed', 'large', 'thumb']) => {
+  if (!asset || typeof asset === 'string') return resolveMediaUrl(asset || '');
+
+  const preference = getMediaQualityPreference();
+  if (preference === 'original') return resolveMediaUrl(asset.fileUrl || asset.url || '');
+
+  const variants = asset.variants || asset.mediaVariants || {};
+  const preferredKeys = preference === 'high'
+    ? [...new Set(['large', ...preferred, 'feed', 'thumb'])]
+    : [...new Set([...preferred, 'feed', 'large', 'thumb'])];
+
+  for (const key of preferredKeys) {
+    const variant = variants[key];
+    const variantUrl = typeof variant === 'string' ? variant : (variant?.fileUrl || variant?.url);
+    if (variantUrl) return resolveMediaUrl(variantUrl);
+  }
+
+  return resolveMediaUrl(asset.fileUrl || asset.url || '');
+};
+
 const resolveImageOptimizationOptions = (options = {}) => {
   const explicitMaxDimension = Object.prototype.hasOwnProperty.call(options, 'maxDimension');
   const explicitQuality = Object.prototype.hasOwnProperty.call(options, 'quality');

@@ -28,7 +28,7 @@ import {
   X
 } from 'lucide-react';
 import api from '../services/api';
-import { optimizeImageFile, resolveMediaUrl } from '../utils/media';
+import { optimizeImageFile, resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 import { cancelIdleWork, requestIdleWork } from '../utils/performance';
 import MediaViewer from './MediaViewer';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
@@ -40,8 +40,8 @@ const MAX_HOME_POST_UPLOAD = 35 * 1024 * 1024;
 const HOME_VIDEO_AUTOPLAY_KEY = 'syncrova.home.videoAutoplay';
 const MOBILE_FEED_INITIAL_COUNT = 4;
 const DESKTOP_FEED_INITIAL_COUNT = 7;
-const MOBILE_FEED_LOAD_LIMIT = 32;
-const DESKTOP_FEED_LOAD_LIMIT = 54;
+const MOBILE_FEED_LOAD_LIMIT = 18;
+const DESKTOP_FEED_LOAD_LIMIT = 36;
 const MOBILE_FEED_IDLE_VISIBLE_LIMIT = 10;
 const DESKTOP_FEED_IDLE_VISIBLE_LIMIT = 16;
 
@@ -183,7 +183,8 @@ const getPostAttachments = (post = {}) => {
     fileType: isVideoPost(post) ? 'video' : post.fileType || 'image',
     fileName: post.fileName || post.title || 'Post media',
     mimeType: post.mimeType || '',
-    fileSize: post.fileSize || 0
+    fileSize: post.fileSize || 0,
+    variants: post.mediaVariants || {}
   }];
 };
 
@@ -226,6 +227,37 @@ const shufflePosts = (items = []) => (
     .sort((a, b) => a.score - b.score || a.index - b.index)
     .map(entry => entry.item)
 );
+
+const normalizeFeedPage = (payload) => {
+  if (Array.isArray(payload)) {
+    return { items: payload, hasMore: false, nextCursor: '' };
+  }
+
+  return {
+    items: Array.isArray(payload?.items) ? payload.items : [],
+    hasMore: Boolean(payload?.hasMore),
+    nextCursor: String(payload?.nextCursor || '')
+  };
+};
+
+const mergePostsById = (previous = [], incoming = []) => {
+  const next = [...previous];
+  const indexById = new Map(next.map((post, index) => [getEntityId(post), index]).filter(([id]) => id));
+
+  incoming.forEach(post => {
+    const postId = getEntityId(post);
+    if (!postId) return;
+    const existingIndex = indexById.get(postId);
+    if (existingIndex >= 0) {
+      next[existingIndex] = post;
+      return;
+    }
+    indexById.set(postId, next.length);
+    next.push(post);
+  });
+
+  return next;
+};
 
 const applyOptimisticPostReaction = (post, emoji, currentUser) => {
   const currentUserId = getEntityId(currentUser);
@@ -685,7 +717,9 @@ const FeedMediaGrid = React.memo(function FeedMediaGrid({
       <div className={`grid gap-2 ${isSingle ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {visible.map((attachment, index) => {
           const fileType = attachment.fileType === 'video' ? 'video' : attachment.fileType === 'image' ? 'image' : '';
-          const src = resolveMediaUrl(attachment.fileUrl);
+          const src = fileType === 'image'
+            ? resolveMediaVariantUrl(attachment, isSingle ? ['feed', 'large', 'thumb'] : ['thumb', 'feed', 'large'])
+            : resolveMediaUrl(attachment.fileUrl);
           const label = attachment.fileName || title;
           const showHiddenOverlay = hiddenCount > 0 && index === visible.length - 1;
           const tileClass = isSingle ? '' : 'aspect-square min-h-0';
@@ -786,6 +820,9 @@ export default function HomeFeed({
   const [mediaViewer, setMediaViewer] = useState(null);
   const [uploadQueue, setUploadQueue] = useState(null);
   const [profileUser, setProfileUser] = useState(null);
+  const [feedCursor, setFeedCursor] = useState('');
+  const [feedHasMoreRemote, setFeedHasMoreRemote] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
 
   const composerInputRef = useRef(null);
   const commentInputRefs = useRef({});
@@ -797,6 +834,11 @@ export default function HomeFeed({
   const uploadProgressFrameRef = useRef(null);
   const pendingUploadProgressRef = useRef({ progress: 0, label: '' });
   const feedIdleRevealRef = useRef(null);
+  const feedCursorRef = useRef('');
+  const feedHasMoreRemoteRef = useRef(false);
+  const loadingMorePostsRef = useRef(false);
+  const loadMoreSentinelRef = useRef(null);
+  const feedAutoLoadAtRef = useRef(0);
   const currentUserId = getEntityId(currentUser);
   const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
   const filteredPosts = useMemo(
@@ -808,6 +850,7 @@ export default function HomeFeed({
     [filteredPosts, visibleCount]
   );
   const hasMoreVisiblePosts = visibleCount < filteredPosts.length;
+  const hasMoreFeedPosts = hasMoreVisiblePosts || feedHasMoreRemote;
   const visiblePostStep = getInitialFeedVisibleCount();
   const activeReactionPost = useMemo(
     () => posts.find(post => getEntityId(post) === activeReactionPostId),
@@ -912,19 +955,52 @@ export default function HomeFeed({
     window.clearTimeout(reactionPressTimerRef.current);
   }, []);
 
-  const loadFeed = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
+  const loadFeed = useCallback(async ({ silent = false, append = false } = {}) => {
+    const cursor = append ? feedCursorRef.current : '';
+    if (append) {
+      if (loadingMorePostsRef.current || !feedHasMoreRemoteRef.current || !cursor) return;
+      loadingMorePostsRef.current = true;
+      setLoadingMorePosts(true);
+    } else {
+      feedCursorRef.current = '';
+      feedHasMoreRemoteRef.current = false;
+      setFeedCursor('');
+      setFeedHasMoreRemote(false);
+      if (!silent) setLoading(true);
+    }
+
     try {
-      const res = await api.get(`/posts/home?limit=${getFeedLoadLimit()}`);
-      const nextPosts = shufflePosts(res.data || []);
+      const params = new URLSearchParams({
+        limit: String(getFeedLoadLimit()),
+        paged: '1'
+      });
+      if (isTouchFeedViewport()) params.set('summary', '1');
+      if (cursor) params.set('cursor', cursor);
+      const res = await api.get(`/posts/home?${params.toString()}`);
+      const page = normalizeFeedPage(res.data);
+      const nextPosts = shufflePosts(page.items || []);
+      const hasMoreRemote = Boolean(page.hasMore && page.nextCursor);
+      feedCursorRef.current = page.nextCursor || '';
+      feedHasMoreRemoteRef.current = hasMoreRemote;
       React.startTransition(() => {
-        setPosts(nextPosts);
-        setVisibleCount(count => Math.max(getInitialFeedVisibleCount(), Math.min(count, nextPosts.length || getInitialFeedVisibleCount())));
+        setFeedCursor(page.nextCursor || '');
+        setFeedHasMoreRemote(hasMoreRemote);
+        setPosts(previous => (append ? mergePostsById(previous, nextPosts) : nextPosts));
+        setVisibleCount(count => (
+          append
+            ? count + Math.min(getInitialFeedVisibleCount(), Math.max(0, nextPosts.length))
+            : Math.max(getInitialFeedVisibleCount(), Math.min(count, nextPosts.length || getInitialFeedVisibleCount()))
+        ));
       });
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to load home feed');
     } finally {
-      if (!silent) setLoading(false);
+      if (append) {
+        loadingMorePostsRef.current = false;
+        setLoadingMorePosts(false);
+      } else if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -1001,7 +1077,23 @@ export default function HomeFeed({
     const targetPostId = params.get('post');
     if (!targetPostId) return;
     const targetIndex = posts.findIndex(post => getEntityId(post) === targetPostId);
-    if (targetIndex < 0) return;
+    if (targetIndex < 0) {
+      deepLinkHandledRef.current = true;
+      api.get(`/posts/${targetPostId}`)
+        .then(res => {
+          const targetPost = res.data;
+          React.startTransition(() => {
+            setPosts(prev => mergePostsById([targetPost], prev));
+            setVisibleCount(count => Math.max(count, 1));
+          });
+          window.setTimeout(() => {
+            document.getElementById(`post-${targetPostId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            if (params.get('comment') || isMobileReactionMode()) setActiveCommentPostId(targetPostId);
+          }, 120);
+        })
+        .catch(() => {});
+      return;
+    }
 
     deepLinkHandledRef.current = true;
     setVisibleCount(count => Math.max(count, targetIndex + 1));
@@ -1262,6 +1354,32 @@ export default function HomeFeed({
     });
   }, [visiblePostStep]);
 
+  const loadMoreFeedPosts = useCallback(() => {
+    if (hasMoreVisiblePosts) {
+      revealMorePosts();
+      return;
+    }
+    loadFeed({ append: true, silent: true });
+  }, [hasMoreVisiblePosts, loadFeed, revealMorePosts]);
+
+  useEffect(() => {
+    const node = loadMoreSentinelRef.current;
+    if (!node || loading || loadingMorePosts || !hasMoreFeedPosts || typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting) return;
+      const now = Date.now();
+      if (now - feedAutoLoadAtRef.current < 550) return;
+      feedAutoLoadAtRef.current = now;
+      loadMoreFeedPosts();
+    }, { rootMargin: '760px 0px 760px 0px', threshold: 0.01 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMoreFeedPosts, loadMoreFeedPosts, loading, loadingMorePosts]);
+
   const reactToComment = async (post, comment, emoji) => {
     const postId = getEntityId(post);
     const commentId = getCommentId(comment);
@@ -1308,11 +1426,28 @@ export default function HomeFeed({
     }
   };
 
-  const openCommentsForPost = (postId) => {
+  const openCommentsForPost = async (postId) => {
     if (!postId) return;
+    const post = posts.find(item => getEntityId(item) === postId);
     if (isMobileReactionMode()) {
       setActiveCommentPostId(postId);
+      if (post?.commentsTruncated) {
+        try {
+          const res = await api.get(`/posts/${postId}`);
+          updatePost(res.data);
+        } catch (err) {
+          toast.error(err.response?.data?.msg || 'Failed to load comments');
+        }
+      }
       return;
+    }
+    if (post?.commentsTruncated) {
+      try {
+        const res = await api.get(`/posts/${postId}`);
+        updatePost(res.data);
+      } catch {
+        // Keep the preview comments visible if the full post fetch fails.
+      }
     }
     commentInputRefs.current[postId]?.focus();
   };
@@ -1916,7 +2051,7 @@ export default function HomeFeed({
             const myReaction = post.reactions?.find(reaction => getEntityId(reaction.userId) === currentUserId);
             const isOwner = getEntityId(author) === currentUserId;
             const shareCount = getShareCount(post);
-            const commentCount = post.comments?.length || 0;
+            const commentCount = post.commentCount ?? post.comments?.length ?? 0;
             const allComments = post.comments || [];
             const replyTarget = commentReplyTargets[postId];
             const postBackground = getTextBackgroundOption(post.background);
@@ -2172,9 +2307,15 @@ export default function HomeFeed({
             );
           })}
 
-          {hasMoreVisiblePosts && (
-            <button type="button" onClick={revealMorePosts} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
-              Load more posts
+          {hasMoreFeedPosts && (
+            <button
+              ref={loadMoreSentinelRef}
+              type="button"
+              onClick={loadMoreFeedPosts}
+              disabled={loadingMorePosts}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 disabled:cursor-wait disabled:opacity-70 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20"
+            >
+              {loadingMorePosts ? 'Loading more posts...' : 'Load more posts'}
             </button>
           )}
         </>

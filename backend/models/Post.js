@@ -18,6 +18,7 @@ const PostSchema = new mongoose.Schema({
   fileSize: { type: Number, default: 0 },
   storagePath: { type: String, default: '' },
   storageProvider: { type: String, enum: ['local', 'supabase', 'r2', ''], default: '' },
+  mediaVariants: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   attachments: [{
     fileUrl: { type: String, required: true },
     fileType: { type: String, enum: ['image', 'video', 'file'], default: 'file' },
@@ -25,7 +26,8 @@ const PostSchema = new mongoose.Schema({
     mimeType: { type: String, default: '' },
     fileSize: { type: Number, default: 0 },
     storagePath: { type: String, default: '' },
-    storageProvider: { type: String, enum: ['local', 'supabase', 'r2', ''], default: '' }
+    storageProvider: { type: String, enum: ['local', 'supabase', 'r2', ''], default: '' },
+    variants: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
   }],
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   savedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -54,6 +56,7 @@ const PostSchema = new mongoose.Schema({
 });
 
 PostSchema.index({ scope: 1, privacy: 1, createdAt: -1 });
+PostSchema.index({ scope: 1, createdAt: -1, _id: -1 });
 PostSchema.index({ groupId: 1, pinned: -1, pinnedAt: -1, createdAt: -1 });
 PostSchema.index({ userId: 1, scope: 1, createdAt: -1 });
 
