@@ -37,8 +37,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.19',
-  versionCode: 66
+  versionName: '4.4.20',
+  versionCode: 67
 };
 
 const getConfiguredVersionCode = () => {
@@ -125,6 +125,23 @@ const getFileSha256 = (filePath) => {
   }
 };
 
+const getReleaseDownload = () => {
+  const releaseInfo = getReleaseInfo();
+  const { versionName } = releaseInfo;
+  const releaseApk = getLocalReleaseApk(versionName);
+  const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
+  const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
+  const useLocalApk = Boolean(releaseApk.filePath);
+  const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
+
+  return {
+    releaseInfo,
+    releaseApk,
+    apkUrl,
+    apkAvailable: useLocalApk || useConfiguredApkUrl
+  };
+};
+
 const parseList = (value = '') => String(value || '')
   .split(',')
   .map(item => item.trim())
@@ -168,14 +185,8 @@ const getIceServers = () => {
 };
 
 router.get('/update', (req, res) => {
-  const releaseInfo = getReleaseInfo();
+  const { releaseInfo, releaseApk, apkUrl, apkAvailable } = getReleaseDownload();
   const { versionName, versionCode } = releaseInfo;
-  const releaseApk = getLocalReleaseApk(versionName);
-  const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
-  const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
-  const useLocalApk = Boolean(releaseApk.filePath);
-  const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
-  const apkAvailable = useLocalApk || useConfiguredApkUrl;
   const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
   const apkSha256 = releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '';
 
@@ -220,5 +231,9 @@ router.get('/storage-status', async (req, res) => {
     storageProbe
   });
 });
+
+router.getReleaseInfo = getReleaseInfo;
+router.getReleaseApkFileName = getReleaseApkFileName;
+router.getReleaseDownload = getReleaseDownload;
 
 module.exports = router;

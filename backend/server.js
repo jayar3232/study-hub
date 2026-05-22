@@ -40,6 +40,7 @@ const validateRuntimeEnv = () => {
 validateRuntimeEnv();
 
 const { serveR2Object } = require('./services/storage');
+const appUpdateRouter = require('./routes/appUpdate');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -162,8 +163,33 @@ app.use('/api/auth/admin/password-reset', sensitiveAccountRateLimiter);
 app.use('/api/users/password', sensitiveAccountRateLimiter);
 app.use('/api/games/developers/access', developerAccessRateLimiter);
 
+const setApkNoCacheHeaders = (res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+};
+
+const redirectOutdatedReleaseApk = (req, res, next) => {
+  const requestPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
+  const requestedFile = path.basename(requestPath);
+  if (!/^syncrova-.+\.apk$/i.test(requestedFile)) return next();
+
+  const releaseDownload = appUpdateRouter.getReleaseDownload?.();
+  const currentFile = appUpdateRouter.getReleaseApkFileName?.(releaseDownload?.releaseInfo?.versionName);
+  if (!currentFile) return next();
+
+  const requested = requestedFile.toLowerCase();
+  const current = currentFile.toLowerCase();
+  if (requested === current || requested === 'syncrova-latest.apk') return next();
+
+  setApkNoCacheHeaders(res);
+  return res.redirect(302, releaseDownload.apkUrl || `/releases/${currentFile}`);
+};
+
 app.head(/^\/uploads\/r2\/(.+)$/, serveR2Object);
 app.get(/^\/uploads\/r2\/(.+)$/, serveR2Object);
+app.use(/^\/(?:uploads\/)?releases\/syncrova-[^/]+\.apk$/i, redirectOutdatedReleaseApk);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   etag: true,
   maxAge: '7d'
@@ -173,10 +199,7 @@ app.use('/releases', express.static(path.join(__dirname, 'public', 'releases'), 
   maxAge: '7d',
   setHeaders(res, filePath) {
     if (filePath.endsWith('.apk')) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      res.setHeader('Surrogate-Control', 'no-store');
+      setApkNoCacheHeaders(res);
     }
   }
 }));
@@ -200,7 +223,7 @@ app.use('/api/games', require('./routes/games'));
 app.use('/api/friends', require('./routes/friends'));
 app.use('/api/stories', require('./routes/stories'));
 app.use('/api/reels', require('./routes/reels'));
-app.use('/api/app', require('./routes/appUpdate'));
+app.use('/api/app', appUpdateRouter);
 app.use('/api/assistant', require('./routes/assistant'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/saved', require('./routes/saved'));
