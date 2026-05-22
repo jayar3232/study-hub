@@ -11,6 +11,9 @@ const router = express.Router();
 const publicReleaseDir = path.join(__dirname, '..', 'public', 'releases');
 const uploadedReleaseDir = path.join(__dirname, '..', 'uploads', 'releases');
 const apkHashCache = new Map();
+const manualDownloadPageUrl = 'https://www.mediafire.com/file/62p9erv7uannyil/syncrova-4.4.20.apk/file';
+const manualDownloadFileKey = '62p9erv7uannyil';
+const manualDownloadFileName = 'syncrova-4.4.20.apk';
 const DEFAULT_STUN_SERVERS = [
   'stun:stun.l.google.com:19302',
   'stun:stun1.l.google.com:19302',
@@ -79,6 +82,8 @@ const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
 
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const getLocalReleaseApk = (versionName) => {
   const fileName = getReleaseApkFileName(versionName);
   const bundledPath = path.join(publicReleaseDir, fileName);
@@ -132,14 +137,26 @@ const getReleaseDownload = () => {
   const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
   const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
   const useLocalApk = Boolean(releaseApk.filePath);
-  const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
+  const apkUrl = manualDownloadPageUrl ? '/api/app/download' : (useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath));
 
   return {
     releaseInfo,
     releaseApk,
     apkUrl,
-    apkAvailable: useLocalApk || useConfiguredApkUrl
+    apkAvailable: Boolean(manualDownloadPageUrl) || useLocalApk || useConfiguredApkUrl,
+    externalDownload: Boolean(manualDownloadPageUrl),
+    downloadPageUrl: manualDownloadPageUrl
   };
+};
+
+const extractMediaFireDirectUrl = (html = '') => {
+  const normalized = String(html || '').replace(/&amp;/g, '&');
+  const directPattern = new RegExp(
+    `https://download[^"'<>\\\\\\s]+\\.mediafire\\.com/[^"'<>\\\\\\s]+/${escapeRegExp(manualDownloadFileKey)}/${escapeRegExp(manualDownloadFileName)}`,
+    'i'
+  );
+  const directMatch = normalized.match(directPattern);
+  return directMatch?.[0] || '';
 };
 
 const parseList = (value = '') => String(value || '')
@@ -185,10 +202,10 @@ const getIceServers = () => {
 };
 
 router.get('/update', (req, res) => {
-  const { releaseInfo, releaseApk, apkUrl, apkAvailable } = getReleaseDownload();
+  const { releaseInfo, releaseApk, apkUrl, apkAvailable, externalDownload, downloadPageUrl } = getReleaseDownload();
   const { versionName, versionCode } = releaseInfo;
   const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
-  const apkSha256 = releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '';
+  const apkSha256 = externalDownload ? '' : (releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '');
 
   res.set('Cache-Control', 'no-store');
   res.json({
@@ -198,11 +215,42 @@ router.get('/update', (req, res) => {
     available: apkAvailable,
     required: toBoolean(process.env.APP_UPDATE_REQUIRED, true),
     apkUrl: toAbsoluteUrl(req, apkUrl),
+    downloadPageUrl,
+    externalDownload,
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
     notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.18 makes group chat match the direct conversation layout|Smooths Android media picking for photo and video sends|Keeps APK install verification to prevent version downgrades'
   });
+});
+
+router.get('/download', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    const response = await fetch(manualDownloadPageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 SyncrovaUpdater/1.0'
+      }
+    });
+    const html = await response.text();
+    const directUrl = extractMediaFireDirectUrl(html);
+    if (directUrl) {
+      return res.redirect(302, directUrl);
+    }
+  } catch (err) {
+    console.warn('MediaFire download resolution failed:', err.message);
+  }
+
+  return res.status(502).json({
+    msg: 'Could not resolve the MediaFire APK download link. Open the manual download page instead.',
+    downloadPageUrl: manualDownloadPageUrl
+  });
+});
+
+router.get('/download-page', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.redirect(302, manualDownloadPageUrl);
 });
 
 router.get('/ice-servers', (req, res) => {

@@ -1,7 +1,9 @@
 package com.nemsu.studenthub;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -42,6 +44,23 @@ public class SyncrovaNativeBridgePlugin extends Plugin {
             .remove(API_BASE_URL_KEY)
             .remove(USER_ID_KEY)
             .apply();
+
+        JSObject result = new JSObject();
+        result.put("ok", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openExternalUrl(PluginCall call) {
+        String url = call.getString("url", "");
+        if (url == null || url.trim().isEmpty()) {
+            call.reject("Missing URL");
+            return;
+        }
+
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
 
         JSObject result = new JSObject();
         result.put("ok", true);

@@ -9,6 +9,7 @@ const FALLBACK_ANDROID_VERSION_CODE = Number(import.meta.env.VITE_ANDROID_VERSIO
 const CHECK_SCHEDULE_MS = [1200, 8000, 30000, 90000];
 const CHECK_TIMEOUT_MS = 18000;
 const SyncrovaUpdater = registerPlugin('SyncrovaUpdater');
+const SyncrovaNativeBridge = registerPlugin('SyncrovaNativeBridge');
 
 const withCacheBuster = (url, versionCode) => {
   const value = String(url || '').trim();
@@ -62,6 +63,17 @@ const formatBytes = (bytes = 0) => {
   return `${value} B`;
 };
 
+const openExternalUrl = async (url) => {
+  if (!url) return;
+
+  if (isNativeAndroid() && SyncrovaNativeBridge?.openExternalUrl) {
+    await SyncrovaNativeBridge.openExternalUrl({ url });
+    return;
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
 export default function AppUpdatePrompt() {
   const [update, setUpdate] = useState(null);
   const [hidden, setHidden] = useState(false);
@@ -99,6 +111,7 @@ export default function AppUpdatePrompt() {
         const nextVersionCode = Number(payload?.versionCode || 0);
         const currentVersionCode = await getCurrentAndroidVersionCode();
         const apkUrl = String(payload?.apkUrl || '');
+        const downloadPageUrl = String(payload?.downloadPageUrl || '');
         const required = Boolean(payload?.required);
         const dismissed = localStorage.getItem(`syncrova-update-dismissed-${nextVersionCode}`) === '1';
 
@@ -116,6 +129,8 @@ export default function AppUpdatePrompt() {
             notes: payload.notes || 'New Syncrova update is ready.',
             required,
             apkUrl,
+            downloadPageUrl,
+            externalDownload: Boolean(payload?.externalDownload || downloadPageUrl),
             apkSize: Number(payload.apkSize || 0),
             apkSha256: String(payload.apkSha256 || '')
           });
@@ -167,6 +182,14 @@ export default function AppUpdatePrompt() {
     setDownloadMessage('');
 
     try {
+      const manualDownloadUrl = update.downloadPageUrl || (update.externalDownload ? update.apkUrl : '');
+      if (manualDownloadUrl) {
+        await openExternalUrl(manualDownloadUrl);
+        setDownloadMessage('Opening the download page in your browser.');
+        setDownloading(false);
+        return;
+      }
+
       const nativeUpdater = SyncrovaUpdater || window.Capacitor?.Plugins?.SyncrovaUpdater;
       if (isNativeAndroid() && nativeUpdater?.downloadAndInstall) {
         const result = await nativeUpdater.downloadAndInstall({
@@ -220,7 +243,7 @@ export default function AppUpdatePrompt() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black">{update.required ? 'Syncrova update required' : 'New Syncrova update available'}</p>
             <p className="mt-1 text-xs font-semibold text-white/70">
-              Version {update.versionName} is ready{apkSizeLabel ? ` - ${apkSizeLabel}` : ''}. Download the APK, then approve the Android installer.
+              Version {update.versionName} is ready{apkSizeLabel ? ` - ${apkSizeLabel}` : ''}. Open the download page, save the APK, then approve the Android installer.
             </p>
             {noteItems.length > 0 && (
               <div className="mt-2 rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">
@@ -273,7 +296,7 @@ export default function AppUpdatePrompt() {
           >
             <span className="inline-flex items-center justify-center gap-2">
               {downloading ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}
-              {downloading ? 'Downloading...' : checking ? 'Preparing...' : 'Download in app'}
+              {downloading ? 'Opening...' : checking ? 'Preparing...' : 'Open download page'}
             </span>
           </button>
         </div>
