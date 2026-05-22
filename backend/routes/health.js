@@ -95,7 +95,7 @@ router.get('/', auth, async (req, res) => {
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
     },
     app: {
-      releaseUrl: process.env.APP_APK_URL || getReleaseApkPath()
+      releaseUrl: getReleaseApkPath()
     }
   });
 });

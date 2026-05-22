@@ -72,7 +72,7 @@ const isConfiguredApkUrlAllowed = (apkUrl, releaseInfo) => {
   const versionedApkPattern = /syncrova-([^/?#]+)\.apk/i;
   const match = String(apkUrl).match(versionedApkPattern);
 
-  return !match || match[1] === safeVersion || match[1] === 'latest';
+  return Boolean(match) && match[1] === safeVersion;
 };
 
 const getReleaseApkFileName = (versionName) => (
@@ -173,8 +173,9 @@ router.get('/update', (req, res) => {
   const releaseApk = getLocalReleaseApk(versionName);
   const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
   const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
-  const apkUrl = useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath;
-  const apkAvailable = useConfiguredApkUrl || Boolean(releaseApk.filePath);
+  const useLocalApk = Boolean(releaseApk.filePath);
+  const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
+  const apkAvailable = useLocalApk || useConfiguredApkUrl;
   const apkSize = releaseApk.filePath ? fs.statSync(releaseApk.filePath).size : 0;
   const apkSha256 = releaseApk.filePath ? getFileSha256(releaseApk.filePath) : '';
 
