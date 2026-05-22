@@ -137,7 +137,7 @@ const getReleaseDownload = () => {
   const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
   const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
   const useLocalApk = Boolean(releaseApk.filePath);
-  const apkUrl = manualDownloadPageUrl ? '/api/app/download' : (useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath));
+  const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
 
   return {
     releaseInfo,
