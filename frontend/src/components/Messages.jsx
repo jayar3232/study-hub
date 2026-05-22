@@ -69,6 +69,7 @@ import AnimatedEmojiText from './AnimatedEmojiText';
 import { AppLogoMark, AppWordmark } from './AppLogo';
 import { CHAT_BACKGROUND_OPTIONS, DEFAULT_CHAT_BACKGROUND_ID, getChatBackground } from '../data/chatBackgroundPresets';
 import { getStoryListForActiveStory } from '../utils/stories';
+import useRenderDebug from '../hooks/useRenderDebug';
 
 let socket;
 
@@ -81,6 +82,19 @@ const OLDER_MESSAGE_PAGE_LIMIT = 70;
 const CONVERSATION_ROW_HEIGHT = 90;
 const CONVERSATION_VIRTUAL_OVERSCAN = 6;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const getStableMessageKey = (message = {}, index = '') => {
+  const id = getEntityId(message);
+  if (id) return id;
+  return [
+    message.clientId,
+    message.createdAt,
+    getEntityId(message.from),
+    getEntityId(message.to),
+    message.fileUrl,
+    String(message.text || '').slice(0, 48),
+    index
+  ].filter(Boolean).join(':') || `message-${index}`;
+};
 
 const shouldAutoFocusComposer = () => (
   typeof window !== 'undefined'
@@ -581,6 +595,8 @@ export default function Messages() {
   const [chatStreak, setChatStreak] = useState(null);
 
   const conversationListRef = useRef(null);
+  const conversationScrollFrameRef = useRef(null);
+  const pendingConversationScrollTopRef = useRef(0);
   const messageThreadRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -602,6 +618,8 @@ export default function Messages() {
   const reactionPressTimerRef = useRef(null);
   const swipeReplyRef = useRef(null);
   const loadingOlderMessagesRef = useRef(false);
+  const pendingAutoScrollRef = useRef(false);
+  const preserveNextMessageScrollRef = useRef(false);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
@@ -806,6 +824,12 @@ export default function Messages() {
 
       messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
     });
+  }, []);
+
+  const isThreadNearBottom = useCallback((threshold = 180) => {
+    const thread = messageThreadRef.current;
+    if (!thread) return true;
+    return thread.scrollHeight - thread.scrollTop - thread.clientHeight <= threshold;
   }, []);
 
   const stabilizeOpeningScroll = useCallback(() => {
@@ -1209,6 +1233,7 @@ export default function Messages() {
     const thread = messageThreadRef.current;
     const previousScrollHeight = thread?.scrollHeight || 0;
     const previousScrollTop = thread?.scrollTop || 0;
+    preserveNextMessageScrollRef.current = true;
     setLoadingOlderMessages(true);
     loadingOlderMessagesRef.current = true;
 
@@ -1237,11 +1262,14 @@ export default function Messages() {
 
       requestAnimationFrame(() => {
         const node = messageThreadRef.current;
-        if (!node) return;
-        const nextScrollHeight = node.scrollHeight;
-        node.scrollTop = previousScrollTop + (nextScrollHeight - previousScrollHeight);
+        if (node) {
+          const nextScrollHeight = node.scrollHeight;
+          node.scrollTop = previousScrollTop + (nextScrollHeight - previousScrollHeight);
+        }
+        preserveNextMessageScrollRef.current = false;
       });
     } catch (err) {
+      preserveNextMessageScrollRef.current = false;
       toast.error(err.response?.data?.msg || 'Failed to load earlier messages');
     } finally {
       setLoadingOlderMessages(false);
@@ -1253,14 +1281,17 @@ export default function Messages() {
     const thread = messageThreadRef.current;
     const previousScrollHeight = thread?.scrollHeight || 0;
     const previousScrollTop = thread?.scrollTop || 0;
+    preserveNextMessageScrollRef.current = true;
 
     setVisibleMessageCount(count => Math.min(messages.length, count + getMessageRenderBatch()));
 
     requestAnimationFrame(() => {
       const node = messageThreadRef.current;
-      if (!node) return;
-      const nextScrollHeight = node.scrollHeight;
-      node.scrollTop = previousScrollTop + (nextScrollHeight - previousScrollHeight);
+      if (node) {
+        const nextScrollHeight = node.scrollHeight;
+        node.scrollTop = previousScrollTop + (nextScrollHeight - previousScrollHeight);
+      }
+      preserveNextMessageScrollRef.current = false;
     });
   }, [messages.length]);
 
@@ -2385,12 +2416,14 @@ export default function Messages() {
       fetchGroups();
 
       if (belongsToOpenChat) {
+        const shouldAutoScroll = fromId === currentUserId || isThreadNearBottom();
+        pendingAutoScrollRef.current = shouldAutoScroll;
         setMessages(prev => {
           if (prev.some(item => getEntityId(item) === messageId)) return prev;
           return [...prev, message];
         });
         setOtherUserTyping(false);
-        scrollToBottom();
+        if (shouldAutoScroll) scrollToBottom();
 
         if (fromId !== currentUserId && !message.system) {
           if (soundEnabled && !mutedConversationIds.has(fromId)) playUiSound('message', 0.5);
@@ -2560,6 +2593,7 @@ export default function Messages() {
     handleCallOffer,
     handleCallUnavailable,
     handleIncomingCallStart,
+    isThreadNearBottom,
     handleRemoteCallEnd,
     handleRemoteCallRejected,
     markChatAsRead,
@@ -2627,6 +2661,8 @@ export default function Messages() {
   useEffect(() => {
     if (!messages.length || loading) return undefined;
 
+    if (preserveNextMessageScrollRef.current) return undefined;
+
     if (openingConversationRef.current) {
       const cleanupScroll = stabilizeOpeningScroll();
       const finishTimer = window.setTimeout(() => {
@@ -2640,10 +2676,13 @@ export default function Messages() {
       };
     }
 
-    scrollToBottom('smooth');
+    if (pendingAutoScrollRef.current || isThreadNearBottom()) {
+      pendingAutoScrollRef.current = false;
+      scrollToBottom('smooth');
+    }
 
     return undefined;
-  }, [loading, messages.length, scrollThreadToBottomNow, scrollToBottom, selectedUserId, stabilizeOpeningScroll]);
+  }, [isThreadNearBottom, loading, messages.length, scrollThreadToBottomNow, scrollToBottom, selectedUserId, stabilizeOpeningScroll]);
 
   useEffect(() => {
     return () => {
@@ -2711,6 +2750,7 @@ export default function Messages() {
       }
 
       const res = await api.post('/messages', payload);
+      pendingAutoScrollRef.current = true;
       setMessages(prev => {
         if (prev.some(item => getEntityId(item) === getEntityId(res.data))) return prev;
         return [...prev, res.data];
@@ -2889,6 +2929,15 @@ export default function Messages() {
     if (item?.person) {
       setProfileUser(item.person);
     }
+  };
+
+  const handleOpenTrayStory = (item) => {
+    const story = getStoryGroupPreview(item?.storyGroup);
+    if (story) {
+      openStory(story);
+      return;
+    }
+    handleOpenNote(item);
   };
 
   const toggleGroupMember = (person) => {
@@ -3623,7 +3672,14 @@ export default function Messages() {
   }, []);
 
   const handleConversationListScroll = useCallback((event) => {
-    setConversationListScrollTop(event.currentTarget.scrollTop || 0);
+    pendingConversationScrollTopRef.current = event.currentTarget.scrollTop || 0;
+    if (conversationScrollFrameRef.current) return;
+
+    conversationScrollFrameRef.current = requestAnimationFrame(() => {
+      conversationScrollFrameRef.current = null;
+      const nextScrollTop = pendingConversationScrollTopRef.current;
+      setConversationListScrollTop(prev => (prev === nextScrollTop ? prev : nextScrollTop));
+    });
   }, []);
 
   useEffect(() => {
@@ -3639,6 +3695,10 @@ export default function Messages() {
     window.addEventListener('resize', measureConversationViewport);
     return () => window.removeEventListener('resize', measureConversationViewport);
   }, [measureConversationViewport]);
+
+  useEffect(() => () => {
+    if (conversationScrollFrameRef.current) cancelAnimationFrame(conversationScrollFrameRef.current);
+  }, []);
 
   const virtualizedConversationState = useMemo(() => {
     const total = filteredConversations.length;
@@ -3689,6 +3749,9 @@ export default function Messages() {
     : undefined;
   const selectedGroupBackgroundKey = normalizeChatBackgroundKey(selectedGroup?.backgroundId);
   const selectedGroupBackground = getChatBackground(selectedGroupBackgroundKey);
+  const selectedGroupBackgroundStyle = selectedGroupBackground?.image
+    ? { '--chat-background-image': `url("${selectedGroupBackground.image}")` }
+    : undefined;
   const selectedGroupMembersList = selectedGroup?.members || [];
   const canManageSelectedGroup = Boolean(
     selectedGroupId
@@ -4048,8 +4111,8 @@ export default function Messages() {
   }, [messageWindowingEnabled, messages, visibleMessageCount]);
   const hiddenLocalMessageCount = messageWindowingEnabled ? Math.max(0, messages.length - renderedMessages.length) : 0;
   const renderedTimelineItems = useMemo(() => {
-    const messageItems = renderedMessages.map(message => ({
-      id: `message-${getEntityId(message)}`,
+    const messageItems = renderedMessages.map((message, index) => ({
+      id: `message-${getStableMessageKey(message, index)}`,
       type: 'message',
       timestamp: new Date(message.createdAt || 0).getTime() || 0,
       message
@@ -4091,6 +4154,17 @@ export default function Messages() {
   }, [renderedMessages, selectedConversationCallHistory]);
   const hiddenMessageCount = hiddenLocalMessageCount + (hasOlderMessages ? 1 : 0);
   const hiddenMessageStep = getMessageRenderBatch();
+
+  useRenderDebug('Messages', () => ({
+    selectedUserId,
+    totalMessages: messages.length,
+    renderedMessages: renderedMessages.length,
+    timelineItems: renderedTimelineItems.length,
+    mediaMessages: renderedMessages.filter(message => getMessageAttachments(message).length > 0).length,
+    storyReplies: renderedMessages.filter(isMyDayReplyMessage).length,
+    noteReplies: renderedMessages.filter(isNoteReplyMessage).length,
+    sending
+  }));
 
   useEffect(() => {
     if (!selectedUserId || !socket) return undefined;
@@ -4190,7 +4264,7 @@ export default function Messages() {
     };
   };
 
-  const MessageStatus = ({ message, isLatestOwn }) => {
+  const renderMessageStatus = (message, isLatestOwn) => {
     if (getEntityId(message.from) !== currentUserId) return null;
     const seenAvatar = getUserAvatar(selectedUser);
     const seenDate = message.readAt ? new Date(message.readAt) : null;
@@ -4210,7 +4284,7 @@ export default function Messages() {
     );
   };
 
-  const ReplyPreview = ({ message, isMe }) => {
+  const renderReplyPreview = (message, isMe) => {
     if (!message.replyTo) return null;
 
     const replySenderId = getEntityId(message.replyTo.from);
@@ -4231,7 +4305,7 @@ export default function Messages() {
     );
   };
 
-  const MessageAttachment = ({ message, isMe, isMyDayReply = false }) => {
+  const renderMessageAttachment = (message, isMe, isMyDayReply = false) => {
     if (message.unsent) {
       return <p className="text-sm italic opacity-75">This message was unsent</p>;
     }
@@ -4848,41 +4922,52 @@ export default function Messages() {
                     : ' is-story-unviewed'
                   : '';
                 return (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
-                    onClick={() => handleOpenNote(item)}
                     className={`messenger-note-head group w-[5.35rem] shrink-0 text-center ${storyOnly ? 'is-story-only' : ''}`}
-                    aria-label={storyOnly ? `View ${item.isMe ? 'your' : item.person?.name || 'friend'} My Day` : undefined}
                   >
                     <span className="messenger-note-card relative mx-auto flex min-h-[5.75rem] w-[5.25rem] flex-col items-center justify-end">
                       {!storyOnly && (
-                        <span className={`messenger-note-bubble line-clamp-2 min-h-7 max-w-[5.05rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
+                        <button
+                          type="button"
+                          onClick={() => handleOpenNote(item)}
+                          className={`messenger-note-bubble line-clamp-2 min-h-7 max-w-[5.05rem] rounded-2xl px-2 py-1 text-[10px] font-black leading-tight shadow-sm ring-1 ${
                           item.hasNote
                             ? 'bg-white text-slate-800 ring-slate-200 dark:bg-gray-900 dark:text-white dark:ring-gray-700'
                             : 'bg-[#1877f2] text-white ring-blue-300'
-                        }`}>
+                        }`}
+                          aria-label={item.hasNote ? `Open ${item.isMe ? 'your' : item.person?.name || 'friend'} note` : 'Create note'}
+                        >
                           {item.text}
-                        </span>
+                        </button>
                       )}
-                      <span className={`messenger-note-avatar mt-1 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950${storyRingClass}`}>
+                      <button
+                        type="button"
+                        onClick={() => (item.hasStory ? handleOpenTrayStory(item) : handleOpenNote(item))}
+                        className={`messenger-note-avatar mt-1 rounded-full ring-2 ring-white transition group-hover:ring-[#1877f2] dark:ring-gray-950${storyRingClass}`}
+                        aria-label={item.hasStory ? `View ${item.isMe ? 'your' : item.person?.name || 'friend'} My Day` : `Open ${item.isMe ? 'your' : item.person?.name || 'friend'} note`}
+                      >
                         {noteAvatar}
-                      </span>
-                      {item.hasNote && (
-                        <span className="messenger-note-time absolute bottom-0 left-1 z-20 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-black text-white ring-2 ring-white dark:ring-gray-950">
-                          {getNoteTimeLeft(item.note?.expiresAt)}
-                        </span>
-                      )}
+                      </button>
                       {item.isMe && !storyOnly && (
-                        <span className="messenger-note-add absolute bottom-0 right-3 z-20 grid h-5 w-5 place-items-center rounded-full bg-[#1877f2] text-white ring-2 ring-white dark:ring-gray-950">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenNote(item)}
+                          className="messenger-note-add absolute bottom-0 right-3 z-20 grid h-5 w-5 place-items-center rounded-full bg-[#1877f2] text-white ring-2 ring-white dark:ring-gray-950"
+                          aria-label="Edit your note"
+                        >
                           <Plus size={12} strokeWidth={3} />
-                        </span>
+                        </button>
                       )}
                     </span>
-                    <span className="mt-1 block truncate text-[11px] font-bold text-slate-600 dark:text-gray-300">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenNote(item)}
+                      className="mt-1 block w-full truncate text-[11px] font-bold text-slate-600 transition hover:text-[#1877f2] dark:text-gray-300 dark:hover:text-sky-200"
+                    >
                       {item.isMe ? 'Your note' : item.person?.name || 'Friend'}
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -5156,20 +5241,44 @@ export default function Messages() {
         </aside>
 
           {selectedGroup ? (
-            <section className="mobile-conversation-panel flex min-w-0 flex-1 flex-col bg-slate-50/90 p-2 dark:bg-gray-950/70 md:p-3">
-              <div className="mb-2 flex items-center gap-2 md:hidden">
+            <section
+              className={`mobile-conversation-panel ${selectedGroupBackground.className} flex min-w-0 flex-1 flex-col bg-slate-50/90 dark:bg-gray-950/70`}
+              style={selectedGroupBackgroundStyle}
+            >
+              <header className="mobile-chat-header mobile-group-chat-header flex items-center gap-2 border-b border-gray-200/80 bg-white/95 px-3 py-3 dark:border-gray-800 dark:bg-gray-950/95 sm:gap-3 sm:px-4">
                 <button
                   onClick={() => setSelectedGroup(null)}
-                  className="mobile-chat-icon-button flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="mobile-chat-icon-button flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden"
                   aria-label="Back to conversations"
                 >
                   <ArrowLeft size={21} strokeWidth={2.7} />
                 </button>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">{selectedGroup.name || 'Group chat'}</p>
-                  <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{selectedGroupMembersList.length} members</p>
-                </div>
-              </div>
+                <button
+                  type="button"
+                  onClick={openGroupSettings}
+                  className="mobile-chat-avatar relative shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-blue-200"
+                  title="Group settings"
+                >
+                  {renderGroupAvatar(selectedGroup, 'h-12 w-12')}
+                </button>
+                <button type="button" onClick={openGroupSettings} className="min-w-0 flex-1 text-left" title="Group settings">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="truncate font-semibold text-gray-950 dark:text-white">{selectedGroup.name || 'Group chat'}</div>
+                  </div>
+                  <div className="mt-0.5 truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                    {selectedGroupMembersList.length} members
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={openGroupSettings}
+                  className="mobile-chat-icon-button mobile-chat-details-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
+                  aria-label="Open group details"
+                  title="Group details"
+                >
+                  <MoreVertical size={18} />
+                </button>
+              </header>
               <GroupChat
                 key={selectedGroupId}
                 groupId={selectedGroupId}
@@ -5178,6 +5287,7 @@ export default function Messages() {
                 onUserClick={setProfileUser}
                 background={selectedGroupBackground}
                 onOpenSettings={openGroupSettings}
+                embedded
               />
             </section>
           ) : selectedUser ? (
@@ -5241,7 +5351,7 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={() => setShowChatDetails(true)}
-                  className="mobile-chat-icon-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
+                  className="mobile-chat-icon-button mobile-chat-details-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
                   aria-label="Open chat details"
                   title="Chat details"
                 >
@@ -5551,9 +5661,9 @@ export default function Messages() {
                                 }}
                                 className={bubbleClassName}
                               >
-                                <ReplyPreview message={message} isMe={isMe} />
+                                {renderReplyPreview(message, isMe)}
                                 <div className="space-y-2">
-                                  <MessageAttachment message={message} isMe={isMe} isMyDayReply={isContextReply} />
+                                  {renderMessageAttachment(message, isMe, isContextReply)}
                                   {message.text && !message.unsent && (
                                     isContextReply ? (
                                       <div className="rounded-2xl bg-gray-50 px-3 py-2.5 text-left ring-1 ring-gray-100 dark:bg-gray-950/60 dark:ring-gray-800">
@@ -5609,7 +5719,7 @@ export default function Messages() {
 
                               <div className={`mobile-message-actions ${hasReactions ? 'message-actions-has-reactions' : ''} mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <span className="message-action-time text-[11px] text-gray-400">{formatMessageTime(message.createdAt)}</span>
-                                <MessageStatus message={message} isLatestOwn={isLatestOwn} />
+                                {renderMessageStatus(message, isLatestOwn)}
                               </div>
                             </div>
                             </div>

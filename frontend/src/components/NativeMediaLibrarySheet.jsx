@@ -1,14 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Check, ChevronDown, Image as ImageIcon, Loader2, PlayCircle, RefreshCw, Video, X } from 'lucide-react';
-import VideoThumbnail from './VideoThumbnail';
 import {
   listNativeMedia,
   requestNativeMediaPermission
 } from '../utils/nativeMediaLibrary';
 
-const PAGE_SIZE = 90;
+const PAGE_SIZE = 45;
+const INITIAL_RENDER_COUNT = 27;
+const RENDER_CHUNK_SIZE = 18;
 
 const FILTERS = [
   { id: 'all', label: 'All photos', icon: ImageIcon },
@@ -23,21 +24,42 @@ function NativeMediaVideoPreview({ asset }) {
   return (
     <span className="native-media-video-preview">
       {thumbnailSrc ? (
-        <img src={thumbnailSrc} alt="" loading="lazy" onError={() => setThumbnailFailed(true)} />
+        <img src={thumbnailSrc} alt="" loading="lazy" decoding="async" draggable="false" onError={() => setThumbnailFailed(true)} />
       ) : (
-        <VideoThumbnail
-          src={asset.webPath}
-          className="h-full w-full"
-          rounded="rounded-none"
-          iconSize={20}
-          showOverlay={false}
-          label={asset.name || 'Video preview'}
-        />
+        <span className="native-media-video-placeholder">
+          <Video size={24} />
+        </span>
       )}
       <span className="native-media-play"><PlayCircle size={20} /></span>
     </span>
   );
 }
+
+const NativeMediaTile = memo(function NativeMediaTile({ asset, selectedIndex, onToggle }) {
+  const isSelected = selectedIndex >= 0;
+
+  const handleClick = useCallback(() => {
+    onToggle(asset);
+  }, [asset, onToggle]);
+
+  return (
+    <button
+      type="button"
+      className={`native-media-tile ${isSelected ? 'native-media-tile--selected' : ''}`}
+      onClick={handleClick}
+      aria-label={`Select ${asset.name}`}
+    >
+      {asset.type === 'video' ? (
+        <NativeMediaVideoPreview asset={asset} />
+      ) : (
+        <img src={asset.webPath} alt="" loading="lazy" decoding="async" draggable="false" />
+      )}
+      <span className="native-media-check">
+        {isSelected ? selectedIndex + 1 : null}
+      </span>
+    </button>
+  );
+});
 
 export default function NativeMediaLibrarySheet({
   open,
@@ -57,6 +79,7 @@ export default function NativeMediaLibrarySheet({
   const [preparing, setPreparing] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
+  const [visibleAssetCount, setVisibleAssetCount] = useState(INITIAL_RENDER_COUNT);
 
   const availableSlots = Math.max(0, maxSelection - existingCount);
   const activeFilter = FILTERS.find(item => item.id === filter) || FILTERS[0];
@@ -64,10 +87,15 @@ export default function NativeMediaLibrarySheet({
     () => selectedIds.map(id => assets.find(asset => asset.id === id)).filter(Boolean),
     [assets, selectedIds]
   );
+  const visibleAssets = useMemo(
+    () => assets.slice(0, Math.min(visibleAssetCount, assets.length)),
+    [assets, visibleAssetCount]
+  );
 
   const loadMedia = async ({ reset = false, nextFilter = filter } = {}) => {
     setLoading(true);
     setError('');
+    if (reset) setVisibleAssetCount(INITIAL_RENDER_COUNT);
     try {
       const nextOffset = reset ? 0 : assets.length;
       const result = await listNativeMedia({
@@ -96,6 +124,18 @@ export default function NativeMediaLibrarySheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialFilter]);
 
+  useEffect(() => {
+    if (!open || visibleAssetCount >= assets.length) return undefined;
+
+    const schedule = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 32));
+    const cancel = window.cancelIdleCallback || window.clearTimeout;
+    const handle = schedule(() => {
+      setVisibleAssetCount(count => Math.min(assets.length, count + RENDER_CHUNK_SIZE));
+    });
+
+    return () => cancel(handle);
+  }, [assets.length, open, visibleAssetCount]);
+
   if (!open || typeof document === 'undefined') return null;
 
   const changeFilter = (nextFilter) => {
@@ -103,6 +143,7 @@ export default function NativeMediaLibrarySheet({
     setSelectedIds([]);
     setAssets([]);
     setHasMore(false);
+    setVisibleAssetCount(INITIAL_RENDER_COUNT);
     loadMedia({ reset: true, nextFilter });
   };
 
@@ -120,7 +161,7 @@ export default function NativeMediaLibrarySheet({
     }
   };
 
-  const toggleAsset = (asset) => {
+  const toggleAsset = useCallback((asset) => {
     setSelectedIds(prev => {
       if (prev.includes(asset.id)) return prev.filter(id => id !== asset.id);
       if (prev.length >= availableSlots) {
@@ -129,7 +170,7 @@ export default function NativeMediaLibrarySheet({
       }
       return [...prev, asset.id];
     });
-  };
+  }, [availableSlots, maxSelection]);
 
   const finishSelection = async () => {
     if (!selectedAssets.length || preparing) return;
@@ -196,26 +237,15 @@ export default function NativeMediaLibrarySheet({
           <>
             {error && <p className="native-media-error">{error}</p>}
             <div className="native-media-grid">
-              {assets.map(asset => {
+              {visibleAssets.map(asset => {
                 const selectedIndex = selectedIds.indexOf(asset.id);
-                const isSelected = selectedIndex >= 0;
                 return (
-                  <button
+                  <NativeMediaTile
                     key={asset.id}
-                    type="button"
-                    className={`native-media-tile ${isSelected ? 'native-media-tile--selected' : ''}`}
-                    onClick={() => toggleAsset(asset)}
-                    aria-label={`Select ${asset.name}`}
-                  >
-                    {asset.type === 'video' ? (
-                      <NativeMediaVideoPreview asset={asset} />
-                    ) : (
-                      <img src={asset.webPath} alt="" loading="lazy" />
-                    )}
-                    <span className="native-media-check">
-                      {isSelected ? selectedIndex + 1 : null}
-                    </span>
-                  </button>
+                    asset={asset}
+                    selectedIndex={selectedIndex}
+                    onToggle={toggleAsset}
+                  />
                 );
               })}
               {loading && (

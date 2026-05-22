@@ -4564,7 +4564,7 @@ html.syncrova-native-app .mobile-bottom-nav {
   align-items: flex-end;
   justify-content: center;
   background: rgba(2, 6, 23, 0.42);
-  backdrop-filter: blur(5px);
+  backdrop-filter: none;
 }
 
 .native-media-sheet {
@@ -4676,6 +4676,7 @@ html.syncrova-native-app .mobile-bottom-nav {
   gap: 0.45rem;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 0.55rem;
   background: #f8fafc;
 }
@@ -4691,6 +4692,9 @@ html.syncrova-native-app .mobile-bottom-nav {
   border-radius: 0.9rem;
   background: #020617;
   padding: 0;
+  contain: layout paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 8rem;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
@@ -4700,6 +4704,7 @@ html.syncrova-native-app .mobile-bottom-nav {
   height: 100%;
   display: block;
   object-fit: cover;
+  backface-visibility: hidden;
 }
 
 .native-media-tile--selected {
@@ -4720,6 +4725,17 @@ html.syncrova-native-app .mobile-bottom-nav {
 
 .native-media-video-preview .relative {
   border-radius: 0;
+}
+
+.native-media-video-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(59, 130, 246, 0.26), transparent 42%),
+    #0f172a;
+  color: rgba(255, 255, 255, 0.84);
 }
 
 .native-media-check {
@@ -10650,6 +10666,11 @@ html.syncrova-native-app .mobile-message-actions button {
     gap: 0.34rem !important;
   }
 
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-details-button {
+    display: grid !important;
+    flex: 0 0 auto !important;
+  }
+
   .messages-pro-shell.mobile-messenger-shell .mobile-chat-icon-button {
     height: 2.45rem !important;
     width: 2.45rem !important;
@@ -10850,6 +10871,77 @@ html.syncrova-native-app .mobile-message-actions button {
     grid-template-columns: 2.42rem 2.42rem 2.42rem minmax(0, 1fr) 2.85rem !important;
     gap: 0.34rem !important;
     align-items: center !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-chat-shell--embedded {
+    height: auto !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-group-chat-header .mobile-chat-avatar [class*="h-12"][class*="w-12"] {
+    height: 2.85rem !important;
+    width: 2.85rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-chat-search-bar {
+    border-bottom: 1px solid var(--messenger-border) !important;
+    background: var(--messenger-header) !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-chat-thread.mobile-message-thread .group-message-row {
+    contain: paint;
+    margin-bottom: 0.58rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-message-row > .mr-2 {
+    margin-right: 0.45rem !important;
+    margin-top: 0.16rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-message-row > .mr-2 [class*="h-9"][class*="w-9"] {
+    height: 2.2rem !important;
+    width: 2.2rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-message-composer-footer {
+    border-top: 1px solid var(--messenger-border) !important;
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0), var(--messenger-page) 24%),
+      var(--messenger-page) !important;
+    padding: 0.58rem 0.82rem calc(0.7rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  html:not(.dark) .messages-pro-shell.mobile-messenger-shell .group-message-composer-footer {
+    background:
+      linear-gradient(180deg, rgba(246, 248, 251, 0), rgba(246, 248, 251, 0.98) 24%),
+      #f6f8fb !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-message-composer-grid {
+    display: grid !important;
+    grid-template-columns: 2.42rem 2.42rem minmax(0, 1fr) 2.85rem !important;
+    gap: 0.34rem !important;
+    align-items: center !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-message-composer-input {
+    min-height: 2.78rem !important;
+    min-width: 0 !important;
+    border-color: var(--messenger-border) !important;
+    border-radius: 9999px !important;
+    background: var(--messenger-surface-strong) !important;
+    color: var(--messenger-text) !important;
+    padding: 0.18rem 0.8rem !important;
+    box-shadow: var(--messenger-soft-shadow) !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .group-message-composer-input input {
+    font-size: 0.96rem !important;
+    font-weight: 700 !important;
   }
 
   .messages-pro-shell.mobile-messenger-shell .message-composer-action,
@@ -11682,4 +11774,156 @@ html.syncrova-native-app .mobile-message-actions button {
 
 .mobile-chat-avatar.is-online {
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.24);
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-bubble,
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar {
+  padding: 0;
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-bubble {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 1;
+  display: -webkit-box !important;
+  width: max-content;
+  min-width: 2.55rem;
+  max-width: 5.1rem;
+  margin-inline: auto;
+  overflow: hidden;
+  text-align: left;
+  word-break: break-word;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar {
+  position: relative !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-unviewed,
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-viewed {
+  padding: 3px;
+  box-shadow: 0 0 0 2px #ffffff, 0 8px 20px rgba(15, 23, 42, 0.12) !important;
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-unviewed {
+  background: #1877f2;
+}
+
+.messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-viewed {
+  background: #cbd5e1;
+}
+
+.messenger-note-head > button:last-child {
+  min-height: 1.65rem;
+}
+
+.dark .messenger-note-head > span.messenger-note-card > button.messenger-note-bubble {
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+}
+
+.dark .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-unviewed,
+.dark .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-viewed {
+  box-shadow: 0 0 0 2px #030712, 0 10px 24px rgba(0, 0, 0, 0.28) !important;
+}
+
+.message-media-attachment,
+.message-album-attachment {
+  contain: layout paint;
+  overflow-anchor: none;
+}
+
+.message-media-attachment :where(img, video),
+.message-album-attachment :where(img, video),
+.group-chat-thread :where(img, video) {
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.mobile-message-thread .message-row,
+.group-chat-thread .group-message-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 6.5rem;
+}
+
+.group-chat-thread {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.group-chat-header {
+  box-shadow: 0 1px 0 rgba(226, 232, 240, 0.72);
+}
+
+.notification-panel-shell .notification-panel-row + .notification-panel-row {
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 767px) {
+  .group-chat-shell:not(.group-chat-shell--embedded) {
+    height: calc(100svh - 5.5rem - env(safe-area-inset-bottom, 0px)) !important;
+    border-radius: 1.2rem !important;
+  }
+
+  .group-chat-header {
+    padding: 0.75rem !important;
+  }
+
+  .group-chat-thread {
+    padding: 0.85rem !important;
+  }
+
+  .messenger-note-head > span.messenger-note-card > button.messenger-note-bubble {
+    max-width: 4.7rem;
+    font-size: 0.64rem !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-header {
+    gap: 0.34rem !important;
+    padding-left: 0.48rem !important;
+    padding-right: 0.48rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-header .min-w-0.flex-1 {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-header .mobile-chat-avatar [class*="h-12"][class*="w-12"],
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-avatar [class*="h-12"][class*="w-12"] {
+    height: 2.38rem !important;
+    width: 2.38rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-call-actions {
+    gap: 0.16rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-icon-button {
+    height: 2.12rem !important;
+    width: 2.12rem !important;
+    min-width: 2.12rem !important;
+  }
+
+  .messages-pro-shell.mobile-messenger-shell .mobile-chat-icon-button svg {
+    height: 1rem !important;
+    width: 1rem !important;
+  }
 }

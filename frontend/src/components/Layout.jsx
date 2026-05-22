@@ -1266,13 +1266,18 @@ export default function Layout({ children }) {
   const selectedNotificationActorAvatar = resolveMediaUrl(selectedNotificationActor?.avatar);
   const notificationListPanel = (
     <section
-      className="w-full max-w-md overflow-hidden rounded-[1.6rem] border border-white/70 bg-white text-slate-950 shadow-2xl shadow-slate-950/25 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+      className="notification-panel-shell w-full max-w-md overflow-hidden rounded-[1.35rem] border border-white/80 bg-white text-slate-950 shadow-2xl shadow-slate-950/25 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
       onClick={event => event.stopPropagation()}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
-        <div>
-          <p className="text-base font-black text-slate-950 dark:text-white">Notifications</p>
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{notificationUnreadCount} unread</p>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/55">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-[#0b57d0] shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-sky-200 dark:ring-slate-800">
+            <Bell size={20} />
+          </span>
+          <span className="min-w-0">
+            <p className="text-base font-black text-slate-950 dark:text-white">Notifications</p>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{notificationUnreadCount} unread</p>
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={markAllNotificationsRead} className="grid h-10 w-10 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" title="Mark all read">
@@ -1308,10 +1313,10 @@ export default function Layout({ children }) {
             return (
               <article
                 key={row.key}
-                className={`overflow-hidden rounded-2xl transition ${
+                className={`notification-panel-row overflow-hidden rounded-2xl border shadow-sm transition ${
                   row.unreadCount
-                    ? 'bg-blue-50/85 dark:bg-blue-950/25'
-                    : 'hover:bg-slate-50 dark:hover:bg-slate-900'
+                    ? 'border-blue-100 bg-blue-50/70 shadow-blue-100/50 dark:border-blue-900/45 dark:bg-blue-950/18 dark:shadow-black/20'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/75 dark:hover:bg-slate-900'
                 }`}
               >
                 <button
@@ -1319,9 +1324,9 @@ export default function Layout({ children }) {
                   onClick={() => openNotificationThread(row)}
                   className="group flex w-full items-start gap-3 p-3 text-left"
                 >
-                  <span className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white">
+                  <span className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white text-[#0b57d0] shadow-sm ring-1 ring-blue-100 dark:bg-slate-950 dark:text-sky-200 dark:ring-blue-900/50">
                     {actorAvatar ? <img src={actorAvatar} alt={displayName} className="h-full w-full object-cover" /> : <MessageCircle size={18} />}
-                    {row.unreadCount > 0 && <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white dark:ring-slate-950" />}
+                    {row.unreadCount > 0 && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-[#0b57d0] ring-2 ring-white dark:ring-slate-950" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2">
@@ -1353,7 +1358,7 @@ export default function Layout({ children }) {
                   </span>
                 </button>
                 {isExpanded && (
-                  <div className="border-t border-slate-200/70 bg-white/70 p-1.5 dark:border-slate-800 dark:bg-black/20">
+                  <div className="border-t border-slate-200/70 bg-white/80 p-1.5 dark:border-slate-800 dark:bg-black/20">
                     {row.items.map(notification => (
                       <button
                         key={getEntityId(notification)}
@@ -1361,7 +1366,7 @@ export default function Layout({ children }) {
                         onClick={() => openNotification(notification)}
                         className="flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition hover:bg-blue-50 dark:hover:bg-blue-950/25"
                       >
-                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-emerald-400'}`} />
+                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-[#0b57d0]'}`} />
                         <span className="min-w-0 flex-1">
                           <span className="line-clamp-2 text-xs font-bold text-slate-700 dark:text-slate-200">{notification.body || notification.title}</span>
                           <span className="mt-0.5 block text-[10px] font-black uppercase text-slate-400">{formatNotificationTime(notification.createdAt)}</span>
@@ -1382,9 +1387,13 @@ export default function Layout({ children }) {
               key={row.key}
               type="button"
               onClick={() => openNotification(notification)}
-              className={`group flex w-full items-start gap-3 rounded-2xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900 ${notification.read ? '' : 'bg-blue-50/80 dark:bg-blue-950/25'}`}
+              className={`notification-panel-row group flex w-full items-start gap-3 rounded-2xl border p-3 text-left shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-900 ${
+                notification.read
+                  ? 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/75'
+                  : 'border-blue-100 bg-blue-50/70 dark:border-blue-900/45 dark:bg-blue-950/18'
+              }`}
             >
-              <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white">
+              <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white text-[#0b57d0] shadow-sm ring-1 ring-blue-100 dark:bg-slate-950 dark:text-sky-200 dark:ring-blue-900/50">
                 {actorAvatar ? <img src={actorAvatar} alt={actor.name || 'User'} className="h-full w-full object-cover" /> : (actor.name || notification.type || 'N').charAt(0).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1">

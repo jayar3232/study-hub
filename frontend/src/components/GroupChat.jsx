@@ -17,7 +17,6 @@ import {
   Video,
   X
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
@@ -27,12 +26,26 @@ import LoadingSpinner from './LoadingSpinner';
 import MediaViewer from './MediaViewer';
 import VideoThumbnail from './VideoThumbnail';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
+import useRenderDebug from '../hooks/useRenderDebug';
 
 let socket;
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🔥', '👏', '✅'];
 const GROUP_MESSAGE_RENDER_BATCH = 140;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const getStableMessageKey = (message = {}, index = '') => {
+  const id = getEntityId(message);
+  if (id) return id;
+  return [
+    message.clientId,
+    message.createdAt,
+    getEntityId(message.userId),
+    getEntityId(message.groupId),
+    message.fileUrl,
+    String(message.text || '').slice(0, 48),
+    index
+  ].filter(Boolean).join(':') || `group-message-${index}`;
+};
 const getUserInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?');
 const getFileName = (value = '') => {
   try {
@@ -42,8 +55,14 @@ const getFileName = (value = '') => {
     return value.split('/').pop() || 'Attachment';
   }
 };
+const formatMessageTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
 
-export default function GroupChat({ groupId, group, members = [], onUserClick, background, onOpenSettings }) {
+export default function GroupChat({ groupId, group, members = [], onUserClick, background, onOpenSettings, embedded = false }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(GROUP_MESSAGE_RENDER_BATCH);
@@ -59,13 +78,27 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
   const [replyingTo, setReplyingTo] = useState(null);
   const [search, setSearch] = useState('');
   const [showPinned, setShowPinned] = useState(true);
+  const threadRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const pendingAutoScrollRef = useRef(false);
   const currentUserId = getEntityId(user);
 
   const scrollToBottom = (behavior = 'smooth') => {
     requestAnimationFrame(() => {
+      if (threadRef.current) {
+        if (behavior === 'auto') threadRef.current.scrollTop = threadRef.current.scrollHeight;
+        else threadRef.current.scrollTo({ top: threadRef.current.scrollHeight, behavior });
+        return;
+      }
+
       messagesEndRef.current?.scrollIntoView({ behavior });
     });
+  };
+
+  const isThreadNearBottom = (threshold = 180) => {
+    const thread = threadRef.current;
+    if (!thread) return true;
+    return thread.scrollHeight - thread.scrollTop - thread.clientHeight <= threshold;
   };
 
   const upsertMessage = (nextMessage) => {
@@ -77,6 +110,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
   const fetchMessages = async () => {
     try {
       const res = await api.get(`/group-chat/${groupId}`);
+      pendingAutoScrollRef.current = true;
       setMessages(res.data || []);
       scrollToBottom('auto');
     } catch (err) {
@@ -273,7 +307,15 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
     [messages]
   );
 
-  const ReactionSummary = ({ message }) => {
+  useRenderDebug('GroupChat', () => ({
+    groupId,
+    messages: messages.length,
+    renderedMessages: renderedMessages.length,
+    mediaMessages: renderedMessages.filter(message => ['image', 'video'].includes(message.fileType)).length,
+    searchActive: groupSearchActive
+  }));
+
+  const renderReactionSummary = (message) => {
     if (!message.reactions?.length) return null;
     const counts = message.reactions.reduce((map, reaction) => {
       map[reaction.emoji] = (map[reaction.emoji] || 0) + 1;
@@ -297,7 +339,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
     );
   };
 
-  const SeenStatus = ({ message }) => {
+  const renderSeenStatus = (message) => {
     const seenUsers = getSeenUsers(message);
     if (seenUsers.length === 0) {
       return (
@@ -326,7 +368,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
     );
   };
 
-  const ReplyPreview = ({ message, compact = false }) => {
+  const renderReplyPreview = (message, compact = false) => {
     if (!message) return null;
     const mediaLabel = message.fileType === 'image' ? 'Photo' : message.fileType === 'video' ? 'Video' : 'Message';
     return (
@@ -411,11 +453,13 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
     const handleReceive = (message) => {
       if (getEntityId(message.groupId) !== getEntityId(groupId)) return;
 
+      const shouldAutoScroll = getEntityId(message.userId) === currentUserId || isThreadNearBottom();
+      pendingAutoScrollRef.current = shouldAutoScroll;
       setMessages(prev => {
         if (prev.some(item => getEntityId(item) === getEntityId(message))) return prev;
         return [...prev, message];
       });
-      scrollToBottom();
+      if (shouldAutoScroll) scrollToBottom();
 
       if (getEntityId(message.userId) !== currentUserId) {
         playUiSound('message');
@@ -463,7 +507,10 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
   }, [groupId, currentUserId]);
 
   useEffect(() => {
-    scrollToBottom();
+    if (pendingAutoScrollRef.current || isThreadNearBottom()) {
+      pendingAutoScrollRef.current = false;
+      scrollToBottom();
+    }
   }, [messages.length]);
 
   const memberPreview = members.slice(0, 5);
@@ -472,103 +519,125 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
   const backgroundStyle = background?.image
     ? { '--chat-background-image': `url("${background.image}")` }
     : undefined;
+  const pinnedMessageStrip = showPinned && pinnedMessages.length > 0 ? (
+    <div className={`group-chat-pinned-strip ${embedded ? 'border-b border-yellow-200 bg-yellow-50/95 px-3 py-2 dark:border-yellow-900/60 dark:bg-yellow-950/20' : 'mt-3 flex gap-2 overflow-x-auto pb-1'}`}>
+      <div className={embedded ? 'flex gap-2 overflow-x-auto pb-1' : 'contents'}>
+        {pinnedMessages.slice(0, 8).map(message => (
+          <button
+            key={getEntityId(message)}
+            type="button"
+            onClick={() => setSearch(message.text || getFileName(message.fileUrl || ''))}
+            className="flex min-w-[13rem] max-w-[16rem] items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 transition hover:border-amber-200 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200"
+          >
+            <Pin size={14} className="shrink-0" />
+            <span className="min-w-0">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-black">{message.userId?.name || 'Member'}</span>
+                <DeveloperBadge user={message.userId} compact />
+              </span>
+              <span className="block truncate">{message.text || getFileName(message.fileUrl || '')}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
 
   if (loading) {
     return (
-      <div className="flex h-[520px] items-center justify-center rounded-2xl border border-gray-200 bg-white/80 text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
+      <div className={embedded ? 'group-chat-shell group-chat-shell--embedded flex min-h-0 flex-1 items-center justify-center bg-transparent text-gray-500' : 'flex h-[520px] items-center justify-center rounded-2xl border border-gray-200 bg-white/80 text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900/80'}>
         <LoadingSpinner compact label="Loading chat" />
       </div>
     );
   }
 
   return (
-    <div className="group-chat-shell flex h-[calc(100svh-8rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-gray-200/80 bg-white shadow-xl shadow-pink-500/5 dark:border-gray-800 dark:bg-gray-900 sm:h-[min(78vh,820px)] sm:min-h-[500px]">
-      <div className="border-b border-gray-200/80 bg-white/95 p-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 sm:p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-pink-50 text-pink-600 shadow-sm ring-1 ring-gray-200 dark:bg-pink-950/30 dark:text-pink-300 dark:ring-gray-800">
-              {groupPhotoUrl ? (
-                <img src={groupPhotoUrl} alt={group?.name || 'Team Chat'} className="h-full w-full object-cover" />
-              ) : memberPreview.length > 0 ? (
-                <div className="flex -space-x-3">
-                  {memberPreview.slice(0, 3).map(member => (
-                    <div key={getEntityId(member)} className="rounded-full border-2 border-white dark:border-gray-900">
-                      {renderAvatar(member, 'h-8 w-8', true)}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <Users size={21} />
+    <div className={embedded ? 'group-chat-shell group-chat-shell--embedded flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent' : 'group-chat-shell flex h-[calc(100svh-8rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-gray-200/80 bg-white shadow-xl shadow-pink-500/5 dark:border-gray-800 dark:bg-gray-900 sm:h-[min(78vh,820px)] sm:min-h-[500px]'}>
+      {!embedded ? (
+        <div className="group-chat-header border-b border-gray-200/80 bg-white/95 p-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 sm:p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-pink-50 text-pink-600 shadow-sm ring-1 ring-gray-200 dark:bg-pink-950/30 dark:text-pink-300 dark:ring-gray-800">
+                {groupPhotoUrl ? (
+                  <img src={groupPhotoUrl} alt={group?.name || 'Team Chat'} className="h-full w-full object-cover" />
+                ) : memberPreview.length > 0 ? (
+                  <div className="flex -space-x-3">
+                    {memberPreview.slice(0, 3).map(member => (
+                      <div key={getEntityId(member)} className="rounded-full border-2 border-white dark:border-gray-900">
+                        {renderAvatar(member, 'h-8 w-8', true)}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Users size={21} />
+                )}
+              </div>
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-black text-gray-950 dark:text-white">{group?.name || 'Team Chat'}</h3>
+                <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {memberCount} members - {messages.length} messages - {sharedMediaCount} media
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowPinned(value => !value)}
+                className="grid h-10 w-10 place-items-center rounded-full border border-gray-200 text-gray-600 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-600 dark:border-gray-700 dark:text-gray-300 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
+                title="Pinned messages"
+              >
+                <Pin size={17} />
+              </button>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="grid h-10 w-10 place-items-center rounded-full border border-gray-200 text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#1877f2] dark:border-gray-700 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
+                  title="Group settings"
+                >
+                  <Settings size={17} />
+                </button>
               )}
-            </div>
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-black text-gray-950 dark:text-white">{group?.name || 'Team Chat'}</h3>
-              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
-                {memberCount} members - {messages.length} messages - {sharedMediaCount} media
-              </p>
+              <span className="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300 sm:inline-flex">
+                Live
+              </span>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setShowPinned(value => !value)}
-              className="grid h-10 w-10 place-items-center rounded-full border border-gray-200 text-gray-600 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-600 dark:border-gray-700 dark:text-gray-300 dark:hover:border-pink-900/60 dark:hover:bg-pink-950/20"
-              title="Pinned messages"
-            >
-              <Pin size={17} />
-            </button>
-            {onOpenSettings && (
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                className="grid h-10 w-10 place-items-center rounded-full border border-gray-200 text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#1877f2] dark:border-gray-700 dark:text-gray-300 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
-                title="Group settings"
-              >
-                <Settings size={17} />
-              </button>
-            )}
-            <span className="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300 sm:inline-flex">
-              Live
-            </span>
-          </div>
+
+          <label className="relative mt-3 block">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="search"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Search team chat, files, or members"
+              className="h-11 w-full rounded-2xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm font-medium text-gray-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:border-pink-500"
+            />
+          </label>
+
+          {pinnedMessageStrip}
         </div>
-
-        <label className="relative mt-3 block">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="search"
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-            placeholder="Search team chat, files, or members"
-            className="h-11 w-full rounded-2xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm font-medium text-gray-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:border-pink-500"
-          />
-        </label>
-
-        {showPinned && pinnedMessages.length > 0 && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {pinnedMessages.slice(0, 8).map(message => (
-              <button
-                key={getEntityId(message)}
-                type="button"
-                onClick={() => setSearch(message.text || getFileName(message.fileUrl || ''))}
-                className="flex min-w-[13rem] max-w-[16rem] items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 transition hover:border-amber-200 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200"
-              >
-                <Pin size={14} className="shrink-0" />
-                <span className="min-w-0">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate font-black">{message.userId?.name || 'Member'}</span>
-                    <DeveloperBadge user={message.userId} compact />
-                  </span>
-                  <span className="block truncate">{message.text || getFileName(message.fileUrl || '')}</span>
-                </span>
-              </button>
-            ))}
+      ) : (
+        <>
+          <div className="mobile-chat-search-bar group-chat-search-bar border-b border-gray-200/80 bg-white/95 px-3 py-2 dark:border-gray-800 dark:bg-gray-950/95">
+            <label className="relative block">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="search"
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Search in group chat"
+                className="h-10 w-full rounded-2xl border border-gray-200 bg-slate-50 pl-9 pr-3 text-sm font-semibold text-gray-900 outline-none focus:border-pink-300 focus:bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              />
+            </label>
           </div>
-        )}
-      </div>
+          {pinnedMessageStrip}
+        </>
+      )}
 
       <div
-        className={`group-chat-thread min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-white to-gray-50 p-3 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 sm:p-4 ${background?.className || ''}`}
+        ref={threadRef}
+        className={`${embedded ? 'group-chat-thread mobile-message-thread min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-5' : 'group-chat-thread min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-white to-gray-50 p-3 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 sm:p-4'} ${background?.className || ''}`}
         style={backgroundStyle}
       >
         {messages.length === 0 ? (
@@ -599,13 +668,14 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
               </div>
             )}
 
-            {renderedMessages.map((message) => {
+            {renderedMessages.map((message, index) => {
               const messageId = getEntityId(message);
+              const messageKey = getStableMessageKey(message, index);
               const isMe = getEntityId(message.userId) === currentUserId;
               if (message.system) {
                 return (
-                  <div key={messageId} className="flex justify-center">
-                    <span className="system-message-bubble max-w-[88%] rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-center text-[11px] font-black text-slate-600 shadow-sm backdrop-blur dark:border-white/10 dark:bg-black/45 dark:text-slate-200">
+                  <div key={messageKey} className="system-message-row my-3 flex justify-center">
+                    <span className="system-message-bubble inline-flex max-w-[min(92%,28rem)] items-center gap-2 rounded-full border border-slate-200 bg-white/88 px-3 py-2 text-center text-xs font-black text-slate-600 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-950/82 dark:text-zinc-200">
                       {message.text}
                     </span>
                   </div>
@@ -613,25 +683,30 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
               }
 
               return (
-                <div key={messageId} className={`group flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                  {!isMe && <div className="mr-2 mt-7">{renderAvatar(message.userId, 'h-9 w-9', true)}</div>}
+                <div key={messageKey} className={`message-row group-message-row group mb-4 flex scroll-mt-24 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  {!isMe && (
+                    <button
+                      type="button"
+                      onClick={() => onUserClick?.(message.userId)}
+                      className="mr-2 mt-5 shrink-0 rounded-full transition hover:ring-2 hover:ring-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                      aria-label={`View ${message.userId?.name || 'member'} profile`}
+                    >
+                      {renderAvatar(message.userId, 'h-8 w-8', true)}
+                    </button>
+                  )}
 
-                  <div className={`relative max-w-[86%] md:max-w-[68%] ${isMe ? 'text-right' : 'text-left'}`}>
-                    {!isMe && (
-                      <button
-                        type="button"
-                        onClick={() => onUserClick?.(message.userId)}
-                        className="mb-1 inline-flex max-w-full items-center gap-1.5 px-1 text-left text-xs font-semibold text-gray-500 transition hover:text-pink-600 dark:hover:text-pink-300"
-                      >
-                        <span className="truncate">{message.userId?.name}</span>
+                  <div className={`relative max-w-[82%] md:max-w-[68%] ${isMe ? 'text-right' : 'text-left'}`}>
+                    <div className={`mb-1 px-1 text-xs text-gray-500 ${isMe ? 'text-right' : 'text-left'}`}>
+                      <span className={`inline-flex max-w-full items-center gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <span className="truncate">{isMe ? 'You' : message.userId?.name}</span>
                         <DeveloperBadge user={message.userId} compact />
-                      </button>
-                    )}
+                      </span>
+                    </div>
 
-                    <div className={`rounded-[1.35rem] px-4 py-3 shadow-sm ${
+                    <div className={`message-bubble relative rounded-3xl px-4 py-3 shadow-sm ${
                       isMe
-                        ? 'rounded-br-md bg-[#0084ff] text-white shadow-pink-500/20'
-                        : 'rounded-bl-md border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-800 dark:text-white'
+                        ? 'own-message-bubble rounded-br-lg bg-[#0084ff] text-white shadow-blue-500/15'
+                        : 'rounded-bl-lg border border-gray-200 bg-white text-gray-950 dark:border-gray-800 dark:bg-gray-900 dark:text-white'
                     }`}>
                       {message.pinned && (
                         <span className={`mb-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black ${isMe ? 'bg-white/15 text-white' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200'}`}>
@@ -639,86 +714,94 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
                           Pinned
                         </span>
                       )}
-                      <ReplyPreview message={message.replyTo} compact />
+                      {renderReplyPreview(message.replyTo, true)}
                       {renderMessageContent(message)}
-                      <p className={`mt-1 text-xs ${isMe ? 'text-white/75' : 'text-gray-400'}`}>
-                        {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
-                      </p>
+                      <span className={`message-bubble-time ${isMe ? 'text-white/70' : 'text-gray-400 dark:text-white/45'}`}>
+                        {formatMessageTime(message.createdAt)}
+                      </span>
                     </div>
 
-                    <div className={`mt-1 flex flex-wrap items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      <button
-                        type="button"
-                        onClick={() => setReplyingTo(message)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-pink-600 dark:bg-gray-800 dark:ring-gray-700"
-                        title="Reply"
-                      >
-                        <Reply size={14} />
-                      </button>
-                      <div className="relative">
+                    {embedded ? (
+                      <div className={`mobile-message-actions mt-1.5 flex items-center gap-2 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <span className="message-action-time text-[11px] text-gray-400">
+                          {formatMessageTime(message.createdAt)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className={`group-message-controls mt-1 flex flex-wrap items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                         <button
                           type="button"
-                          onClick={() => setReactionPickerMessageId(reactionPickerMessageId === messageId ? null : messageId)}
+                          onClick={() => setReplyingTo(message)}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-pink-600 dark:bg-gray-800 dark:ring-gray-700"
-                          title="React"
+                          title="Reply"
                         >
-                          <Smile size={14} />
+                          <Reply size={14} />
                         </button>
-                        {reactionPickerMessageId === messageId && (
-                          <div className={`absolute bottom-9 z-30 flex gap-1 rounded-full border border-gray-200 bg-white p-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900 ${isMe ? 'right-0' : 'left-0'}`}>
-                            {QUICK_REACTIONS.map(emoji => (
-                              <button
-                                key={emoji}
-                                type="button"
-                                onClick={() => reactToMessage(messageId, emoji)}
-                                className="grid h-8 w-8 place-items-center rounded-full text-base transition hover:bg-pink-50 dark:hover:bg-pink-950/30"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => togglePinMessage(messageId)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-amber-600 dark:bg-gray-800 dark:ring-gray-700"
-                        title={message.pinned ? 'Unpin' : 'Pin'}
-                      >
-                        {message.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                      </button>
-                      <div className="relative">
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setReactionPickerMessageId(reactionPickerMessageId === messageId ? null : messageId)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-pink-600 dark:bg-gray-800 dark:ring-gray-700"
+                            title="React"
+                          >
+                            <Smile size={14} />
+                          </button>
+                          {reactionPickerMessageId === messageId && (
+                            <div className={`absolute bottom-9 z-30 flex gap-1 rounded-full border border-gray-200 bg-white p-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900 ${isMe ? 'right-0' : 'left-0'}`}>
+                              {QUICK_REACTIONS.map(emoji => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => reactToMessage(messageId, emoji)}
+                                  className="grid h-8 w-8 place-items-center rounded-full text-base transition hover:bg-pink-50 dark:hover:bg-pink-950/30"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setActiveMenuMessageId(activeMenuMessageId === messageId ? null : messageId)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-gray-900 dark:bg-gray-800 dark:ring-gray-700 dark:hover:text-white"
-                          aria-label="Message options"
+                          onClick={() => togglePinMessage(messageId)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-amber-600 dark:bg-gray-800 dark:ring-gray-700"
+                          title={message.pinned ? 'Unpin' : 'Pin'}
                         >
-                          <MoreVertical size={14} />
+                          {message.pinned ? <PinOff size={14} /> : <Pin size={14} />}
                         </button>
-                        {activeMenuMessageId === messageId && (
-                          <div className={`absolute bottom-9 z-20 w-48 overflow-hidden rounded-xl border border-gray-200 bg-white text-left shadow-xl dark:border-gray-700 dark:bg-gray-800 ${isMe ? 'right-0' : 'left-0'}`}>
-                            <button
-                              onClick={() => deleteForMe(messageId)}
-                              className="block w-full px-4 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                            >
-                              Remove for me
-                            </button>
-                            {isMe && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setActiveMenuMessageId(activeMenuMessageId === messageId ? null : messageId)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm ring-1 ring-gray-100 transition hover:text-gray-900 dark:bg-gray-800 dark:ring-gray-700 dark:hover:text-white"
+                            aria-label="Message options"
+                          >
+                            <MoreVertical size={14} />
+                          </button>
+                          {activeMenuMessageId === messageId && (
+                            <div className={`absolute bottom-9 z-20 w-48 overflow-hidden rounded-xl border border-gray-200 bg-white text-left shadow-xl dark:border-gray-700 dark:bg-gray-800 ${isMe ? 'right-0' : 'left-0'}`}>
                               <button
-                                onClick={() => deleteForEveryone(messageId)}
-                                className="block w-full px-4 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                                onClick={() => deleteForMe(messageId)}
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                               >
-                                Unsend for everyone
+                                Remove for me
                               </button>
-                            )}
-                          </div>
-                        )}
+                              {isMe && (
+                                <button
+                                  onClick={() => deleteForEveryone(messageId)}
+                                  className="block w-full px-4 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                                >
+                                  Unsend for everyone
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <ReactionSummary message={message} />
-                    {isMe && <SeenStatus message={message} />}
+                    {renderReactionSummary(message)}
+                    {!embedded && isMe && renderSeenStatus(message)}
                   </div>
                 </div>
               );
@@ -728,10 +811,10 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
         )}
       </div>
 
-      <div className="border-t border-gray-200/80 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95">
+      <div className="message-composer-footer group-message-composer-footer border-t border-gray-200/80 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95">
         {replyingTo && (
           <div className="mb-2 flex items-start justify-between gap-2 rounded-2xl border border-pink-100 bg-pink-50 px-3 py-2 dark:border-pink-900/50 dark:bg-pink-950/20">
-            <ReplyPreview message={replyingTo} />
+            {renderReplyPreview(replyingTo)}
             <button type="button" onClick={() => setReplyingTo(null)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-pink-600 transition hover:bg-white dark:text-pink-200 dark:hover:bg-gray-900">
               <X size={15} />
             </button>
@@ -752,17 +835,17 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
         )}
 
         <div className="group-message-composer-grid">
-          <div className="flex flex-1 items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 transition focus-within:border-pink-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:focus-within:border-pink-500">
-            <label className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach image">
-              <ImageIcon size={19} />
-              <input type="file" accept="image/*" className="hidden" onChange={(event) => handleFileSelect(event, 'image')} disabled={uploading} />
-            </label>
+          <label className="message-composer-action cursor-pointer rounded-full p-2 text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach image">
+            <ImageIcon size={19} />
+            <input type="file" accept="image/*" className="hidden" onChange={(event) => handleFileSelect(event, 'image')} disabled={uploading} />
+          </label>
 
-            <label className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach video">
-              <Video size={19} />
-              <input type="file" accept="video/*" className="hidden" onChange={(event) => handleFileSelect(event, 'video')} disabled={uploading} />
-            </label>
+          <label className="message-composer-action cursor-pointer rounded-full p-2 text-pink-500 transition hover:bg-pink-50 dark:hover:bg-pink-950/30" aria-label="Attach video">
+            <Video size={19} />
+            <input type="file" accept="video/*" className="hidden" onChange={(event) => handleFileSelect(event, 'video')} disabled={uploading} />
+          </label>
 
+          <div className="message-composer-input group-message-composer-input flex flex-1 items-center rounded-full border border-gray-200 bg-gray-50 transition focus-within:border-pink-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-pink-500/10 dark:border-gray-700 dark:bg-gray-800 dark:focus-within:border-pink-500">
             <input
               type="text"
               value={newMessage}
@@ -773,7 +856,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
                   sendTextMessage(newMessage);
                 }
               }}
-              placeholder="Message this workspace..."
+              placeholder="Message this group..."
               className="min-h-10 flex-1 bg-transparent px-2 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white"
               disabled={uploading}
             />
@@ -790,11 +873,11 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
           </motion.button>
         </div>
 
-        <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold text-gray-400">
+        {!embedded && <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold text-gray-400">
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-800"><FileText size={13} /> Searchable chat</span>
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-800"><Pin size={13} /> Pins</span>
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-800"><Reply size={13} /> Replies</span>
-        </div>
+        </div>}
       </div>
       <MediaViewer media={viewerMedia} onClose={() => setViewerMedia(null)} />
     </div>

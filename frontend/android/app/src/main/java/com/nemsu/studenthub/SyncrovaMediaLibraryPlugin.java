@@ -177,7 +177,7 @@ public class SyncrovaMediaLibraryPlugin extends Plugin {
                 asset.put("height", getInt(cursor, heightColumn));
                 asset.put("duration", isVideo ? getLong(cursor, durationColumn) : 0);
                 if (isVideo) {
-                    asset.put("thumbnailUri", createVideoThumbnailUri(resolver, contentUri, id, dateModified));
+                    asset.put("thumbnailUri", getCachedVideoThumbnailUri(id, dateModified));
                 }
                 assets.put(asset);
             }
@@ -186,6 +186,20 @@ public class SyncrovaMediaLibraryPlugin extends Plugin {
         }
 
         return assets;
+    }
+
+    private String getCachedVideoThumbnailUri(long id, long dateModified) {
+        try {
+            File thumbnailDir = new File(getContext().getCacheDir(), "syncrova-media-thumbnails");
+            File thumbnailFile = new File(thumbnailDir, "video-" + id + "-" + Math.max(0, dateModified) + ".jpg");
+            if (thumbnailFile.exists() && thumbnailFile.length() > 0) {
+                return Uri.fromFile(thumbnailFile).toString();
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+
+        return "";
     }
 
     private String createVideoThumbnailUri(ContentResolver resolver, Uri contentUri, long id, long dateModified) {

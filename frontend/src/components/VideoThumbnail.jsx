@@ -1,5 +1,6 @@
-import React, { memo, useEffect, useMemo, useRef } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { PlayCircle } from 'lucide-react';
+import useRenderDebug from '../hooks/useRenderDebug';
 
 const withPreviewTime = (src) => {
   if (!src) return '';
@@ -18,13 +19,37 @@ function VideoThumbnail({
   preload = 'metadata',
   onReady
 }) {
+  const wrapperRef = useRef(null);
   const videoRef = useRef(null);
   const revealedRef = useRef(false);
   const previewSrc = useMemo(() => withPreviewTime(src), [src]);
+  const canUseIntersectionObserver = typeof window !== 'undefined' && 'IntersectionObserver' in window;
+  const [shouldLoad, setShouldLoad] = useState(!canUseIntersectionObserver);
+
+  useRenderDebug('VideoThumbnail', () => ({
+    src: previewSrc,
+    shouldLoad
+  }));
 
   useEffect(() => {
     revealedRef.current = false;
-  }, [previewSrc]);
+    setShouldLoad(!canUseIntersectionObserver);
+  }, [canUseIntersectionObserver, previewSrc]);
+
+  useEffect(() => {
+    if (!canUseIntersectionObserver || shouldLoad || !wrapperRef.current) return undefined;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some(entry => entry.isIntersecting || entry.intersectionRatio > 0)) return;
+      setShouldLoad(true);
+      observer.disconnect();
+    }, {
+      rootMargin: '360px 0px'
+    });
+
+    observer.observe(wrapperRef.current);
+    return () => observer.disconnect();
+  }, [canUseIntersectionObserver, shouldLoad, previewSrc]);
 
   const revealFirstFrame = (event) => {
     if (revealedRef.current) return;
@@ -41,10 +66,10 @@ function VideoThumbnail({
   };
 
   return (
-    <span className={`relative block overflow-hidden bg-black ${rounded} ${className}`}>
+    <span ref={wrapperRef} className={`relative block overflow-hidden bg-black ${rounded} ${className}`}>
       <video
         ref={videoRef}
-        src={previewSrc}
+        src={shouldLoad ? previewSrc : undefined}
         muted
         playsInline
         preload={preload}

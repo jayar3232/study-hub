@@ -37,8 +37,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.15',
-  versionCode: 62
+  versionName: '4.4.18',
+  versionCode: 65
 };
 
 const getConfiguredVersionCode = () => {
@@ -189,7 +189,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.15 verifies the downloaded APK before install|Adds active green avatar rings in Chats|Keeps Typing Race words visible while the mobile keyboard is open|Reduces My Day media refetch pressure and verifies R2-backed uploads'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.18 makes group chat match the direct conversation layout|Smooths Android media picking for photo and video sends|Keeps APK install verification to prevent version downgrades'
   });
 });
 
