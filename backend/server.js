@@ -176,11 +176,22 @@ const redirectOutdatedReleaseApk = (req, res, next) => {
   if (!/^syncrova-.+\.apk$/i.test(requestedFile)) return next();
 
   const releaseDownload = appUpdateRouter.getReleaseDownload?.();
-  const currentFile = appUpdateRouter.getReleaseApkFileName?.(releaseDownload?.releaseInfo?.versionName);
+  const releaseVersion = releaseDownload?.releaseInfo?.versionName;
+  const currentFile = appUpdateRouter.getReleaseApkFileName?.(releaseVersion);
   if (!currentFile) return next();
 
   const requested = requestedFile.toLowerCase();
   const current = currentFile.toLowerCase();
+  const messengerLatestFile = 'syncrova-messenger-latest.apk';
+  const messengerCurrentFile = `syncrova-messenger-${String(releaseVersion || '').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`;
+
+  if (requested.startsWith('syncrova-messenger-')) {
+    if (requested === messengerLatestFile || requested === messengerCurrentFile.toLowerCase()) return next();
+
+    setApkNoCacheHeaders(res);
+    return res.redirect(302, `/releases/${messengerCurrentFile}`);
+  }
+
   if (requested === current || requested === 'syncrova-latest.apk') return next();
 
   setApkNoCacheHeaders(res);
