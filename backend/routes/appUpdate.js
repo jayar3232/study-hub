@@ -154,15 +154,18 @@ const getReleaseDownload = () => {
   const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
   const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
   const manualDownload = getManualDownloadForRelease(releaseInfo);
+  const useManualDownload = Boolean(manualDownload.pageUrl);
   const useLocalApk = Boolean(releaseApk.filePath);
-  const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
+  const apkUrl = useManualDownload
+    ? manualDownload.pageUrl
+    : (useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath));
 
   return {
     releaseInfo,
     releaseApk,
     apkUrl,
-    apkAvailable: Boolean(manualDownload.pageUrl) || useLocalApk || useConfiguredApkUrl,
-    externalDownload: Boolean(manualDownload.pageUrl),
+    apkAvailable: useManualDownload || useLocalApk || useConfiguredApkUrl,
+    externalDownload: useManualDownload,
     downloadPageUrl: manualDownload.pageUrl
   };
 };
