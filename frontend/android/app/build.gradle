@@ -9,8 +9,8 @@ android {
         applicationId isMessengerBuild ? "com.nemsu.studenthub.messenger" : "com.nemsu.studenthub"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 74
-        versionName "4.4.27"
+        versionCode 76
+        versionName "4.4.29"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
             appLabel: isMessengerBuild ? "Syncrova Messenger" : "Syncrova",

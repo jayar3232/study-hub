@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.27',
-  versionCode: 74
+  versionName: '4.4.29',
+  versionCode: 76
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.27 expands Messenger to the full screen|Conversation backgrounds now continue behind transparent headers and composer|Messenger now includes theme switching and the new centered logo'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.29 adds Messenger-style Android chat heads with an in-app on/off setting|Chat heads open the full Syncrova Messenger conversation when tapped|Messenger logo styling and incoming call sound effects are improved'
   });
 });
 

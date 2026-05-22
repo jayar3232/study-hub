@@ -1,6 +1,7 @@
 import messageReceivedUrl from './message recieved.mp3';
 import messageSendUrl from './message send.mp3';
 import clickSoundUrl from './clicksounds.mp3';
+import incomingCallUrl from './incommingcallsoundeffext.mp3';
 
 const soundCache = new Map();
 const soundLastPlayedAt = new Map();
@@ -17,6 +18,10 @@ const soundSources = {
   send: messageSendUrl,
   message: messageReceivedUrl,
   notification: messageReceivedUrl,
+  ringtone: incomingCallUrl,
+  call: incomingCallUrl,
+  'incoming call': incomingCallUrl,
+  incomingcall: incomingCallUrl,
   success: messageSendUrl,
   ding: messageReceivedUrl,
   'message send': messageSendUrl,

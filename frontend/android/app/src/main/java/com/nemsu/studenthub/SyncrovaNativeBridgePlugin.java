@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -18,6 +19,7 @@ public class SyncrovaNativeBridgePlugin extends Plugin {
     static final String AUTH_TOKEN_KEY = "auth_token";
     static final String API_BASE_URL_KEY = "api_base_url";
     static final String USER_ID_KEY = "user_id";
+    static final String CHAT_HEADS_ENABLED_KEY = "chat_heads_enabled";
     private static final String MESSENGER_PACKAGE = "com.nemsu.studenthub.messenger";
     private static final String MESSENGER_SCHEME = "syncrova-messenger";
 
@@ -115,6 +117,34 @@ public class SyncrovaNativeBridgePlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void getChatHeadsStatus(PluginCall call) {
+        call.resolve(createChatHeadsStatus());
+    }
+
+    @PluginMethod
+    public void setChatHeadsEnabled(PluginCall call) {
+        Boolean enabledValue = call.getBoolean("enabled");
+        boolean enabled = enabledValue != null && enabledValue;
+
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit().putBoolean(CHAT_HEADS_ENABLED_KEY, enabled).apply();
+
+        if (!enabled) {
+            SyncrovaChatHeadService.hide(getContext());
+        } else if (!Settings.canDrawOverlays(getContext())) {
+            openOverlaySettings();
+        }
+
+        call.resolve(createChatHeadsStatus());
+    }
+
+    @PluginMethod
+    public void openChatHeadSettings(PluginCall call) {
+        openOverlaySettings();
+        call.resolve(createChatHeadsStatus());
+    }
+
     private boolean isMessengerInstalled() {
         try {
             getContext().getPackageManager().getPackageInfo(MESSENGER_PACKAGE, 0);
@@ -124,6 +154,24 @@ public class SyncrovaNativeBridgePlugin extends Plugin {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private JSObject createChatHeadsStatus() {
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        JSObject result = new JSObject();
+        result.put("supported", true);
+        result.put("enabled", prefs.getBoolean(CHAT_HEADS_ENABLED_KEY, true));
+        result.put("canDrawOverlays", Settings.canDrawOverlays(getContext()));
+        return result;
+    }
+
+    private void openOverlaySettings() {
+        Intent intent = new Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:" + getContext().getPackageName())
+        );
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
     }
 
     private String normalizeMessengerPath(String rawPath) {

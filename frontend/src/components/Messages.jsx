@@ -63,6 +63,7 @@ import UserProfileModal from './UserProfileModal';
 import { optimizeImageFile, resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
 import { playUiSound } from '../utils/sound';
+import { getChatHeadsStatus, setChatHeadsEnabled } from '../utils/chatHeads';
 import { ListSkeleton } from './SkeletonLoader';
 import MediaViewer from './MediaViewer';
 import VideoThumbnail from './VideoThumbnail';
@@ -651,6 +652,7 @@ export default function Messages() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [showGroupChats, setShowGroupChats] = useState(false);
   const [conversationSearch, setConversationSearch] = useState('');
   const [conversationFilter, setConversationFilter] = useState('all');
   const [acceptedFriendIds, setAcceptedFriendIds] = useState(null);
@@ -704,6 +706,7 @@ export default function Messages() {
   const [messageReactionBursts, setMessageReactionBursts] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [chatHeadsStatus, setChatHeadsStatus] = useState({ supported: false, enabled: false, canDrawOverlays: false });
   const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
@@ -1089,6 +1092,32 @@ export default function Messages() {
       return null;
     });
   }, []);
+
+  const refreshChatHeadsStatus = useCallback(async () => {
+    const status = await getChatHeadsStatus();
+    setChatHeadsStatus(status);
+    return status;
+  }, []);
+
+  useEffect(() => {
+    refreshChatHeadsStatus();
+    const handleFocus = () => refreshChatHeadsStatus();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshChatHeadsStatus]);
+
+  const handleToggleChatHeads = useCallback(async () => {
+    const nextEnabled = !chatHeadsStatus.enabled;
+    const status = await setChatHeadsEnabled(nextEnabled);
+    setChatHeadsStatus(status);
+
+    if (nextEnabled && !status.canDrawOverlays) {
+      toast('Allow Syncrova Messenger to display over other apps to use chat heads.');
+      return;
+    }
+
+    toast.success(nextEnabled ? 'Chat heads enabled' : 'Chat heads disabled');
+  }, [chatHeadsStatus.enabled]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -3204,6 +3233,7 @@ export default function Messages() {
     try {
       const res = await api.post(`/stories/${getEntityId(story)}/view`);
       setActiveStory(prev => getEntityId(prev) === getEntityId(story) ? res.data : prev);
+      fetchUserNotes();
     } catch {
       // Story viewing should still open even when the view counter request fails.
     }
@@ -3244,13 +3274,13 @@ export default function Messages() {
   };
 
   const handleOpenNote = (item) => {
-    if (item?.hasStory && !item?.hasNote) {
-      openStory(getStoryGroupPreview(item.storyGroup));
-      return;
-    }
     if (item?.isMe) {
       setNoteText(item?.note?.text || myNote?.text || '');
       setShowNoteComposer(true);
+      return;
+    }
+    if (item?.hasStory && !item?.hasNote) {
+      openStory(getStoryGroupPreview(item.storyGroup));
       return;
     }
     if (item?.note) {
@@ -4186,6 +4216,9 @@ export default function Messages() {
   const selectedBackgroundStyle = selectedBackground?.image
     ? { '--chat-background-image': `url("${selectedBackground.image}")` }
     : undefined;
+  const selectedStoryGroup = selectedUserId ? storyGroupByOwner.get(selectedUserId) : null;
+  const selectedHasStory = Boolean(selectedStoryGroup);
+  const selectedStoryViewed = isStoryGroupViewed(selectedStoryGroup, currentUserId);
   const selectedGroupBackgroundKey = normalizeChatBackgroundKey(selectedGroup?.backgroundId);
   const selectedGroupBackground = getChatBackground(selectedGroupBackgroundKey);
   const selectedGroupBackgroundStyle = selectedGroupBackground?.image
@@ -5372,17 +5405,45 @@ export default function Messages() {
               </button>
             </div>
 
+            {chatHeadsStatus.supported && (
+              <div className="messenger-chat-head-setting mt-3 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/92 px-3 py-2.5 shadow-sm dark:border-white/10 dark:bg-zinc-900/88">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#1877f2]/10 text-[#1877f2] dark:bg-sky-400/10 dark:text-sky-200">
+                  <MessageCircle size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-black text-slate-900 dark:text-white">Chat heads</span>
+                  <span className="block truncate text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    {chatHeadsStatus.enabled
+                      ? (chatHeadsStatus.canDrawOverlays ? 'Opens Syncrova Messenger over other apps' : 'Allow display over other apps to finish setup')
+                      : 'Off for this device'}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleChatHeads}
+                  className={`messenger-chat-head-switch ${chatHeadsStatus.enabled ? 'is-on' : ''}`}
+                  aria-pressed={chatHeadsStatus.enabled}
+                  aria-label={chatHeadsStatus.enabled ? 'Disable chat heads' : 'Enable chat heads'}
+                >
+                  <span />
+                </button>
+              </div>
+            )}
+
             <div className="messenger-notes-tray mt-3 -mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
               <button
                 type="button"
-                onClick={() => setShowGroupCreate(true)}
-                className="messenger-room-tile group w-[4.75rem] shrink-0 text-center"
+                onClick={() => {
+                  setNoteText(myNote?.text || '');
+                  setShowNoteComposer(true);
+                }}
+                className="messenger-room-tile messenger-note-create-tile group w-[4.75rem] shrink-0 text-center"
               >
                 <span className="mx-auto grid h-[4.75rem] w-[4.75rem] place-items-center rounded-3xl bg-blue-50 text-[#1877f2] shadow-sm ring-1 ring-blue-100 transition group-hover:bg-blue-100 dark:bg-blue-950/25 dark:text-sky-200 dark:ring-blue-900/40">
                   <Plus size={26} strokeWidth={2.4} />
                 </span>
                 <span className="mt-1 block text-[11px] font-bold leading-tight text-slate-600 dark:text-gray-300">
-                  Create room
+                  Create note
                 </span>
               </button>
               {noteTrayItems.map(item => {
@@ -5552,45 +5613,74 @@ export default function Messages() {
                 }}
               >
                 {filteredGroups.length > 0 && (
-                  <div className="mb-2 space-y-1">
-                    <div className="px-2 pb-1 text-[11px] font-black uppercase tracking-normal text-slate-400 dark:text-slate-500">
-                      Group chats
+                  <div className="messenger-group-section mb-2">
+                    <div className="messenger-group-toggle-row flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowGroupChats(value => !value)}
+                        className="messenger-group-toggle flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 py-3 text-left"
+                        aria-expanded={showGroupChats}
+                      >
+                        <span className="messenger-group-toggle-icon grid h-10 w-10 shrink-0 place-items-center rounded-full">
+                          <Users size={18} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black text-slate-950 dark:text-white">Group chats</span>
+                          <span className="block truncate text-xs font-bold text-slate-500 dark:text-slate-400">
+                            {filteredGroups.length} group{filteredGroups.length === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                        <ChevronRight size={18} className={`shrink-0 text-slate-400 transition ${showGroupChats ? 'rotate-90' : ''}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowGroupCreate(true)}
+                        className="messenger-group-create grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
+                        aria-label="Create group chat"
+                        title="Create group chat"
+                      >
+                        <Plus size={18} />
+                      </button>
                     </div>
-                    {filteredGroups.map(group => {
-                      const groupId = getEntityId(group);
-                      const isActive = selectedGroupId === groupId;
-                      const memberCount = group.members?.length || 0;
-                      return (
-                        <button
-                          key={groupId}
-                          type="button"
-                          onClick={() => {
-                            setSelectedUser(null);
-                            setSelectedGroup(group);
-                          }}
-                          className={`conversation-list-row mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
-                            isActive
-                              ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/50'
-                              : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
-                          }`}
-                        >
-                          {renderGroupAvatar(group, 'h-12 w-12')}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              {renderHighlightedText(group.name || 'Group chat', 'truncate font-bold text-gray-950 dark:text-white')}
-                              <div className="shrink-0 text-xs text-gray-400">
-                                {memberCount} members
+                    {showGroupChats && (
+                      <div className="mt-2 space-y-1">
+                        {filteredGroups.map(group => {
+                          const groupId = getEntityId(group);
+                          const isActive = selectedGroupId === groupId;
+                          const memberCount = group.members?.length || 0;
+                          return (
+                            <button
+                              key={groupId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedUser(null);
+                                setSelectedGroup(group);
+                              }}
+                              className={`conversation-list-row messenger-group-row mb-1 flex w-full items-center gap-3 rounded-2xl p-3 text-left ${
+                                isActive
+                                  ? 'bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/30 dark:ring-blue-900/50'
+                                  : 'hover:bg-slate-100/80 dark:hover:bg-gray-900'
+                              }`}
+                            >
+                              {renderGroupAvatar(group, 'h-12 w-12')}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  {renderHighlightedText(group.name || 'Group chat', 'truncate font-bold text-gray-950 dark:text-white')}
+                                  <div className="shrink-0 text-xs text-gray-400">
+                                    {memberCount} members
+                                  </div>
+                                </div>
+                                <p className="mt-1 truncate text-sm text-gray-500">
+                                  {group.backgroundId && group.backgroundId !== DEFAULT_CHAT_BACKGROUND_ID
+                                    ? 'Custom chat background'
+                                    : group.joinCode ? `Room code ${group.joinCode}` : 'Group conversation'}
+                                </p>
                               </div>
-                            </div>
-                            <p className="mt-1 truncate text-sm text-gray-500">
-                              {group.backgroundId && group.backgroundId !== DEFAULT_CHAT_BACKGROUND_ID
-                                ? 'Custom chat background'
-                                : group.joinCode ? `Room code ${group.joinCode}` : 'Group conversation'}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
                 {virtualizedConversationState.paddingTop > 0 && (
@@ -5649,15 +5739,23 @@ export default function Messages() {
                       tabIndex={0}
                       onClick={(event) => {
                         event.stopPropagation();
-                        setProfileUser(otherUser);
+                        if (conversationHasStory) {
+                          openStory(getStoryGroupPreview(conversationStoryGroup));
+                        } else {
+                          setProfileUser(otherUser);
+                        }
                       }}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter' && event.key !== ' ') return;
                         event.preventDefault();
                         event.stopPropagation();
-                        setProfileUser(otherUser);
+                        if (conversationHasStory) {
+                          openStory(getStoryGroupPreview(conversationStoryGroup));
+                        } else {
+                          setProfileUser(otherUser);
+                        }
                       }}
-                      title={`View ${displayName}'s profile`}
+                      title={conversationHasStory ? `View ${displayName}'s My Day` : `View ${displayName}'s profile`}
                       className={`conversation-profile-target relative shrink-0 cursor-pointer rounded-full ${presenceMeta.online ? 'is-online' : ''} ${conversationHasStory ? 'has-story' : ''} ${conversationHasStory && !conversationStoryViewed ? 'has-unviewed-story' : ''}`}
                     >
                       {renderAvatar(otherUser, 'h-12 w-12', 22)}
@@ -5784,7 +5882,12 @@ export default function Messages() {
                 >
                   <ArrowLeft size={21} strokeWidth={2.7} />
                 </button>
-                <button type="button" onClick={() => setProfileUser(selectedUser)} className={`mobile-chat-avatar relative shrink-0 rounded-full ring-2 transition hover:ring-pink-300 ${selectedIsOnline ? 'is-online ring-emerald-400' : 'ring-transparent'}`} title="View profile">
+                <button
+                  type="button"
+                  onClick={() => (selectedHasStory ? openStory(getStoryGroupPreview(selectedStoryGroup)) : setProfileUser(selectedUser))}
+                  className={`mobile-chat-avatar conversation-profile-target relative shrink-0 cursor-pointer rounded-full transition hover:ring-pink-300 ${selectedIsOnline ? 'is-online' : ''} ${selectedHasStory ? 'has-story' : ''} ${selectedHasStory && !selectedStoryViewed ? 'has-unviewed-story' : ''}`}
+                  title={selectedHasStory ? 'View My Day' : 'View profile'}
+                >
                   {renderAvatar(selectedUser, 'h-12 w-12', 22)}
                   <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
                     selectedIsOnline ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]' : 'bg-gray-300 dark:bg-gray-600'

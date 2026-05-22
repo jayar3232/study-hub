@@ -51,8 +51,12 @@ public class SyncrovaMessagingService extends FirebaseMessagingService {
         String senderId = valueOr(data.get("senderId"), data.get("from"), data.get("actorId"));
         String href = valueOr(data.get("href"), senderId.isEmpty() ? "/messages" : "/messages?user=" + senderId, "/messages");
         String messageId = valueOr(data.get("messageId"), data.get("notificationId"), String.valueOf(System.currentTimeMillis()));
+        String actorAvatar = valueOr(data.get("actorAvatar"), "", "");
 
         showMessageNotification(title, body, type, senderId, href, messageId);
+        if ("message".equals(type) && !senderId.isEmpty()) {
+            SyncrovaChatHeadService.show(this, title, body, senderId, href, actorAvatar);
+        }
     }
 
     private void showMessageNotification(String title, String body, String type, String senderId, String href, String messageId) {
