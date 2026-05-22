@@ -385,7 +385,7 @@ function Avatar({ user, size = 'h-11 w-11', onClick }) {
     setFailed(false);
   }, [avatar]);
   const avatarContent = (
-    <DeveloperAvatarFrame user={user}>
+    <DeveloperAvatarFrame user={user} className="comment-avatar-frame">
       <span className={`${size} grid shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] text-sm font-black text-white`}>
         {avatar && !failed ? (
           <img src={avatar} alt={user?.name || 'User'} onError={() => setFailed(true)} className="h-full w-full object-cover" />

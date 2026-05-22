@@ -7,9 +7,9 @@ import {
   requestNativeMediaPermission
 } from '../utils/nativeMediaLibrary';
 
-const PAGE_SIZE = 45;
-const INITIAL_RENDER_COUNT = 27;
-const RENDER_CHUNK_SIZE = 18;
+const PAGE_SIZE = 30;
+const INITIAL_RENDER_COUNT = 18;
+const RENDER_CHUNK_SIZE = 12;
 
 const FILTERS = [
   { id: 'all', label: 'All photos', icon: ImageIcon },
@@ -35,6 +35,30 @@ function NativeMediaVideoPreview({ asset }) {
   );
 }
 
+function NativeMediaImagePreview({ asset }) {
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const source = previewFailed ? '' : asset.webPath;
+
+  if (!source) {
+    return (
+      <span className="native-media-image-placeholder">
+        <ImageIcon size={24} />
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={source}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      draggable="false"
+      onError={() => setPreviewFailed(true)}
+    />
+  );
+}
+
 const NativeMediaTile = memo(function NativeMediaTile({ asset, selectedIndex, onToggle }) {
   const isSelected = selectedIndex >= 0;
 
@@ -52,7 +76,7 @@ const NativeMediaTile = memo(function NativeMediaTile({ asset, selectedIndex, on
       {asset.type === 'video' ? (
         <NativeMediaVideoPreview asset={asset} />
       ) : (
-        <img src={asset.webPath} alt="" loading="lazy" decoding="async" draggable="false" />
+        <NativeMediaImagePreview asset={asset} />
       )}
       <span className="native-media-check">
         {isSelected ? selectedIndex + 1 : null}
@@ -178,6 +202,8 @@ export default function NativeMediaLibrarySheet({
     try {
       await onSelect?.(selectedAssets);
       onClose?.();
+    } catch (err) {
+      toast.error(err?.message || 'Could not prepare selected media');
     } finally {
       setPreparing(false);
     }

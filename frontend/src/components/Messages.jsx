@@ -863,6 +863,14 @@ export default function Messages() {
     if (typeof window !== 'undefined') window.setTimeout(scrollThreadToBottomNow, 60);
   }, [scrollThreadToBottomNow]);
 
+  const keepComposerAtLatest = useCallback(() => {
+    if (!selectedUserId) return;
+    pendingAutoScrollRef.current = true;
+    scrollThreadToBottomNow();
+    requestAnimationFrame(scrollThreadToBottomNow);
+    if (typeof window !== 'undefined') window.setTimeout(scrollThreadToBottomNow, 80);
+  }, [scrollThreadToBottomNow, selectedUserId]);
+
   const setComposerText = useCallback((value = '') => {
     composerTextRef.current = value;
     if (inputRef.current) inputRef.current.value = value;
@@ -3236,7 +3244,6 @@ export default function Messages() {
       toast.success('Media added to composer', { id: loadingToast });
     } catch (err) {
       toast.error(err?.message || 'Could not prepare selected media', { id: loadingToast });
-      throw err;
     }
   };
 
@@ -5624,7 +5631,17 @@ export default function Messages() {
                             <div className={`max-w-[82%] md:max-w-[68%] ${isMe ? 'items-end' : 'items-start'}`}>
                               <div className={`mb-1 px-1 text-xs text-gray-500 ${isMe ? 'text-right' : 'text-left'}`}>
                                 <span className={`inline-flex max-w-full items-center gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                  <span className="truncate">{isMe ? 'You' : getDisplayName(sender, selectedDisplayName)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setProfileUser(sender);
+                                    }}
+                                    className="min-w-0 truncate text-left transition hover:text-[#1877f2] dark:hover:text-sky-300"
+                                    aria-label={`View ${isMe ? 'your' : getDisplayName(sender, selectedDisplayName)} profile`}
+                                  >
+                                    {isMe ? 'You' : getDisplayName(sender, selectedDisplayName)}
+                                  </button>
                                   <DeveloperBadge user={sender} compact />
                                 </span>
                               </div>
@@ -5950,6 +5967,7 @@ export default function Messages() {
                   <input
                     ref={inputRef}
                     type="text"
+                    onFocus={keepComposerAtLatest}
                     onChange={event => {
                       const value = event.target.value;
                       composerTextRef.current = value;
@@ -5957,6 +5975,7 @@ export default function Messages() {
                         const next = Boolean(value.trim());
                         return prev === next ? prev : next;
                       });
+                      keepComposerAtLatest();
                       handleTyping();
                     }}
                     onKeyDown={event => {

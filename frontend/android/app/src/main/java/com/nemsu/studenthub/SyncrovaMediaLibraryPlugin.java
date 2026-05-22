@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Size;
+import android.webkit.MimeTypeMap;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -22,6 +23,9 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Locale;
 
 @CapacitorPlugin(
     name = "SyncrovaMediaLibrary",
@@ -90,6 +94,73 @@ public class SyncrovaMediaLibraryPlugin extends Plugin {
             call.resolve(result);
         } catch (Exception err) {
             call.reject("Could not load media library", err);
+        }
+    }
+
+    @PluginMethod
+    public void copyMediaToCache(PluginCall call) {
+        if (!hasMediaPermission()) {
+            call.reject("Media permission was not granted");
+            return;
+        }
+
+        String uriValue = call.getString("uri", "");
+        if (uriValue == null || uriValue.trim().isEmpty()) {
+            call.reject("Media source is unavailable");
+            return;
+        }
+
+        new Thread(() -> copyMediaToCacheInBackground(call, uriValue), "syncrova-media-copy").start();
+    }
+
+    private void copyMediaToCacheInBackground(PluginCall call, String uriValue) {
+        Uri sourceUri = Uri.parse(uriValue);
+        String mimeType = call.getString("mimeType", "");
+        String mediaType = call.getString("type", "image");
+        String fileName = getSafeCacheFileName(call.getString("name", ""), mimeType, mediaType);
+        File cacheDir = new File(getContext().getCacheDir(), "syncrova-media-selection");
+
+        try {
+            if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+                call.reject("Could not prepare selected media");
+                return;
+            }
+
+            File outputFile = new File(cacheDir, System.currentTimeMillis() + "-" + fileName);
+            long bytesCopied = 0;
+            try (InputStream input = getContext().getContentResolver().openInputStream(sourceUri)) {
+                if (input == null) {
+                    call.reject("Could not read selected media");
+                    return;
+                }
+
+                try (OutputStream output = new FileOutputStream(outputFile)) {
+                    byte[] buffer = new byte[256 * 1024];
+                    int read;
+                    while ((read = input.read(buffer)) != -1) {
+                        output.write(buffer, 0, read);
+                        bytesCopied += read;
+                    }
+                }
+            }
+
+            if (bytesCopied <= 0 || outputFile.length() <= 0) {
+                if (outputFile.exists()) outputFile.delete();
+                call.reject("Selected media is empty");
+                return;
+            }
+
+            Uri cachedUri = Uri.fromFile(outputFile);
+            JSObject result = new JSObject();
+            result.put("uri", cachedUri.toString());
+            result.put("webPath", cachedUri.toString());
+            result.put("name", fileName);
+            result.put("mimeType", mimeType);
+            result.put("type", "video".equals(mediaType) ? "video" : "image");
+            result.put("size", outputFile.length());
+            call.resolve(result);
+        } catch (Exception err) {
+            call.reject("Could not prepare selected media", err);
         }
     }
 
@@ -319,5 +390,31 @@ public class SyncrovaMediaLibraryPlugin extends Plugin {
     private long getLong(Cursor cursor, int column) {
         if (column < 0 || cursor.isNull(column)) return 0;
         return cursor.getLong(column);
+    }
+
+    private String getSafeCacheFileName(String name, String mimeType, String mediaType) {
+        String cleaned = name == null ? "" : name.replaceAll("[\\\\/:*?\"<>|]+", "-").trim();
+        if (cleaned.isEmpty()) cleaned = "syncrova-" + ("video".equals(mediaType) ? "video" : "image");
+
+        String lower = cleaned.toLowerCase(Locale.US);
+        if (lower.matches(".*\\.[a-z0-9]{2,5}$")) return cleaned;
+
+        return cleaned + "." + getExtensionFromMime(mimeType, mediaType);
+    }
+
+    private String getExtensionFromMime(String mimeType, String mediaType) {
+        if (mimeType != null && !mimeType.isEmpty()) {
+            String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+            if (extension != null && !extension.isEmpty()) return extension;
+            String lower = mimeType.toLowerCase(Locale.US);
+            if (lower.contains("quicktime")) return "mov";
+            if (lower.contains("webm")) return "webm";
+            if (lower.contains("png")) return "png";
+            if (lower.contains("webp")) return "webp";
+            if (lower.contains("gif")) return "gif";
+            if (lower.contains("heic")) return "heic";
+        }
+
+        return "video".equals(mediaType) ? "mp4" : "jpg";
     }
 }

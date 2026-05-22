@@ -11,9 +11,9 @@ const router = express.Router();
 const publicReleaseDir = path.join(__dirname, '..', 'public', 'releases');
 const uploadedReleaseDir = path.join(__dirname, '..', 'uploads', 'releases');
 const apkHashCache = new Map();
-const manualDownloadPageUrl = 'https://www.mediafire.com/file/62p9erv7uannyil/syncrova-4.4.20.apk/file';
-const manualDownloadFileKey = '62p9erv7uannyil';
-const manualDownloadFileName = 'syncrova-4.4.20.apk';
+const manualDownloadPageUrl = 'https://www.mediafire.com/file/n3m8rwc8r4ewv0w/syncrova-4.4.21.apk/file';
+const manualDownloadFileKey = 'n3m8rwc8r4ewv0w';
+const manualDownloadFileName = 'syncrova-4.4.21.apk';
 const DEFAULT_STUN_SERVERS = [
   'stun:stun.l.google.com:19302',
   'stun:stun1.l.google.com:19302',
@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.20',
-  versionCode: 67
+  versionName: '4.4.21',
+  versionCode: 68
 };
 
 const getConfiguredVersionCode = () => {
@@ -81,6 +81,23 @@ const isConfiguredApkUrlAllowed = (apkUrl, releaseInfo) => {
 const getReleaseApkFileName = (versionName) => (
   `syncrova-${String(versionName || 'latest').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`
 );
+
+const getManualDownloadForRelease = (releaseInfo = getReleaseInfo()) => {
+  const expectedFileName = getReleaseApkFileName(releaseInfo.versionName);
+  if (!manualDownloadPageUrl || manualDownloadFileName !== expectedFileName) {
+    return {
+      pageUrl: '',
+      fileKey: '',
+      fileName: ''
+    };
+  }
+
+  return {
+    pageUrl: manualDownloadPageUrl,
+    fileKey: manualDownloadFileKey,
+    fileName: manualDownloadFileName
+  };
+};
 
 const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -136,6 +153,7 @@ const getReleaseDownload = () => {
   const releaseApk = getLocalReleaseApk(versionName);
   const configuredApkUrl = String(process.env.APP_APK_URL || '').trim();
   const useConfiguredApkUrl = isConfiguredApkUrlAllowed(configuredApkUrl, releaseInfo);
+  const manualDownload = getManualDownloadForRelease(releaseInfo);
   const useLocalApk = Boolean(releaseApk.filePath);
   const apkUrl = useLocalApk ? releaseApk.urlPath : (useConfiguredApkUrl ? configuredApkUrl : releaseApk.urlPath);
 
@@ -143,16 +161,17 @@ const getReleaseDownload = () => {
     releaseInfo,
     releaseApk,
     apkUrl,
-    apkAvailable: Boolean(manualDownloadPageUrl) || useLocalApk || useConfiguredApkUrl,
-    externalDownload: Boolean(manualDownloadPageUrl),
-    downloadPageUrl: manualDownloadPageUrl
+    apkAvailable: Boolean(manualDownload.pageUrl) || useLocalApk || useConfiguredApkUrl,
+    externalDownload: Boolean(manualDownload.pageUrl),
+    downloadPageUrl: manualDownload.pageUrl
   };
 };
 
-const extractMediaFireDirectUrl = (html = '') => {
+const extractMediaFireDirectUrl = (html = '', manualDownload = getManualDownloadForRelease()) => {
+  if (!manualDownload.pageUrl || !manualDownload.fileKey || !manualDownload.fileName) return '';
   const normalized = String(html || '').replace(/&amp;/g, '&');
   const directPattern = new RegExp(
-    `https://download[^"'<>\\\\\\s]+\\.mediafire\\.com/[^"'<>\\\\\\s]+/${escapeRegExp(manualDownloadFileKey)}/${escapeRegExp(manualDownloadFileName)}`,
+    `https://download[^"'<>\\\\\\s]+\\.mediafire\\.com/[^"'<>\\\\\\s]+/${escapeRegExp(manualDownload.fileKey)}/${escapeRegExp(manualDownload.fileName)}`,
     'i'
   );
   const directMatch = normalized.match(directPattern);
@@ -226,15 +245,23 @@ router.get('/update', (req, res) => {
 
 router.get('/download', async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  const manualDownload = getManualDownloadForRelease();
+
+  if (!manualDownload.pageUrl) {
+    return res.status(404).json({
+      msg: 'Manual download page is not configured for the current Syncrova release yet.',
+      downloadPageUrl: ''
+    });
+  }
 
   try {
-    const response = await fetch(manualDownloadPageUrl, {
+    const response = await fetch(manualDownload.pageUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 SyncrovaUpdater/1.0'
       }
     });
     const html = await response.text();
-    const directUrl = extractMediaFireDirectUrl(html);
+    const directUrl = extractMediaFireDirectUrl(html, manualDownload);
     if (directUrl) {
       return res.redirect(302, directUrl);
     }
@@ -244,13 +271,19 @@ router.get('/download', async (req, res) => {
 
   return res.status(502).json({
     msg: 'Could not resolve the MediaFire APK download link. Open the manual download page instead.',
-    downloadPageUrl: manualDownloadPageUrl
+    downloadPageUrl: manualDownload.pageUrl
   });
 });
 
 router.get('/download-page', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.redirect(302, manualDownloadPageUrl);
+  const manualDownload = getManualDownloadForRelease();
+  if (!manualDownload.pageUrl) {
+    return res.status(404).json({
+      msg: 'Manual download page is not configured for the current Syncrova release yet.'
+    });
+  }
+  res.redirect(302, manualDownload.pageUrl);
 });
 
 router.get('/ice-servers', (req, res) => {

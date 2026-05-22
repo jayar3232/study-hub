@@ -6,14 +6,26 @@ export const isDeveloperUser = (user) => Boolean(user?.isDeveloper);
 export function DeveloperBadge({ user, compact = false, className = '' }) {
   if (!isDeveloperUser(user)) return null;
 
+  if (compact) {
+    return (
+      <span
+        className={`developer-badge developer-badge--compact developer-motion-zone inline-grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#061528] p-0 text-sky-50 ring-1 ring-sky-300/55 dark:bg-[#061528] dark:text-sky-50 dark:ring-sky-200/70 ${className}`}
+        title="Verified developer"
+      >
+        <Code2 size={10} className="text-sky-200" />
+        <span className="sr-only">Verified developer</span>
+      </span>
+    );
+  }
+
   return (
     <span
       className={`developer-badge developer-motion-zone inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#061528] px-2.5 py-1 text-[10px] font-black uppercase text-sky-50 ring-1 ring-sky-300/55 dark:bg-[#061528] dark:text-sky-50 dark:ring-sky-200/70 ${className}`}
       title="Verified developer"
     >
-      <Code2 size={compact ? 11 : 13} className="text-sky-200" />
-      {compact ? 'Dev' : 'Developer'}
-      <BadgeCheck size={compact ? 11 : 13} className="fill-sky-300 text-[#061528]" />
+      <Code2 size={13} className="text-sky-200" />
+      Developer
+      <BadgeCheck size={13} className="fill-sky-300 text-[#061528]" />
     </span>
   );
 }

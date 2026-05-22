@@ -85,20 +85,45 @@ const safeFileName = (name = '', mimeType = '', type = 'image') => {
   return `${cleaned || `syncrova-${type}`}.${extension}`;
 };
 
+const prepareNativeMediaForRead = async (asset = {}) => {
+  if (!isNativeMediaLibraryAvailable() || !String(asset.uri || '').startsWith('content://')) {
+    return asset;
+  }
+
+  const copied = await SyncrovaMediaLibrary.copyMediaToCache({
+    uri: asset.uri,
+    name: asset.name || asset.displayName || '',
+    mimeType: asset.mimeType || '',
+    type: asset.type === 'video' ? 'video' : 'image'
+  });
+
+  const nextAsset = {
+    ...asset,
+    ...copied,
+    uri: copied?.uri || asset.uri,
+    webPath: getNativeMediaWebPath(copied || asset)
+  };
+
+  return nextAsset;
+};
+
 export const nativeMediaAssetToFile = async (asset = {}) => {
-  const source = getNativeMediaWebPath(asset);
+  const readableAsset = await prepareNativeMediaForRead(asset);
+  const source = getNativeMediaWebPath(readableAsset);
   if (!source) throw new Error('Media source is unavailable');
 
   const response = await fetch(source);
   if (!response.ok) throw new Error('Could not read selected media');
 
   const blob = await response.blob();
-  const mimeType = asset.mimeType || blob.type || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
-  const lastModified = Number(asset.dateModified || asset.dateAdded || 0) > 0
-    ? Number(asset.dateModified || asset.dateAdded) * 1000
+  if (!blob.size) throw new Error('Selected media is empty');
+
+  const mimeType = readableAsset.mimeType || blob.type || (readableAsset.type === 'video' ? 'video/mp4' : 'image/jpeg');
+  const lastModified = Number(readableAsset.dateModified || readableAsset.dateAdded || 0) > 0
+    ? Number(readableAsset.dateModified || readableAsset.dateAdded) * 1000
     : Date.now();
 
-  return new File([blob], safeFileName(asset.name, mimeType, asset.type), {
+  return new File([blob], safeFileName(readableAsset.name, mimeType, readableAsset.type), {
     type: mimeType,
     lastModified
   });

@@ -721,7 +721,6 @@ export default function Dashboard() {
       toast.success('Media ready for My Day', { id: loadingToast });
     } catch (err) {
       toast.error(err?.message || 'Could not prepare selected media', { id: loadingToast });
-      throw err;
     }
   };
 
