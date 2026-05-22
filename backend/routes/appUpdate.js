@@ -37,8 +37,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.18',
-  versionCode: 65
+  versionName: '4.4.19',
+  versionCode: 66
 };
 
 const getConfiguredVersionCode = () => {

@@ -56,8 +56,8 @@ const buildAccountContext = (user = {}) => ({
   now: new Date().toISOString(),
   app: {
     name: 'Syncrova',
-    currentVersion: process.env.APP_VERSION_NAME || '4.4.18',
-    androidVersionCode: Number(process.env.APP_VERSION_CODE || 65)
+    currentVersion: process.env.APP_VERSION_NAME || '4.4.19',
+    androidVersionCode: Number(process.env.APP_VERSION_CODE || 66)
   },
   account: {
     name: user.name || '',
