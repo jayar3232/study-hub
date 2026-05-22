@@ -177,7 +177,7 @@ export default function AppUpdatePrompt() {
       }
 
       await openExternalUrl(downloadUrl);
-      setDownloadMessage('Opening the MediaFire download page in your browser.');
+      setDownloadMessage(update.externalDownload ? 'Opening the MediaFire download page in your browser.' : 'Opening the APK download in your browser.');
       setDownloading(false);
     } catch (err) {
       setDownloadMessage(err?.message || 'Could not open the download page.');
@@ -193,6 +193,10 @@ export default function AppUpdatePrompt() {
     .filter(Boolean)
     .slice(0, 5);
   const apkSizeLabel = formatBytes(update.apkSize);
+  const downloadTargetLabel = update.externalDownload ? 'download page' : 'APK download';
+  const deliveryCopy = update.externalDownload
+    ? 'This opens the official MediaFire page only; Syncrova will not install an APK inside the app.'
+    : 'This opens the APK download in your browser; Syncrova will not install it inside the app.';
 
   const card = (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#111827]/95 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
@@ -203,7 +207,7 @@ export default function AppUpdatePrompt() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black">{update.required ? 'Syncrova update required' : 'New Syncrova update available'}</p>
             <p className="mt-1 text-xs font-semibold text-white/70">
-              Version {update.versionName} is ready{apkSizeLabel ? ` - ${apkSizeLabel}` : ''}. This opens the official MediaFire page only; Syncrova will not install an APK inside the app.
+              Version {update.versionName} is ready{apkSizeLabel ? ` - ${apkSizeLabel}` : ''}. {deliveryCopy}
             </p>
             {noteItems.length > 0 && (
               <div className="mt-2 rounded-2xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">
@@ -256,7 +260,7 @@ export default function AppUpdatePrompt() {
           >
             <span className="inline-flex items-center justify-center gap-2">
               {downloading ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}
-              {downloading ? 'Opening...' : checking ? 'Preparing...' : 'Open download page'}
+              {downloading ? 'Opening...' : checking ? 'Preparing...' : `Open ${downloadTargetLabel}`}
             </span>
           </button>
         </div>

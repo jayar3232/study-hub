@@ -160,8 +160,6 @@ export default function NativeMediaLibrarySheet({
     return () => cancel(handle);
   }, [assets.length, open, visibleAssetCount]);
 
-  if (!open || typeof document === 'undefined') return null;
-
   const changeFilter = (nextFilter) => {
     setFilter(nextFilter);
     setSelectedIds([]);
@@ -210,6 +208,8 @@ export default function NativeMediaLibrarySheet({
   };
 
   const permissionBlocked = permission !== 'granted';
+
+  if (!open || typeof document === 'undefined') return null;
 
   return createPortal(
     <div className="native-media-overlay" onClick={onClose}>

@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.21',
-  versionCode: 68
+  versionName: '4.4.22',
+  versionCode: 69
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.18 makes group chat match the direct conversation layout|Smooths Android media picking for photo and video sends|Keeps APK install verification to prevent version downgrades'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.22 fixes the Android message gallery crash|Keeps the custom media picker and staged thumbnail rendering|Keeps APK update routing aligned with the latest build'
   });
 });
 
