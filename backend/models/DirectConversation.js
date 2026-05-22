@@ -18,6 +18,11 @@ const DirectConversationSchema = new mongoose.Schema({
     enum: CHAT_BACKGROUND_IDS,
     default: DEFAULT_CHAT_BACKGROUND_ID
   },
+  participantNicknames: {
+    type: Map,
+    of: String,
+    default: () => ({})
+  },
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

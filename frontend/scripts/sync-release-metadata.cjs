@@ -27,7 +27,8 @@ const versionName = pkg.version;
 let androidGradle = readText(androidGradlePath);
 
 const applicationId = process.env.SYNCROVA_APP_ID
-  || androidGradle.match(/applicationId\s+"([^"]+)"/)?.[1];
+  || androidGradle.match(/applicationId\s+"([^"]+)"/)?.[1]
+  || 'com.nemsu.studenthub';
 
 if (!applicationId) {
   throw new Error('Could not find Android applicationId');

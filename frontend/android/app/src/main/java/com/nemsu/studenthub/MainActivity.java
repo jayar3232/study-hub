@@ -25,6 +25,7 @@ public class MainActivity extends BridgeActivity {
         clearStaleWebCacheOnce();
         enableSafeFullscreen();
         configureWebViewForSmoothRendering();
+        configureMessengerStandaloneMode();
     }
 
     @Override
@@ -106,6 +107,26 @@ public class MainActivity extends BridgeActivity {
             }
         } catch (Exception ignored) {
             // Rendering hints should never block app startup on device-specific WebView builds.
+        }
+    }
+
+    private void configureMessengerStandaloneMode() {
+        if (!BuildConfig.SYNCROVA_MESSENGER) return;
+
+        try {
+            WebView webView = getBridge() == null ? null : getBridge().getWebView();
+            if (webView == null) return;
+
+            webView.post(() -> webView.evaluateJavascript(
+                "(function(){try{window.__SYNCROVA_MESSENGER_APP__=true;"
+                    + "localStorage.setItem('syncrova:standalone-messenger','true');"
+                    + "document.documentElement.classList.add('syncrova-messenger-standalone');"
+                    + "window.dispatchEvent(new CustomEvent('syncrova:standalone-messenger-ready'));"
+                    + "}catch(e){}})();",
+                null
+            ));
+        } catch (Exception ignored) {
+            // The web bundle also has a build-time messenger flag, so this is only a native fallback.
         }
     }
 

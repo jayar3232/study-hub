@@ -58,8 +58,23 @@ const getConversationSettings = async (userA, userB, { create = false } = {}) =>
   ).lean();
 };
 
+const getConversationNicknames = (conversation) => {
+  const rawNicknames = conversation?.participantNicknames || {};
+  const entries = rawNicknames instanceof Map
+    ? Array.from(rawNicknames.entries())
+    : Object.entries(rawNicknames);
+
+  return entries.reduce((acc, [userId, nickname]) => {
+    const id = normalizeId(userId);
+    const value = String(nickname || '').trim();
+    if (id && value) acc[id] = value;
+    return acc;
+  }, {});
+};
+
 const getConversationPayload = (conversation) => ({
-  backgroundId: normalizeChatBackgroundId(conversation?.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID
+  backgroundId: normalizeChatBackgroundId(conversation?.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID,
+  nicknames: getConversationNicknames(conversation)
 });
 
 const localStorage = multer.diskStorage({
@@ -322,28 +337,24 @@ router.get('/conversations', auth, async (req, res) => {
       { $sort: { lastTime: -1 } }
     ]);
 
-    const backgroundRows = await DirectConversation.find({
+    const settingsRows = await DirectConversation.find({
       participantKey: {
         $in: rows
           .map(item => getParticipantKey(req.user, item.user?._id || item._id))
           .filter(Boolean)
       }
-    }).select('participantKey backgroundId').lean();
-    const backgroundByKey = new Map(backgroundRows.map(item => [
-      item.participantKey,
-      normalizeChatBackgroundId(item.backgroundId) || DEFAULT_CHAT_BACKGROUND_ID
-    ]));
+    }).select('participantKey backgroundId participantNicknames').lean();
+    const settingsByKey = new Map(settingsRows.map(item => [item.participantKey, getConversationPayload(item)]));
 
     const conversations = rows.map((item) => {
       const participantKey = getParticipantKey(req.user, item.user?._id || item._id);
+      const conversationSettings = settingsByKey.get(participantKey) || getConversationPayload(null);
       return {
         user: serializeMediaUser(item.user),
         lastMessage: describeMessage(item.lastMessageDoc || {}),
         lastTime: item.lastTime,
         unreadCount: item.unreadCount || 0,
-        conversation: {
-          backgroundId: backgroundByKey.get(participantKey) || DEFAULT_CHAT_BACKGROUND_ID
-        }
+        conversation: conversationSettings
       };
     });
     res.json(conversations);
@@ -520,6 +531,90 @@ router.put('/:userId/background', auth, async (req, res) => {
     if (io) {
       participantIds.forEach(participantId => {
         io.to(`user_${participantId}`).emit('conversation-background-updated', payload);
+        if (systemMessage) io.to(`user_${participantId}`).emit('receiveMessage', systemMessage);
+      });
+    }
+
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.put('/:userId/nickname', auth, async (req, res) => {
+  try {
+    const otherUser = await User.findById(req.params.userId).select(MESSAGE_USER_FIELDS);
+    if (!otherUser) return res.status(404).json({ msg: 'User not found' });
+    if (normalizeId(otherUser) === req.user) return res.status(400).json({ msg: 'Choose another user' });
+
+    const nickname = String(req.body?.nickname || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    const previous = await getConversationSettings(req.user, req.params.userId, { create: true });
+    const previousNicknames = getConversationNicknames(previous);
+    const previousNickname = previousNicknames[normalizeId(otherUser)] || '';
+    const changed = previousNickname !== nickname;
+    const participantIds = getParticipantIds(req.user, req.params.userId);
+    const participantKey = participantIds.join(':');
+    const nicknamePath = `participantNicknames.${normalizeId(otherUser)}`;
+    const update = {
+      $set: {
+        participantKey,
+        participants: participantIds,
+        updatedBy: req.user
+      }
+    };
+
+    if (nickname) update.$set[nicknamePath] = nickname;
+    else update.$unset = { [nicknamePath]: '' };
+
+    const conversation = await DirectConversation.findOneAndUpdate(
+      { participantKey },
+      update,
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    let systemMessage = null;
+    if (changed) {
+      const actor = await User.findById(req.user).select(MESSAGE_USER_FIELDS).lean();
+      const actorName = actor?.name || 'User';
+      const targetName = otherUser.name || 'this user';
+      const message = new Message({
+        from: req.user,
+        to: req.params.userId,
+        text: nickname
+          ? `${actorName} set ${targetName}'s nickname to ${nickname}.`
+          : `${actorName} cleared ${targetName}'s nickname.`,
+        system: true,
+        systemType: 'nickname_changed',
+        systemData: {
+          actorId: req.user,
+          actorName,
+          targetUserId: normalizeId(otherUser),
+          targetName,
+          nickname,
+          previousNickname
+        },
+        read: true,
+        readAt: new Date()
+      });
+      await message.save();
+      systemMessage = await populateMessage(message._id);
+    }
+
+    const payload = {
+      userId: req.user,
+      otherUserId: req.params.userId,
+      targetUserId: normalizeId(otherUser),
+      participants: participantIds,
+      conversation: getConversationPayload(conversation),
+      nickname,
+      changed,
+      message: systemMessage
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      participantIds.forEach(participantId => {
+        io.to(`user_${participantId}`).emit('conversation-nickname-updated', payload);
         if (systemMessage) io.to(`user_${participantId}`).emit('receiveMessage', systemMessage);
       });
     }

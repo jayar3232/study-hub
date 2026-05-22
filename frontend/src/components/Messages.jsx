@@ -21,10 +21,12 @@ import {
   Mic,
   MicOff,
   MoreVertical,
+  Pause,
   Phone,
   PhoneOff,
   Pin,
   PinOff,
+  Play,
   Plus,
   Palette,
   Reply,
@@ -384,6 +386,53 @@ const formatBytes = (bytes = 0) => {
   return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
+const formatAudioTime = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+const getPreferredAudioMimeType = () => {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+  return [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4'
+  ].find(type => MediaRecorder.isTypeSupported(type)) || '';
+};
+
+const getAudioFileExtension = (mimeType = '') => {
+  const normalized = String(mimeType).toLowerCase();
+  if (normalized.includes('mp4')) return 'm4a';
+  if (normalized.includes('ogg')) return 'ogg';
+  return 'webm';
+};
+
+const getSystemMessageText = (message = {}, currentUserId = '') => {
+  if (message.systemType !== 'nickname_changed') return message.text || 'Conversation updated.';
+
+  const data = message.systemData || {};
+  const actorId = getEntityId(data.actorId || message.from);
+  const targetUserId = getEntityId(data.targetUserId || message.to);
+  const actorName = data.actorName || getDisplayName(message.from, 'Someone');
+  const targetName = data.targetName || getDisplayName(message.to, 'this user');
+  const nickname = String(data.nickname || '').trim();
+  const isActor = actorId === currentUserId;
+  const isTarget = targetUserId === currentUserId;
+
+  if (nickname) {
+    if (isTarget) return `${actorName} set your nickname to ${nickname}.`;
+    if (isActor) return `You set ${targetName}'s nickname to ${nickname}.`;
+    return `${actorName} set ${targetName}'s nickname to ${nickname}.`;
+  }
+
+  if (isTarget) return `${actorName} cleared your nickname.`;
+  if (isActor) return `You cleared ${targetName}'s nickname.`;
+  return `${actorName} cleared ${targetName}'s nickname.`;
+};
+
 const getFileType = (file) => {
   if (file?.type?.startsWith('image/')) return 'image';
   if (file?.type?.startsWith('video/')) return 'video';
@@ -489,6 +538,92 @@ const normalizeChatBackgroundKey = (value) => (
   isValidChatBackgroundId(value) ? value : DEFAULT_CHAT_BACKGROUND_ID
 );
 
+function VoiceMessagePlayer({ src, fileName = '', fileSize = 0, isMe = false }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playbackError, setPlaybackError] = useState(false);
+
+  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+
+  const togglePlayback = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio || !src) return;
+
+    try {
+      if (audio.paused) {
+        await audio.play();
+        setPlaying(true);
+      } else {
+        audio.pause();
+        setPlaying(false);
+      }
+    } catch {
+      setPlaybackError(true);
+      setPlaying(false);
+    }
+  }, [src]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+
+    const handlePause = () => setPlaying(false);
+    const handlePlay = () => setPlaying(true);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('play', handlePlay);
+    return () => {
+      audio.pause();
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('play', handlePlay);
+    };
+  }, [src]);
+
+  return (
+    <div className={`voice-message-player ${isMe ? 'is-own' : ''}`}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={event => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime || 0)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrentTime(0);
+        }}
+        onError={() => setPlaybackError(true)}
+      />
+      <button
+        type="button"
+        onClick={togglePlayback}
+        className="voice-message-play-button"
+        aria-label={playing ? 'Pause voice message' : 'Play voice message'}
+      >
+        {playing ? <Pause size={17} /> : <Play size={17} className="ml-0.5" />}
+      </button>
+      <span className="voice-message-wave" aria-hidden="true">
+        {Array.from({ length: 18 }).map((_, index) => (
+          <span key={index} style={{ height: `${7 + ((index * 7) % 18)}px` }} />
+        ))}
+      </span>
+      <span className="voice-message-meta">
+        <span className="voice-message-label">{fileName || 'Voice message'}</span>
+        <span className="voice-message-time">
+          {formatAudioTime(currentTime || duration)}
+          {fileSize > 0 ? ` - ${formatBytes(fileSize)}` : ''}
+        </span>
+        <span className="voice-message-progress" style={{ '--voice-progress': `${progress}%` }} />
+        {playbackError && (
+          <a href={src} target="_blank" rel="noopener noreferrer" className="voice-message-fallback">
+            Open audio
+          </a>
+        )}
+      </span>
+    </div>
+  );
+}
+
 export default function Messages() {
   const { user } = useAuth();
   const {
@@ -509,6 +644,8 @@ export default function Messages() {
   const [mutedConversationIds, setMutedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.mutedChats, LEGACY_STORAGE_KEYS.mutedChats));
   const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.pinnedChats, LEGACY_STORAGE_KEYS.pinnedChats));
   const [conversationNicknames, setConversationNicknames] = useState(() => readStoredObject(STORAGE_KEYS.chatNicknames, LEGACY_STORAGE_KEYS.chatNicknames));
+  const [nicknameDraft, setNicknameDraft] = useState('');
+  const [savingNickname, setSavingNickname] = useState(false);
   const [conversationThemes, setConversationThemes] = useState(() => readStoredObject(STORAGE_KEYS.chatThemes, LEGACY_STORAGE_KEYS.chatThemes));
   const [conversationBackgrounds, setConversationBackgrounds] = useState({});
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
@@ -619,7 +756,7 @@ export default function Messages() {
   const selectedUserRef = useRef(null);
   const messageRefs = useRef({});
   const reactionPressTimerRef = useRef(null);
-  const swipeReplyRef = useRef(null);
+  const swipeMessageActionRef = useRef(null);
   const loadingOlderMessagesRef = useRef(false);
   const pendingAutoScrollRef = useRef(false);
   const pendingAutoScrollBehaviorRef = useRef('smooth');
@@ -719,9 +856,38 @@ export default function Messages() {
     });
   }, []);
 
-  const updateConversationNickname = useCallback((rawId, value) => {
-    updateStoredObject(STORAGE_KEYS.chatNicknames, setConversationNicknames, rawId, value.trim());
+  const cacheConversationNickname = useCallback((rawId, value) => {
+    updateStoredObject(STORAGE_KEYS.chatNicknames, setConversationNicknames, rawId, String(value || '').trim());
   }, [updateStoredObject]);
+
+  const syncConversationNicknamesFromItems = useCallback((items = []) => {
+    setConversationNicknames(prev => {
+      let changed = false;
+      const next = { ...prev };
+
+      items.forEach(item => {
+        const userId = getEntityId(item?.user || item?.userId || item);
+        if (!userId) return;
+
+        const nickname = String(item?.conversation?.nicknames?.[userId] || '').trim();
+        if (nickname) {
+          if (next[userId] !== nickname) {
+            next[userId] = nickname;
+            changed = true;
+          }
+        } else if (next[userId]) {
+          delete next[userId];
+          changed = true;
+        }
+      });
+
+      if (changed && typeof window !== 'undefined') {
+        window.localStorage.setItem(STORAGE_KEYS.chatNicknames, JSON.stringify(next));
+      }
+
+      return changed ? next : prev;
+    });
+  }, []);
 
   const updateConversationTheme = useCallback((rawId, value) => {
     updateStoredObject(STORAGE_KEYS.chatThemes, setConversationThemes, rawId, value === 'default' ? '' : value);
@@ -1043,6 +1209,7 @@ export default function Messages() {
       const res = await api.get('/messages/conversations');
       const items = Array.isArray(res.data) ? res.data : [];
       setConversations(items);
+      syncConversationNicknamesFromItems(items);
       setConversationBackgrounds(prev => {
         let changed = false;
         const next = { ...prev };
@@ -1064,7 +1231,7 @@ export default function Messages() {
       console.error(err);
       return [];
     }
-  }, []);
+  }, [syncConversationNicknamesFromItems]);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -1203,7 +1370,10 @@ export default function Messages() {
 
       const payload = res.data || {};
       const loadedMessages = Array.isArray(payload) ? payload : (payload.items || []);
-      if (!Array.isArray(payload)) cacheConversationBackground(id, payload.conversation?.backgroundId);
+      if (!Array.isArray(payload)) {
+        cacheConversationBackground(id, payload.conversation?.backgroundId);
+        cacheConversationNickname(id, payload.conversation?.nicknames?.[id] || '');
+      }
       setMessages(loadedMessages);
       setHasOlderMessages(Boolean(!Array.isArray(payload) && payload.hasMore));
       setOldestMessageCursor(Array.isArray(payload) ? null : (payload.nextCursor || null));
@@ -1221,7 +1391,7 @@ export default function Messages() {
     } finally {
       if (latestFetchIdRef.current === fetchId) setLoading(false);
     }
-  }, [cacheConversationBackground, currentUserId, markChatAsRead]);
+  }, [cacheConversationBackground, cacheConversationNickname, currentUserId, markChatAsRead]);
 
   const fetchChatStreak = useCallback(async (userId) => {
     const id = getEntityId(userId);
@@ -2628,6 +2798,37 @@ export default function Messages() {
       }
     };
 
+    const onConversationNicknameUpdated = (payload = {}) => {
+      const participants = Array.isArray(payload.participants)
+        ? payload.participants.map(getEntityId).filter(Boolean)
+        : [];
+      if (participants.length && !participants.includes(currentUserId)) return;
+
+      const otherUserId = participants.find(id => id !== currentUserId)
+        || getEntityId(payload.otherUserId)
+        || getEntityId(payload.userId);
+      if (!otherUserId || otherUserId === currentUserId) return;
+
+      const nextNicknames = payload.conversation?.nicknames || {};
+      const nextNickname = String(nextNicknames[otherUserId] || '').trim();
+      cacheConversationNickname(otherUserId, nextNickname);
+      setConversations(prev => prev.map(conversation => (
+        getEntityId(conversation.user) === otherUserId
+          ? {
+              ...conversation,
+              conversation: {
+                ...(conversation.conversation || {}),
+                nicknames: nextNicknames
+              }
+            }
+          : conversation
+      )));
+
+      if (getEntityId(selectedUserRef.current) === otherUserId) {
+        setNicknameDraft(nextNickname);
+      }
+    };
+
     const onUserNoteUpdated = (note) => {
       syncUserNote(note);
     };
@@ -2660,6 +2861,7 @@ export default function Messages() {
     socket.on('message-hidden', onMessageHidden);
     socket.on('conversation-deleted', onConversationDeleted);
     socket.on('conversation-background-updated', onConversationBackgroundUpdated);
+    socket.on('conversation-nickname-updated', onConversationNicknameUpdated);
     socket.on('group-updated', onGroupUpdated);
     socket.on('user-note-updated', onUserNoteUpdated);
     socket.on('user-note-deleted', onUserNoteDeleted);
@@ -2690,6 +2892,7 @@ export default function Messages() {
       socket.off('message-hidden', onMessageHidden);
       socket.off('conversation-deleted', onConversationDeleted);
       socket.off('conversation-background-updated', onConversationBackgroundUpdated);
+      socket.off('conversation-nickname-updated', onConversationNicknameUpdated);
       socket.off('group-updated', onGroupUpdated);
       socket.off('user-note-updated', onUserNoteUpdated);
       socket.off('user-note-deleted', onUserNoteDeleted);
@@ -2703,6 +2906,7 @@ export default function Messages() {
     };
   }, [
     cacheConversationBackground,
+    cacheConversationNickname,
     currentUserId,
     fetchConversations,
     fetchGroups,
@@ -3370,7 +3574,10 @@ export default function Messages() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const preferredMimeType = getPreferredAudioMimeType();
+      const recorder = preferredMimeType
+        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+        : new MediaRecorder(stream);
       audioChunksRef.current = [];
       recordingCancelledRef.current = false;
       mediaRecorderRef.current = recorder;
@@ -3381,7 +3588,8 @@ export default function Messages() {
 
       recorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        const mimeType = recorder.mimeType || preferredMimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
         setRecording(false);
         clearInterval(recordingTimerRef.current);
@@ -3389,7 +3597,7 @@ export default function Messages() {
 
         if (blob.size === 0 || recordingCancelledRef.current) return;
 
-        const voiceFile = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type || 'audio/webm' });
+        const voiceFile = new File([blob], `voice-${Date.now()}.${getAudioFileExtension(mimeType)}`, { type: mimeType });
         await sendMessage({ file: voiceFile, fileType: 'audio' });
       };
 
@@ -3568,36 +3776,55 @@ export default function Messages() {
     }, delay);
   };
 
-  const startSwipeReply = (event, message) => {
+  const startSwipeMessageAction = (event, message) => {
     if (!isTouchReactionMode() || message?.unsent || message?.system) return;
     const touch = event.touches?.[0];
     if (!touch) return;
-    swipeReplyRef.current = {
+    swipeMessageActionRef.current = {
       message,
       startX: touch.clientX,
       startY: touch.clientY,
+      axis: '',
       completed: false
     };
   };
 
-  const moveSwipeReply = (event) => {
-    const gesture = swipeReplyRef.current;
+  const moveSwipeMessageAction = (event) => {
+    const gesture = swipeMessageActionRef.current;
     if (!gesture || gesture.completed) return;
     const touch = event.touches?.[0];
     if (!touch) return;
     const dx = touch.clientX - gesture.startX;
     const dy = touch.clientY - gesture.startY;
-    if (Math.abs(dy) > 38 || Math.abs(dx) < 72 || Math.abs(dx) < Math.abs(dy) * 1.45) return;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (!gesture.axis && (absX > 12 || absY > 12)) {
+      gesture.axis = absX > absY * 1.35 ? 'x' : 'y';
+    }
+
+    if (gesture.axis !== 'x' || absX < 78) return;
     gesture.completed = true;
     clearReactionPressTimer();
-    setReplyingTo(gesture.message);
-    focusComposerInput();
+
+    if (dx > 0) {
+      setActionMenuMessageId(null);
+      setEmojiPickerMessageId(null);
+      setReplyingTo(gesture.message);
+      focusComposerInput();
+    } else {
+      const messageId = getEntityId(gesture.message);
+      setReplyingTo(null);
+      setEmojiPickerMessageId(null);
+      setActionMenuMessageId(messageId);
+    }
+
     playUiSound('click', 0.12);
     navigator.vibrate?.(12);
   };
 
-  const clearSwipeReply = () => {
-    swipeReplyRef.current = null;
+  const clearSwipeMessageAction = () => {
+    swipeMessageActionRef.current = null;
   };
 
   const jumpToMessage = (messageId) => {
@@ -3877,6 +4104,65 @@ export default function Messages() {
   const selectedIsPinned = selectedUserId ? pinnedConversationIds.has(selectedUserId) : false;
   const selectedNickname = selectedUserId ? conversationNicknames[selectedUserId] || '' : '';
   const selectedDisplayName = selectedNickname || selectedUser?.name || 'User';
+
+  useEffect(() => {
+    setNicknameDraft(selectedNickname);
+  }, [selectedNickname, selectedUserId]);
+
+  const saveConversationNickname = useCallback(async (event) => {
+    event?.preventDefault?.();
+    const id = getEntityId(selectedUser);
+    if (!id || savingNickname) return;
+
+    const nickname = nicknameDraft.trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (nickname === selectedNickname) return;
+
+    setSavingNickname(true);
+    try {
+      const res = await api.put(`/messages/${id}/nickname`, { nickname });
+      const nextNickname = String(res.data?.conversation?.nicknames?.[id] || '').trim();
+      cacheConversationNickname(id, nextNickname);
+      setNicknameDraft(nextNickname);
+      setConversations(prev => prev.map(conversation => (
+        getEntityId(conversation.user) === id
+          ? {
+              ...conversation,
+              conversation: {
+                ...(conversation.conversation || {}),
+                nicknames: (() => {
+                  const nextNicknames = { ...(conversation.conversation?.nicknames || {}) };
+                  if (nextNickname) nextNicknames[id] = nextNickname;
+                  else delete nextNicknames[id];
+                  return nextNicknames;
+                })()
+              }
+            }
+          : conversation
+      )));
+      if (res.data?.message && getEntityId(selectedUserRef.current) === id) {
+        const systemMessage = res.data.message;
+        setMessages(prev => (
+          prev.some(message => getEntityId(message) === getEntityId(systemMessage))
+            ? prev
+            : [...prev, systemMessage]
+        ));
+      }
+      fetchConversations();
+      toast.success(nextNickname ? 'Nickname saved' : 'Nickname cleared');
+    } catch (err) {
+      toast.error(err?.response?.data?.msg || 'Could not save nickname');
+    } finally {
+      setSavingNickname(false);
+    }
+  }, [
+    cacheConversationNickname,
+    fetchConversations,
+    nicknameDraft,
+    savingNickname,
+    selectedNickname,
+    selectedUser
+  ]);
+
   const selectedThemeKey = selectedUserId ? conversationThemes[selectedUserId] || 'default' : 'default';
   const selectedTheme = CHAT_THEMES[selectedThemeKey] || CHAT_THEMES.default;
   const selectedBackgroundKey = selectedUserId
@@ -4589,9 +4875,12 @@ export default function Messages() {
 
     if (primaryAttachment.fileUrl && primaryAttachment.fileType === 'audio') {
       return (
-        <div className={`rounded-2xl p-2 ${isMe ? 'bg-white/15' : 'bg-gray-100 dark:bg-gray-800'}`}>
-          <audio controls src={mediaUrl} className="w-full max-w-72" />
-        </div>
+        <VoiceMessagePlayer
+          src={mediaUrl}
+          fileName={primaryAttachment.fileName}
+          fileSize={primaryAttachment.fileSize}
+          isMe={isMe}
+        />
       );
     }
 
@@ -4773,15 +5062,26 @@ export default function Messages() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+        <form onSubmit={saveConversationNickname} className="rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
           <label className="text-xs font-black uppercase text-slate-400">Nickname</label>
-          <input
-            value={selectedNickname}
-            onChange={event => updateConversationNickname(selectedUserId, event.target.value)}
-            placeholder={selectedUser?.name || 'Friend'}
-            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-          />
-        </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={nicknameDraft}
+              onChange={event => setNicknameDraft(event.target.value.slice(0, 40))}
+              placeholder={selectedUser?.name || 'Friend'}
+              maxLength={40}
+              className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+            />
+            <button
+              type="submit"
+              disabled={savingNickname || nicknameDraft.trim().replace(/\s+/g, ' ').slice(0, 40) === selectedNickname}
+              className="rounded-2xl bg-[#1877f2] px-3 py-2 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {savingNickname ? <Loader2 size={15} className="animate-spin" /> : 'Save'}
+            </button>
+          </div>
+          <p className="mt-2 text-xs font-semibold text-slate-400">Visible to both people in this chat.</p>
+        </form>
 
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
           <label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400">
@@ -5698,6 +5998,7 @@ export default function Messages() {
                         const isSearchMatch = messageSearchMatchSet.has(messageId);
                         const showUnreadDivider = unreadDividerMessageId && unreadDividerMessageId === messageId;
                         if (message.system) {
+                          const SystemIcon = message.systemType === 'nickname_changed' ? AtSign : Palette;
                           return (
                             <React.Fragment key={item.id}>
                               {showUnreadDivider && (
@@ -5716,8 +6017,8 @@ export default function Messages() {
                                 role="status"
                               >
                                 <span className="system-message-bubble inline-flex max-w-[min(92%,28rem)] items-center gap-2 rounded-full border border-slate-200 bg-white/88 px-3 py-2 text-center text-xs font-black text-slate-600 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-950/82 dark:text-zinc-200">
-                                  <Palette size={13} className="shrink-0 text-[#1877f2] dark:text-sky-300" />
-                                  <span className="min-w-0">{message.text || 'Conversation updated.'}</span>
+                                  <SystemIcon size={13} className="shrink-0 text-[#1877f2] dark:text-sky-300" />
+                                  <span className="min-w-0">{getSystemMessageText(message, currentUserId)}</span>
                                   <span className="hidden shrink-0 font-bold opacity-60 sm:inline">
                                     {formatMessageTime(message.createdAt)}
                                   </span>
@@ -5793,8 +6094,7 @@ export default function Messages() {
                               <div
                                 onTouchStart={(event) => {
                                   if (message.unsent) return;
-                                  startMessageOptionsPress(message);
-                                  startSwipeReply(event, message);
+                                  startSwipeMessageAction(event, message);
                                 }}
                                 onMouseDown={(event) => {
                                   if (message.unsent || event.button !== 0 || isTouchReactionMode()) return;
@@ -5804,15 +6104,15 @@ export default function Messages() {
                                 onMouseLeave={clearReactionPressTimer}
                                 onTouchEnd={() => {
                                   clearReactionPressTimer();
-                                  clearSwipeReply();
+                                  clearSwipeMessageAction();
                                 }}
                                 onTouchMove={(event) => {
                                   clearReactionPressTimer();
-                                  moveSwipeReply(event);
+                                  moveSwipeMessageAction(event);
                                 }}
                                 onTouchCancel={() => {
                                   clearReactionPressTimer();
-                                  clearSwipeReply();
+                                  clearSwipeMessageAction();
                                 }}
                                 onContextMenu={(event) => {
                                   if (message.unsent) return;
@@ -6216,15 +6516,26 @@ export default function Messages() {
                   </button>
                 </div>
 
-                <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+                <form onSubmit={saveConversationNickname} className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
                   <label className="text-xs font-black uppercase text-slate-400">Nickname</label>
-                  <input
-                    value={selectedNickname}
-                    onChange={event => updateConversationNickname(selectedUserId, event.target.value)}
-                    placeholder={selectedUser?.name || 'Friend'}
-                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                  />
-                </div>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={nicknameDraft}
+                      onChange={event => setNicknameDraft(event.target.value.slice(0, 40))}
+                      placeholder={selectedUser?.name || 'Friend'}
+                      maxLength={40}
+                      className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-pink-300 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      disabled={savingNickname || nicknameDraft.trim().replace(/\s+/g, ' ').slice(0, 40) === selectedNickname}
+                      className="rounded-2xl bg-[#1877f2] px-3 py-2 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {savingNickname ? <Loader2 size={15} className="animate-spin" /> : 'Save'}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-slate-400">Visible to both people in this chat.</p>
+                </form>
 
                 <div className="mt-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-gray-900">
                   <label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400">

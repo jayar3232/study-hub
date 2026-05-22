@@ -1,15 +1,22 @@
 apply plugin: 'com.android.application'
 
+def isMessengerBuild = (project.findProperty("syncrovaMessenger") ?: "false").toString().toBoolean()
+
 android {
     namespace = "com.nemsu.studenthub"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.nemsu.studenthub"
+        applicationId isMessengerBuild ? "com.nemsu.studenthub.messenger" : "com.nemsu.studenthub"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 72
         versionName "4.4.25"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders = [
+            appLabel: isMessengerBuild ? "Syncrova Messenger" : "Syncrova",
+            deepLinkScheme: isMessengerBuild ? "syncrova-messenger" : "syncrova"
+        ]
+        buildConfigField "boolean", "SYNCROVA_MESSENGER", isMessengerBuild ? "true" : "false"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -28,6 +35,9 @@ android {
             signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+    buildFeatures {
+        buildConfig true
     }
     splits {
         abi {

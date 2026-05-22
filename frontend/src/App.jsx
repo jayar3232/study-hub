@@ -1,8 +1,9 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Toaster } from 'react-hot-toast';
 import { MotionConfig } from 'framer-motion';
+import { Download, ExternalLink, Loader2, MessageCircle } from 'lucide-react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PresenceProvider } from './context/PresenceContext';
@@ -12,6 +13,7 @@ import AppUpdatePrompt from './components/AppUpdatePrompt';
 import WebUpdatePrompt from './components/WebUpdatePrompt';
 import { PageSkeleton } from './components/SkeletonLoader';
 import useFrameHealthMonitor from './hooks/useFrameHealthMonitor';
+import { getBackendOrigin } from './utils/media';
 
 const Login = lazy(() => import('./components/Login'));
 const Register = lazy(() => import('./components/Register'));
@@ -28,6 +30,7 @@ const NotificationsPage = lazy(() => import('./components/NotificationsPage'));
 const GlobalSearchPage = lazy(() => import('./components/GlobalSearchPage'));
 const SavedItemsPage = lazy(() => import('./components/SavedItemsPage'));
 const AppHealthPage = lazy(() => import('./components/AppHealthPage'));
+const SyncrovaNativeBridge = registerPlugin('SyncrovaNativeBridge');
 
 const getNativeBackFallbackPath = (pathname = '/') => {
   if (pathname.startsWith('/group/')) return '/marketplace';
@@ -48,22 +51,75 @@ const getNativeBackFallbackPath = (pathname = '/') => {
 };
 
 const INTRO_SPLASH_SESSION_KEY = 'syncrova-intro-splash-shown';
+const MESSENGER_SPLASH_SESSION_KEY = 'syncrova-messenger-intro-splash-shown';
+const MESSENGER_STANDALONE_STORAGE_KEY = 'syncrova:standalone-messenger';
+const MESSENGER_APK_PATH = '/releases/syncrova-messenger-latest.apk';
+const DEFAULT_MESSENGER_DOWNLOAD_ORIGIN = 'https://study-hub-77ta.onrender.com';
 
-const hasSeenIntroSplash = () => {
+const isNativeAndroid = () => {
+  if (typeof window === 'undefined') return false;
+  const importedPlatform = Capacitor?.getPlatform?.();
+  if (importedPlatform) return importedPlatform === 'android';
+  const platform = window.Capacitor?.getPlatform?.();
+  if (platform) return platform === 'android';
+  return Boolean(Capacitor?.isNativePlatform?.() || window.Capacitor?.isNativePlatform?.()) && /android/i.test(navigator.userAgent || '');
+};
+
+const getMessengerDownloadUrl = () => {
+  const backendOrigin = getBackendOrigin();
+  if (backendOrigin) return `${backendOrigin}${MESSENGER_APK_PATH}`;
+  if (isNativeAndroid()) return `${DEFAULT_MESSENGER_DOWNLOAD_ORIGIN}${MESSENGER_APK_PATH}`;
+  if (typeof window !== 'undefined' && window.location?.origin) return `${window.location.origin}${MESSENGER_APK_PATH}`;
+  return MESSENGER_APK_PATH;
+};
+
+const hasSeenIntroSplash = (key = INTRO_SPLASH_SESSION_KEY) => {
   try {
-    return window.sessionStorage?.getItem(INTRO_SPLASH_SESSION_KEY) === 'true';
+    return window.sessionStorage?.getItem(key) === 'true';
   } catch {
     return false;
   }
 };
 
-const markIntroSplashSeen = () => {
+const markIntroSplashSeen = (key = INTRO_SPLASH_SESSION_KEY) => {
   try {
-    window.sessionStorage?.setItem(INTRO_SPLASH_SESSION_KEY, 'true');
+    window.sessionStorage?.setItem(key, 'true');
   } catch {
     // Session storage can be blocked in some embedded browsers; the splash can still render normally.
   }
 };
+
+const isStandaloneMessengerApp = () => {
+  if (import.meta.env.VITE_SYNCROVA_STANDALONE_MESSENGER === '1') return true;
+  if (typeof window === 'undefined') return false;
+  if (window.__SYNCROVA_MESSENGER_APP__ === true) return true;
+
+  try {
+    if (window.localStorage?.getItem(MESSENGER_STANDALONE_STORAGE_KEY) === 'true') return true;
+  } catch {
+    // Storage is only a native handoff; ignore blocked storage.
+  }
+
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    return params.get('app') === 'messenger' || params.get('standalone') === 'messenger';
+  } catch {
+    return false;
+  }
+};
+
+function useStandaloneMessengerMode() {
+  const [enabled, setEnabled] = useState(() => isStandaloneMessengerApp());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const refresh = () => setEnabled(isStandaloneMessengerApp());
+    window.addEventListener('syncrova:standalone-messenger-ready', refresh);
+    return () => window.removeEventListener('syncrova:standalone-messenger-ready', refresh);
+  }, []);
+
+  return enabled;
+}
 
 function NativeBackButtonHandler() {
   const navigate = useNavigate();
@@ -142,6 +198,21 @@ function RouteLoadingFallback() {
   );
 }
 
+function MessengerLoadingFallback() {
+  return (
+    <div className="syncrova-messenger-loading skeleton-motion-zone" role="status" aria-label="Loading Syncrova Messenger">
+      <div className="syncrova-messenger-loading-card">
+        <img src="/syncrova-app-logo.png" alt="" draggable={false} />
+        <p>Syncrova Messenger</p>
+        <span>made by sigmaboyz</span>
+        <div className="syncrova-messenger-loading-bar" aria-hidden="true">
+          <i />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NativeNotificationRouter() {
   const navigate = useNavigate();
 
@@ -153,7 +224,7 @@ function NativeNotificationRouter() {
       if (!raw) return '';
       try {
         const url = new URL(raw);
-        if (url.protocol === 'syncrova:') {
+        if (url.protocol === 'syncrova:' || url.protocol === 'syncrova-messenger:') {
           const path = url.pathname && url.pathname !== '/' ? url.pathname : '';
           return `${path || '/messages'}${url.search || ''}${url.hash || ''}`;
         }
@@ -207,7 +278,13 @@ function NativeAppEnvironment() {
     const viewport = document.querySelector('meta[name="viewport"]');
     const previousViewport = viewport?.getAttribute('content') || '';
 
+    const applyMessengerClass = () => {
+      root.classList.toggle('syncrova-messenger-standalone', isStandaloneMessengerApp());
+    };
+
     root.classList.toggle('syncrova-native-app', isNative);
+    applyMessengerClass();
+    window.addEventListener('syncrova:standalone-messenger-ready', applyMessengerClass);
     if (isNative && viewport) {
       viewport.setAttribute(
         'content',
@@ -217,6 +294,8 @@ function NativeAppEnvironment() {
 
     return () => {
       root.classList.remove('syncrova-native-app');
+      root.classList.remove('syncrova-messenger-standalone');
+      window.removeEventListener('syncrova:standalone-messenger-ready', applyMessengerClass);
       if (viewport && previousViewport) viewport.setAttribute('content', previousViewport);
     };
   }, []);
@@ -307,6 +386,131 @@ function MobileScrollPerformanceGovernor() {
   return null;
 }
 
+function MessengerHandoff() {
+  const location = useLocation();
+  const nativeAndroid = isNativeAndroid();
+  const [checking, setChecking] = useState(nativeAndroid);
+  const [opening, setOpening] = useState(false);
+  const [installed, setInstalled] = useState(null);
+  const [statusText, setStatusText] = useState(nativeAndroid ? 'Checking for Syncrova Messenger...' : '');
+  const messengerPath = `${location.pathname || '/messages'}${location.search || ''}${location.hash || ''}`;
+  const downloadUrl = getMessengerDownloadUrl();
+
+  const openInstallLink = async () => {
+    setOpening(true);
+    setStatusText('Opening the Syncrova Messenger installer...');
+    try {
+      if (nativeAndroid && SyncrovaNativeBridge?.openExternalUrl) {
+        await SyncrovaNativeBridge.openExternalUrl({ url: downloadUrl });
+      } else {
+        window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const openMessenger = async ({ silent = false } = {}) => {
+    if (!nativeAndroid || !SyncrovaNativeBridge?.openMessenger) {
+      if (!silent) await openInstallLink();
+      return;
+    }
+
+    if (!silent) {
+      setOpening(true);
+      setStatusText('Opening Syncrova Messenger...');
+    }
+
+    try {
+      const result = await SyncrovaNativeBridge.openMessenger({ path: messengerPath });
+      const nextInstalled = Boolean(result?.installed);
+      setInstalled(nextInstalled);
+      if (result?.opened) return;
+      setStatusText(nextInstalled ? 'Syncrova Messenger is installed, but Android blocked the auto-open. Tap open again.' : 'Syncrova Messenger is not installed yet.');
+      if (!silent && !nextInstalled) await openInstallLink();
+    } catch {
+      setStatusText('Could not open Syncrova Messenger automatically.');
+    } finally {
+      if (!silent) setOpening(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!nativeAndroid || !SyncrovaNativeBridge?.getMessengerStatus) {
+      setChecking(false);
+      setInstalled(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const checkMessenger = async () => {
+      setChecking(true);
+      try {
+        const result = await SyncrovaNativeBridge.getMessengerStatus();
+        if (cancelled) return;
+        const nextInstalled = Boolean(result?.installed);
+        setInstalled(nextInstalled);
+        setStatusText(nextInstalled ? 'Syncrova Messenger is installed. Opening it now...' : 'Syncrova Messenger is not installed yet.');
+        if (nextInstalled) await openMessenger({ silent: true });
+      } catch {
+        if (!cancelled) {
+          setInstalled(false);
+          setStatusText('Install Syncrova Messenger to continue chatting.');
+        }
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    };
+
+    checkMessenger();
+    return () => {
+      cancelled = true;
+    };
+  }, [messengerPath, nativeAndroid]);
+
+  return (
+    <main className="messenger-handoff-page">
+      <section className="messenger-handoff-card" aria-label="Syncrova Messenger required">
+        <span className="messenger-handoff-icon">
+          <MessageCircle size={30} />
+        </span>
+        <p className="messenger-handoff-kicker">Syncrova Messenger</p>
+        <h1>Chats now open in Messenger</h1>
+        <p className="messenger-handoff-copy">
+          For better experience, please install Syncrova Messenger. Once installed, this tab will automatically open the Messenger app for smoother chats.
+        </p>
+        {statusText && (
+          <p className="messenger-handoff-status">
+            {checking || opening ? <Loader2 size={15} className="skeleton-motion-zone animate-spin" /> : null}
+            <span>{statusText}</span>
+          </p>
+        )}
+        <div className="messenger-handoff-actions">
+          <button
+            type="button"
+            onClick={() => (installed ? openMessenger() : openInstallLink())}
+            disabled={checking || opening}
+            className="messenger-handoff-primary"
+          >
+            {checking || opening ? <Loader2 size={17} className="skeleton-motion-zone animate-spin" /> : installed ? <ExternalLink size={17} /> : <Download size={17} />}
+            {installed ? 'Open Messenger' : 'Install Syncrova Messenger'}
+          </button>
+          <button
+            type="button"
+            onClick={() => openMessenger()}
+            disabled={checking || opening}
+            className="messenger-handoff-secondary"
+          >
+            I already installed it
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return <PageSkeleton variant="dashboard" rows={4} />;
@@ -324,7 +528,7 @@ function AppRoutes() {
           <Route path="/group/:id" element={<Navigate to="/marketplace" replace />} />
           <Route path="/group/:id/:section" element={<Navigate to="/marketplace" replace />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/messages" element={<Messages />} />
+          <Route path="/messages" element={<MessengerHandoff />} />
           <Route path="/reels" element={<Reels />} />
           <Route path="/friends" element={<Friends />} />
           <Route path="/arena" element={<OpsArena />} />
@@ -342,7 +546,24 @@ function AppRoutes() {
   );
 }
 
-function AppIntroSplash() {
+function MessengerStandaloneRoutes() {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <MessengerLoadingFallback />;
+
+  return (
+    <Suspense fallback={<MessengerLoadingFallback />}>
+      <Routes>
+        <Route path="/" element={<Navigate to={isAuthenticated ? '/messages' : '/login'} replace />} />
+        <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/messages" replace />} />
+        <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/messages" replace />} />
+        <Route path="/messages" element={isAuthenticated ? <Messages /> : <Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to={isAuthenticated ? '/messages' : '/login'} replace />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
+function AppIntroSplash({ standaloneMessenger = false }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -352,25 +573,26 @@ function AppIntroSplash() {
       window.location.protocol === 'ionic:';
     const isMobile = window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches;
     if (!isNative && !isMobile) return undefined;
-    if (hasSeenIntroSplash()) return undefined;
+    const splashKey = standaloneMessenger ? MESSENGER_SPLASH_SESSION_KEY : INTRO_SPLASH_SESSION_KEY;
+    if (hasSeenIntroSplash(splashKey)) return undefined;
 
-    markIntroSplashSeen();
+    markIntroSplashSeen(splashKey);
     setVisible(true);
     const timer = window.setTimeout(() => setVisible(false), 1900);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [standaloneMessenger]);
 
   if (!visible) return null;
 
   return (
-    <div className="syncrova-intro-splash" aria-label="Welcome to Syncrova">
+    <div className={`syncrova-intro-splash ${standaloneMessenger ? 'is-messenger' : ''}`} aria-label={`Welcome to ${standaloneMessenger ? 'Syncrova Messenger' : 'Syncrova'}`}>
       <div className="syncrova-intro-glow" />
       <div className="syncrova-intro-card">
         <div className="syncrova-intro-logo">
           <img src="/syncrova-app-logo.png" alt="" draggable={false} />
         </div>
-        <p className="syncrova-intro-eyebrow">Welcome to</p>
-        <h1>Syncrova</h1>
+        <p className="syncrova-intro-eyebrow">{standaloneMessenger ? 'Opening' : 'Welcome to'}</p>
+        <h1>{standaloneMessenger ? 'Messenger' : 'Syncrova'}</h1>
         <p className="syncrova-intro-credit">made by sigmaboyz</p>
         <div className="syncrova-intro-loader">
           <span />
@@ -426,15 +648,17 @@ class AppErrorBoundary extends React.Component {
 }
 
 function App() {
+  const standaloneMessenger = useStandaloneMessengerMode();
+
   return (
     <ThemeProvider>
       <AuthProvider>
         <PresenceProvider>
           <MotionConfig reducedMotion="always">
             <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-            <AppUpdatePrompt />
+            {!standaloneMessenger && <AppUpdatePrompt />}
             <WebUpdatePrompt />
-            <AppIntroSplash />
+            <AppIntroSplash standaloneMessenger={standaloneMessenger} />
             <AppErrorBoundary>
               <BrowserRouter>
                 <NativeAppEnvironment />
@@ -443,11 +667,15 @@ function App() {
                 <NativeBackButtonHandler />
                 <NativeNotificationRouter />
                 <CallProvider>
-                  <div className="app-no-motion app-stable-render relative min-h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
-                    <div className="app-decorative-effect app-grid-overlay pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
-                    <div className="app-decorative-effect app-ambient-overlay pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
+                  <div className={`app-no-motion app-stable-render relative min-h-screen overflow-hidden ${standaloneMessenger ? 'syncrova-messenger-root' : ''}`} style={{ background: 'var(--app-bg)' }}>
+                    {!standaloneMessenger && (
+                      <>
+                        <div className="app-decorative-effect app-grid-overlay pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(var(--app-grid-a)_1px,transparent_1px),linear-gradient(90deg,var(--app-grid-b)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
+                        <div className="app-decorative-effect app-ambient-overlay pointer-events-none fixed inset-x-0 top-0 z-0 h-80 blur-2xl" style={{ background: 'var(--app-ambient)' }} />
+                      </>
+                    )}
                     <div className="relative z-10">
-                      <AppRoutes />
+                      {standaloneMessenger ? <MessengerStandaloneRoutes /> : <AppRoutes />}
                     </div>
                   </div>
                 </CallProvider>
