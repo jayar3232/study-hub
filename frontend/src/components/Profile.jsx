@@ -53,7 +53,7 @@ const formatMonthYear = (value) => {
   return new Date(value).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };
 
-const StatCard = ({ icon: Icon, label, value, helper }) => (
+const StatCard = React.memo(({ icon: Icon, label, value, helper }) => (
   <Panel
     as={motion.div}
     whileHover={{ y: -6, scale: 1.015 }}
@@ -68,7 +68,7 @@ const StatCard = ({ icon: Icon, label, value, helper }) => (
       <IconBadge icon={Icon} tone="blue" />
     </div>
   </Panel>
-);
+));
 
 const formatProfileTime = (value) => {
   if (!value) return 'Recently';
@@ -892,14 +892,14 @@ export default function Profile() {
                 className="relative h-44 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-950 text-left shadow-lg ring-1 ring-gray-200 dark:ring-gray-800"
               >
                 {story.fileType === 'image' ? (
-                  <img src={storyUrl} alt={story.caption || 'My Day'} className="h-full w-full object-cover" />
+                  <img src={storyUrl} alt={story.caption || 'My Day'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
                 ) : (
-                  <VideoThumbnail src={storyUrl} className="h-full w-full" iconSize={22} label={`${owner.name || 'Member'} story video`} />
+                  <VideoThumbnail src={storyUrl} className="h-full w-full" iconSize={22} label={`${owner.name || 'Member'} story video`} preload="none" />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/20" />
                 <div className="absolute left-2 top-2 h-9 w-9 overflow-hidden rounded-full border-2 border-[#1877f2] bg-[#1877f2] shadow-lg shadow-blue-500/35">
                   {owner.avatar ? (
-                    <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} className="h-full w-full object-cover" />
+                    <img src={resolveMediaUrl(owner.avatar)} alt={owner.name || 'User'} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover" />
                   ) : (
                     <span className="grid h-full w-full place-items-center text-xs font-black text-white">{owner.name?.charAt(0)?.toUpperCase() || 'U'}</span>
                   )}
@@ -1018,9 +1018,9 @@ export default function Profile() {
                       title={item.title}
                     >
                       {item.type === 'video' ? (
-                        <VideoThumbnail src={item.url} className="h-full w-full" iconSize={17} label={item.title} />
+                        <VideoThumbnail src={item.url} className="h-full w-full" iconSize={17} label={item.title} preload="none" />
                       ) : (
-                        <img src={item.url} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+                        <img src={item.url} alt={item.title} className="h-full w-full object-cover" loading="lazy" decoding="async" draggable={false} />
                       )}
                       {item.type === 'video' && <PlayCircle className="absolute right-1.5 top-1.5 text-white" size={16} />}
                     </button>

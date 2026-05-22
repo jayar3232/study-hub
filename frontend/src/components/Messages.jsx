@@ -70,6 +70,7 @@ import { AppLogoMark, AppWordmark } from './AppLogo';
 import { CHAT_BACKGROUND_OPTIONS, DEFAULT_CHAT_BACKGROUND_ID, getChatBackground } from '../data/chatBackgroundPresets';
 import { getStoryListForActiveStory } from '../utils/stories';
 import useRenderDebug from '../hooks/useRenderDebug';
+import { createFrameBatcher } from '../utils/performance';
 
 let socket;
 
@@ -619,6 +620,7 @@ export default function Messages() {
   const swipeReplyRef = useRef(null);
   const loadingOlderMessagesRef = useRef(false);
   const pendingAutoScrollRef = useRef(false);
+  const pendingAutoScrollBehaviorRef = useRef('smooth');
   const preserveNextMessageScrollRef = useRef(false);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -2407,6 +2409,47 @@ export default function Messages() {
       }
     };
 
+    let realtimeRefreshFrameId = 0;
+    const scheduleRealtimeRefresh = () => {
+      if (realtimeRefreshFrameId || typeof window === 'undefined') return;
+      realtimeRefreshFrameId = window.requestAnimationFrame(() => {
+        realtimeRefreshFrameId = 0;
+        fetchConversations();
+        fetchGroups();
+      });
+    };
+
+    const openMessageBatcher = createFrameBatcher((batch) => {
+      const selectedId = getEntityId(selectedUserRef.current);
+      if (!selectedId) return;
+
+      const incomingMessages = batch.filter(message => {
+        const fromId = getEntityId(message.from);
+        const toId = getEntityId(message.to);
+        return (
+          (fromId === selectedId && toId === currentUserId) ||
+          (toId === selectedId && fromId === currentUserId)
+        );
+      });
+      if (!incomingMessages.length) return;
+
+      const shouldAutoScroll = incomingMessages.some(message => getEntityId(message.from) === currentUserId) || isThreadNearBottom();
+      pendingAutoScrollRef.current = shouldAutoScroll;
+      pendingAutoScrollBehaviorRef.current = incomingMessages.length > 1 ? 'auto' : 'smooth';
+
+      React.startTransition(() => {
+        setMessages(prev => {
+          const seenIds = new Set(prev.map(getEntityId));
+          const uniqueMessages = incomingMessages.filter(message => {
+            const messageId = getEntityId(message);
+            return messageId && !seenIds.has(messageId);
+          });
+          return uniqueMessages.length ? [...prev, ...uniqueMessages] : prev;
+        });
+      });
+      setOtherUserTyping(false);
+    });
+
     const onReceiveMessage = (message) => {
       const fromId = getEntityId(message.from);
       const toId = getEntityId(message.to);
@@ -2420,18 +2463,10 @@ export default function Messages() {
 
       if (!messageId || !belongsToCurrentUser) return;
 
-      fetchConversations();
-      fetchGroups();
+      scheduleRealtimeRefresh();
 
       if (belongsToOpenChat) {
-        const shouldAutoScroll = fromId === currentUserId || isThreadNearBottom();
-        pendingAutoScrollRef.current = shouldAutoScroll;
-        setMessages(prev => {
-          if (prev.some(item => getEntityId(item) === messageId)) return prev;
-          return [...prev, message];
-        });
-        setOtherUserTyping(false);
-        if (shouldAutoScroll) scrollToBottom();
+        openMessageBatcher.push(message);
 
         if (fromId !== currentUserId && !message.system) {
           if (soundEnabled && !mutedConversationIds.has(fromId)) playUiSound('message', 0.5);
@@ -2457,7 +2492,7 @@ export default function Messages() {
 
         return message;
       }));
-      fetchConversations();
+      scheduleRealtimeRefresh();
     };
 
     const onMessageUpdated = (updatedMessage) => {
@@ -2475,12 +2510,12 @@ export default function Messages() {
         )));
       }
 
-      fetchConversations();
+      scheduleRealtimeRefresh();
     };
 
     const onMessageHidden = ({ messageId }) => {
       setMessages(prev => prev.filter(message => getEntityId(message) !== getEntityId(messageId)));
-      fetchConversations();
+      scheduleRealtimeRefresh();
     };
 
     const onConversationDeleted = ({ userId }) => {
@@ -2588,6 +2623,8 @@ export default function Messages() {
       socket.off('group-updated', onGroupUpdated);
       socket.off('user-note-updated', onUserNoteUpdated);
       socket.off('user-note-deleted', onUserNoteDeleted);
+      openMessageBatcher.cancel();
+      if (realtimeRefreshFrameId) window.cancelAnimationFrame(realtimeRefreshFrameId);
       clearInterval(heartbeat);
     };
   }, [
@@ -2686,7 +2723,9 @@ export default function Messages() {
 
     if (pendingAutoScrollRef.current || isThreadNearBottom()) {
       pendingAutoScrollRef.current = false;
-      scrollToBottom('smooth');
+      const behavior = pendingAutoScrollBehaviorRef.current || 'smooth';
+      pendingAutoScrollBehaviorRef.current = 'smooth';
+      scrollToBottom(behavior);
     }
 
     return undefined;
@@ -4352,6 +4391,7 @@ export default function Messages() {
                       videoClassName="h-full w-full object-cover opacity-95"
                       iconSize={22}
                       label={attachment.fileName || 'Album video'}
+                      preload="none"
                       onReady={keepOpeningThreadPinned}
                     />
                   ) : (
@@ -4438,6 +4478,7 @@ export default function Messages() {
               videoClassName="max-h-80 object-contain opacity-95"
               iconSize={25}
               label={primaryAttachment.fileName || 'Video attachment'}
+              preload="none"
               onReady={keepOpeningThreadPinned}
             />
           </span>

@@ -302,6 +302,32 @@
     contain-intrinsic-size: 280px;
   }
 
+  .feed-card--has-media {
+    contain-intrinsic-size: 680px;
+  }
+
+  .feed-video-player,
+  .feed-media-tile {
+    contain: layout paint;
+  }
+
+  .feed-video-placeholder {
+    min-height: min(52vh, 22rem);
+  }
+
+  .feed-video-placeholder--compact {
+    min-height: 100%;
+    padding: 0.75rem;
+  }
+
+  .feed-video-placeholder--compact p {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+  }
+
   .app-grid-overlay,
   .app-ambient-overlay {
     will-change: opacity, transform;
@@ -1289,13 +1315,21 @@
       color: #cbd5e1 !important;
     }
 
-    .mobile-message-thread .message-row,
+    .mobile-message-thread .message-row {
+      contain: layout paint style;
+      content-visibility: auto;
+      contain-intrinsic-size: 6.5rem;
+      backface-visibility: hidden;
+      transform: translateZ(0);
+      will-change: auto !important;
+    }
+
     .mobile-message-thread .message-bubble,
     .mobile-message-thread .message-media-attachment,
     .mobile-message-thread audio,
     .mobile-message-thread video {
-      contain: none !important;
-      content-visibility: visible !important;
+      contain: layout paint;
+      content-visibility: visible;
       backface-visibility: hidden;
       transform: translateZ(0);
       will-change: auto !important;
@@ -3669,6 +3703,10 @@
   will-change: transform, opacity;
 }
 
+.feed-card .reaction-motion-zone:not(.reaction-burst):not(.emoji-pop-button) {
+  will-change: auto;
+}
+
 .emoji-pop-button {
   transform-origin: center;
   transition: transform 180ms ease, background-color 180ms ease, filter 180ms ease;
@@ -3756,23 +3794,121 @@ html.syncrova-native-app .mobile-bottom-nav {
 }
 
 .app-stable-render :where(
-  .message-row,
-  .message-media-attachment,
   .media-viewer-stage,
   .workspace-card,
   .workspace-stat-card,
   .workspace-toolbar,
   .fix-arena-hero,
   .fix-arena-action-card,
-  .fix-arena-stat-card,
-  .feed-card,
-  .reels-feed,
-  .reel-card
+  .fix-arena-stat-card
 ) {
   contain: none !important;
   content-visibility: visible !important;
   contain-intrinsic-size: auto !important;
   will-change: auto !important;
+}
+
+html.syncrova-scroll-active .app-decorative-effect {
+  opacity: 0 !important;
+  filter: none !important;
+}
+
+html.syncrova-interaction-active .app-decorative-effect,
+html.syncrova-frame-unstable .app-decorative-effect {
+  opacity: 0 !important;
+  filter: none !important;
+}
+
+html.syncrova-scroll-active :where(
+  .feed-card,
+  .message-row,
+  .group-message-row,
+  .reel-card,
+  .profile-stat-card,
+  .game-hub-game-card,
+  .marketplace-listing-card,
+  .settings-section-card
+) {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+  will-change: auto !important;
+}
+
+html.syncrova-interaction-active :where(
+  .feed-card,
+  .message-row,
+  .group-message-row,
+  .conversation-list-row,
+  .reel-card,
+  .feed-card-action-button,
+  .feed-reaction-button,
+  .mobile-chat-icon-button,
+  .message-composer-action,
+  .message-composer-send
+),
+html.syncrova-frame-unstable :where(
+  .feed-card,
+  .message-row,
+  .group-message-row,
+  .conversation-list-row,
+  .reel-card,
+  .feed-card-action-button,
+  .feed-reaction-button,
+  .mobile-chat-icon-button,
+  .message-composer-action,
+  .message-composer-send
+) {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  will-change: auto !important;
+}
+
+html.syncrova-frame-unstable :where(
+  .reaction-burst,
+  .feed-reaction-picker,
+  .message-reaction-pill,
+  .emoji-pop-button
+) {
+  animation: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .conversation-list-row,
+  .notification-panel-row,
+  .feed-card-comments,
+  .mobile-comment-sheet-list > *,
+  .mobile-upload-queue,
+  .message-options-sheet {
+    contain: layout paint style;
+  }
+
+  .feed-card-comments > *,
+  .mobile-comment-sheet-list > * {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 4.5rem;
+  }
+
+  .mobile-message-thread,
+  .group-chat-thread,
+  .reels-feed,
+  .messages-conversation-column .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scroll-behavior: auto;
+  }
+
+  .message-bubble,
+  .my-day-reply-bubble,
+  .feed-media-tile,
+  .feed-video-player,
+  .reel-player-shell {
+    contain: layout paint;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
 }
 
 @media (max-width: 767px) {
@@ -8118,10 +8254,10 @@ html.syncrova-native-app .mobile-message-actions button {
   .mobile-page .feed-card--has-media,
   .dashboard-facebook-mobile .feed-card--has-media,
   .home-feed--facebook-mobile .feed-card--has-media {
-    content-visibility: visible !important;
-    contain: none !important;
-    contain-intrinsic-size: auto !important;
-    transform: none !important;
+    content-visibility: auto !important;
+    contain: layout paint style !important;
+    contain-intrinsic-size: 680px !important;
+    transform: translateZ(0) !important;
   }
 
   .feed-card--has-media .feed-media-grid,
@@ -8134,9 +8270,9 @@ html.syncrova-native-app .mobile-message-actions button {
   .mobile-post-composer-sheet .feed-video-element,
   .mobile-post-composer-sheet .feed-media-image {
     content-visibility: visible !important;
-    contain: none !important;
-    transform: none !important;
-    backface-visibility: visible !important;
+    contain: layout paint !important;
+    transform: translateZ(0) !important;
+    backface-visibility: hidden !important;
     will-change: auto !important;
   }
 
@@ -11906,6 +12042,36 @@ html.syncrova-native-app .mobile-message-actions button {
 .group-chat-thread .group-message-row {
   content-visibility: auto;
   contain-intrinsic-size: 6.5rem;
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .reel-card {
+    content-visibility: auto;
+    contain: layout paint style;
+    contain-intrinsic-size: 100svh;
+  }
+
+  .profile-stat-card,
+  .mobile-metric-strip > *,
+  .profile-page aside,
+  .profile-page section,
+  .game-hub-game-card,
+  .marketplace-listing-card {
+    content-visibility: auto;
+    contain: layout paint style;
+    contain-intrinsic-size: 1px 240px;
+  }
+
+  .profile-page img,
+  .profile-page video,
+  .reel-player img,
+  .reel-player video,
+  .mobile-message-thread img,
+  .mobile-message-thread video {
+    backface-visibility: hidden;
+    transform: translateZ(0);
+    will-change: auto;
+  }
 }
 
 .group-chat-thread {

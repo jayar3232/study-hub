@@ -101,6 +101,44 @@ const saveVideoAutoplayPreference = (enabled) => {
   }
 };
 
+const isTouchFeedViewport = () => (
+  typeof window !== 'undefined'
+  && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
+);
+
+const useNearViewport = (rootMargin = '900px', eager = false) => {
+  const [node, setNode] = useState(null);
+  const ref = useCallback((nextNode) => {
+    setNode(nextNode);
+  }, []);
+  const [isNear, setIsNear] = useState(() => (
+    eager
+    || typeof window === 'undefined'
+    || typeof IntersectionObserver === 'undefined'
+    || !isTouchFeedViewport()
+  ));
+
+  useEffect(() => {
+    if (eager || typeof IntersectionObserver === 'undefined') {
+      setIsNear(true);
+      return undefined;
+    }
+
+    if (!node) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsNear(Boolean(entry?.isIntersecting));
+    }, { rootMargin, threshold: 0.01 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [eager, node, rootMargin]);
+
+  return [ref, isNear];
+};
+
 const getInitialFeedVisibleCount = () => (
   typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches
     ? 5
@@ -228,7 +266,7 @@ function ReactionPicker({ onSelect, align = 'left' }) {
   );
 }
 
-function ReactionSummary({ reactions = [], onOpen }) {
+const ReactionSummary = React.memo(function ReactionSummary({ reactions = [], onOpen }) {
   const { count, icons } = getReactionSummary(reactions);
   if (!count) {
     return <span className="text-xs font-bold text-slate-400 dark:text-slate-500">Be first to react</span>;
@@ -250,9 +288,9 @@ function ReactionSummary({ reactions = [], onOpen }) {
       <span className="truncate">{count}</span>
     </button>
   );
-}
+}, (prev, next) => prev.reactions === next.reactions);
 
-function CommentReactionSummary({ reactions = [], onReact, onOpen }) {
+const CommentReactionSummary = React.memo(function CommentReactionSummary({ reactions = [], onReact, onOpen }) {
   const { count, icons } = getReactionSummary(reactions);
   return (
     <div className="relative inline-flex items-center gap-2">
@@ -286,7 +324,7 @@ function CommentReactionSummary({ reactions = [], onReact, onOpen }) {
       </div>
     </div>
   );
-}
+}, (prev, next) => prev.reactions === next.reactions);
 
 function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose, onProfileClick }) {
   const [activeFilter, setActiveFilter] = useState('all');
@@ -378,7 +416,7 @@ function ReactionPeopleModal({ title = 'Reactions', reactions = [], onClose, onP
   );
 }
 
-function Avatar({ user, size = 'h-11 w-11', onClick }) {
+const Avatar = React.memo(function Avatar({ user, size = 'h-11 w-11', onClick }) {
   const avatar = resolveMediaUrl(user?.avatar);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -407,7 +445,14 @@ function Avatar({ user, size = 'h-11 w-11', onClick }) {
       {avatarContent}
     </button>
   );
-}
+}, (prev, next) => (
+  prev.size === next.size
+  && prev.onClick === next.onClick
+  && getEntityId(prev.user) === getEntityId(next.user)
+  && prev.user?.name === next.user?.name
+  && prev.user?.avatar === next.user?.avatar
+  && prev.user?.isDeveloper === next.user?.isDeveloper
+));
 
 function PrivacyPill({ value = 'public' }) {
   const option = privacyOptions[value] || privacyOptions.public;
@@ -420,20 +465,24 @@ function PrivacyPill({ value = 'public' }) {
   );
 }
 
-function FeedVideoPlayer({
+const FeedVideoPlayer = React.memo(function FeedVideoPlayer({
   src,
   title = 'Post video',
   className = '',
   videoClassName = '',
   videoKey = '',
+  eager = false,
+  compactPlaceholder = false,
   autoPlay = false,
   activeVideoKey = '',
   onVideoPlay = () => {}
 }) {
   const [failed, setFailed] = useState(false);
   const videoRef = useRef(null);
+  const [viewportRef, isNearViewport] = useNearViewport('900px', eager);
   const resolvedSrc = resolveMediaUrl(src);
   const ownVideoKey = videoKey || resolvedSrc;
+  const shouldMountVideo = Boolean(isNearViewport || activeVideoKey === ownVideoKey);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -443,7 +492,13 @@ function FeedVideoPlayer({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !autoPlay || !resolvedSrc || !ownVideoKey || typeof IntersectionObserver === 'undefined') return undefined;
+    if (isNearViewport || !video || video.paused) return;
+    video.pause();
+  }, [isNearViewport]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !shouldMountVideo || !autoPlay || !resolvedSrc || !ownVideoKey || typeof IntersectionObserver === 'undefined') return undefined;
 
     const observer = new IntersectionObserver(([entry]) => {
       const currentVideo = videoRef.current;
@@ -462,13 +517,24 @@ function FeedVideoPlayer({
 
     observer.observe(video);
     return () => observer.disconnect();
-  }, [autoPlay, onVideoPlay, ownVideoKey, resolvedSrc]);
+  }, [autoPlay, onVideoPlay, ownVideoKey, resolvedSrc, shouldMountVideo]);
 
   if (!resolvedSrc) return null;
 
+  if (!shouldMountVideo) {
+    return (
+      <div ref={viewportRef} className={`feed-video-player feed-video-placeholder ${compactPlaceholder ? 'feed-video-placeholder--compact' : ''} grid min-h-52 place-items-center overflow-hidden rounded-2xl bg-slate-950 p-5 text-center ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
+        <div>
+          <Video className="mx-auto text-white/80" size={30} />
+          <p className="mt-3 text-sm font-black text-white">{title}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (failed) {
     return (
-      <div className={`grid min-h-52 place-items-center rounded-2xl border border-slate-200 bg-slate-950 p-5 text-center dark:border-slate-800 ${className}`}>
+      <div ref={viewportRef} className={`grid min-h-52 place-items-center rounded-2xl border border-slate-200 bg-slate-950 p-5 text-center dark:border-slate-800 ${className}`}>
         <div>
           <Video className="mx-auto text-white/80" size={30} />
           <p className="mt-3 text-sm font-black text-white">Video preview unavailable</p>
@@ -486,7 +552,7 @@ function FeedVideoPlayer({
   }
 
   return (
-    <div className={`feed-video-player overflow-hidden rounded-2xl bg-black ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
+    <div ref={viewportRef} className={`feed-video-player overflow-hidden rounded-2xl bg-black ring-1 ring-slate-200 dark:ring-slate-800 ${className}`}>
       <video
         ref={videoRef}
         src={resolvedSrc}
@@ -502,9 +568,19 @@ function FeedVideoPlayer({
       />
     </div>
   );
-}
+}, (prev, next) => (
+  prev.src === next.src
+  && prev.title === next.title
+  && prev.className === next.className
+  && prev.videoClassName === next.videoClassName
+  && prev.videoKey === next.videoKey
+  && prev.eager === next.eager
+  && prev.compactPlaceholder === next.compactPlaceholder
+  && prev.autoPlay === next.autoPlay
+  && prev.activeVideoKey === next.activeVideoKey
+));
 
-function FeedImage({ src, alt, className = '', onClick }) {
+const FeedImage = React.memo(function FeedImage({ src, alt, className = '', onClick }) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -536,21 +612,30 @@ function FeedImage({ src, alt, className = '', onClick }) {
       className={className}
     />
   );
-}
+}, (prev, next) => (
+  prev.src === next.src
+  && prev.alt === next.alt
+  && prev.className === next.className
+));
 
-function FeedMediaGrid({
+const hasVideoAttachments = (attachments = []) => (
+  attachments.some(attachment => attachment?.fileType === 'video')
+);
+
+const FeedMediaGrid = React.memo(function FeedMediaGrid({
   attachments = [],
   title = 'Post media',
   mediaGroupKey = 'post',
+  eagerMedia = false,
   autoPlayVideos = false,
   activeVideoKey = '',
   onVideoPlay = () => {},
   onOpenMedia = () => {}
 }) {
-  const visible = attachments.slice(0, 4);
+  const visible = useMemo(() => attachments.slice(0, 4), [attachments]);
   const hiddenCount = Math.max(0, attachments.length - visible.length);
   const isSingle = attachments.length === 1;
-  const viewerItems = attachments.map((attachment, index) => {
+  const viewerItems = useMemo(() => attachments.map((attachment, index) => {
     const fileType = attachment.fileType === 'video' ? 'video' : 'image';
     const url = resolveMediaUrl(attachment.fileUrl);
     return {
@@ -558,7 +643,7 @@ function FeedMediaGrid({
       url,
       name: attachment.fileName || `${title} ${index + 1}`
     };
-  }).filter(item => item.url);
+  }).filter(item => item.url), [attachments, title]);
 
   return (
     <div className={`feed-media-grid space-y-2 ${isSingle ? 'feed-media-grid--single' : 'feed-media-grid--multi'}`}>
@@ -586,6 +671,8 @@ function FeedMediaGrid({
                   src={src}
                   title={label}
                   videoKey={`${mediaGroupKey}-${index}-${src}`}
+                  eager={eagerMedia}
+                  compactPlaceholder={!isSingle}
                   autoPlay={autoPlayVideos && isSingle}
                   activeVideoKey={activeVideoKey}
                   onVideoPlay={onVideoPlay}
@@ -624,7 +711,14 @@ function FeedMediaGrid({
       </div>
     </div>
   );
-}
+}, (prev, next) => (
+  prev.attachments === next.attachments
+  && prev.title === next.title
+  && prev.mediaGroupKey === next.mediaGroupKey
+  && prev.eagerMedia === next.eagerMedia
+  && prev.autoPlayVideos === next.autoPlayVideos
+  && (!hasVideoAttachments(prev.attachments) || prev.activeVideoKey === next.activeVideoKey)
+));
 
 export default function HomeFeed({
   currentUser,
@@ -669,6 +763,8 @@ export default function HomeFeed({
   const reactionPickerOpenedByPressRef = useRef(false);
   const postReactionInFlightRef = useRef(new Set());
   const deepLinkHandledRef = useRef(false);
+  const uploadProgressFrameRef = useRef(null);
+  const pendingUploadProgressRef = useRef({ progress: 0, label: '' });
   const currentUserId = getEntityId(currentUser);
   const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
   const filteredPosts = useMemo(
@@ -708,6 +804,22 @@ export default function HomeFeed({
     if (videoKey) setActiveVideoKey(videoKey);
   }, []);
 
+  const queueUploadProgress = useCallback((progress, label = '') => {
+    pendingUploadProgressRef.current = { progress, label };
+    if (uploadProgressFrameRef.current || typeof window === 'undefined') return;
+
+    uploadProgressFrameRef.current = window.requestAnimationFrame(() => {
+      uploadProgressFrameRef.current = null;
+      const next = pendingUploadProgressRef.current;
+      setUploadProgress(next.progress);
+      setUploadQueue(prev => (
+        prev?.status === 'uploading'
+          ? { ...prev, progress: next.progress, ...(next.label ? { label: next.label } : {}) }
+          : prev
+      ));
+    });
+  }, []);
+
   const openProfile = useCallback((person) => {
     if (!getEntityId(person)) return;
     setProfileUser(person);
@@ -739,6 +851,7 @@ export default function HomeFeed({
     mediaItemsRef.current.forEach(item => {
       if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
     });
+    if (uploadProgressFrameRef.current) window.cancelAnimationFrame(uploadProgressFrameRef.current);
   }, []);
 
   useEffect(() => () => {
@@ -749,8 +862,11 @@ export default function HomeFeed({
     if (!silent) setLoading(true);
     try {
       const res = await api.get(`/posts/home?limit=${getFeedLoadLimit()}`);
-      setPosts(shufflePosts(res.data || []));
-      setVisibleCount(count => Math.max(getInitialFeedVisibleCount(), Math.min(count, res.data?.length || getInitialFeedVisibleCount())));
+      const nextPosts = shufflePosts(res.data || []);
+      React.startTransition(() => {
+        setPosts(nextPosts);
+        setVisibleCount(count => Math.max(getInitialFeedVisibleCount(), Math.min(count, nextPosts.length || getInitialFeedVisibleCount())));
+      });
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Failed to load home feed');
     } finally {
@@ -962,12 +1078,7 @@ export default function HomeFeed({
               if (!progressEvent.total) return;
               const fileProgress = progressEvent.loaded / progressEvent.total;
               const nextProgress = Math.round(((index + fileProgress) / mediaItems.length) * 100);
-              setUploadProgress(nextProgress);
-              setUploadQueue({
-                status: 'uploading',
-                label: `Uploading ${index + 1} of ${mediaItems.length}`,
-                progress: nextProgress
-              });
+              queueUploadProgress(nextProgress, `Uploading ${index + 1} of ${mediaItems.length}`);
             }
           });
           return uploadRes.data || {};
@@ -1090,6 +1201,12 @@ export default function HomeFeed({
     setActiveReactionPostId('');
     setReactionTrayAnchor(null);
   };
+
+  const revealMorePosts = useCallback(() => {
+    React.startTransition(() => {
+      setVisibleCount(count => count + visiblePostStep);
+    });
+  }, [visiblePostStep]);
 
   const reactToComment = async (post, comment, emoji) => {
     const postId = getEntityId(post);
@@ -1464,6 +1581,7 @@ export default function HomeFeed({
                         src={item.previewUrl}
                         title={item.file.name}
                         videoKey={`composer-${item.id}`}
+                        eager
                         activeVideoKey={activeVideoKey}
                         onVideoPlay={handleFeedVideoPlay}
                         className="h-full max-h-80 w-full rounded-none ring-0"
@@ -1596,6 +1714,7 @@ export default function HomeFeed({
                           src={item.previewUrl}
                           title={item.file.name}
                           videoKey={`mobile-composer-${item.id}`}
+                          eager
                           activeVideoKey={activeVideoKey}
                           onVideoPlay={handleFeedVideoPlay}
                           className="h-full w-full rounded-none ring-0"
@@ -1736,7 +1855,7 @@ export default function HomeFeed({
         </>
       ) : visiblePosts.length ? (
         <>
-          {visiblePosts.map(post => {
+          {visiblePosts.map((post, postIndex) => {
             const postId = getEntityId(post);
             const author = post.userId || {};
             const attachments = getPostAttachments(post);
@@ -1837,6 +1956,7 @@ export default function HomeFeed({
                       attachments={attachments}
                       title={post.title || 'Post media'}
                       mediaGroupKey={postId}
+                      eagerMedia={postIndex < 2}
                       autoPlayVideos={autoPlayVideos}
                       activeVideoKey={activeVideoKey}
                       onVideoPlay={handleFeedVideoPlay}
@@ -1999,7 +2119,7 @@ export default function HomeFeed({
           })}
 
           {hasMoreVisiblePosts && (
-            <button type="button" onClick={() => setVisibleCount(count => count + visiblePostStep)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
+            <button type="button" onClick={revealMorePosts} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#0b57d0] shadow-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200 dark:hover:bg-blue-950/20">
               Load more posts
             </button>
           )}

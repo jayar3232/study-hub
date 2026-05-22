@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   CheckCheck,
@@ -27,12 +27,19 @@ import MediaViewer from './MediaViewer';
 import VideoThumbnail from './VideoThumbnail';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import useRenderDebug from '../hooks/useRenderDebug';
+import { createFrameBatcher } from '../utils/performance';
 
 let socket;
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🔥', '👏', '✅'];
 const GROUP_MESSAGE_RENDER_BATCH = 140;
+const MOBILE_GROUP_MESSAGE_RENDER_BATCH = 52;
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const getGroupMessageRenderBatch = () => (
+  typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+    ? MOBILE_GROUP_MESSAGE_RENDER_BATCH
+    : GROUP_MESSAGE_RENDER_BATCH
+);
 const getStableMessageKey = (message = {}, index = '') => {
   const id = getEntityId(message);
   if (id) return id;
@@ -65,7 +72,7 @@ const formatMessageTime = (value) => {
 export default function GroupChat({ groupId, group, members = [], onUserClick, background, onOpenSettings, embedded = false }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
-  const [visibleMessageCount, setVisibleMessageCount] = useState(GROUP_MESSAGE_RENDER_BATCH);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(getGroupMessageRenderBatch);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -81,6 +88,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
   const threadRef = useRef(null);
   const messagesEndRef = useRef(null);
   const pendingAutoScrollRef = useRef(false);
+  const pendingAutoScrollBehaviorRef = useRef('smooth');
   const currentUserId = getEntityId(user);
 
   const scrollToBottom = (behavior = 'smooth') => {
@@ -277,8 +285,9 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
       });
   };
 
+  const deferredSearch = useDeferredValue(search);
   const filteredMessages = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = deferredSearch.trim().toLowerCase();
     if (!term) return messages;
 
     return messages.filter(message => {
@@ -288,9 +297,9 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
       return [message.text, senderName, replyText, fileName]
         .some(value => String(value || '').toLowerCase().includes(term));
     });
-  }, [messages, search]);
+  }, [deferredSearch, messages]);
 
-  const groupSearchActive = Boolean(search.trim());
+  const groupSearchActive = Boolean(deferredSearch.trim());
   const renderedMessages = useMemo(() => {
     if (groupSearchActive) return filteredMessages;
     return filteredMessages.slice(-visibleMessageCount);
@@ -417,6 +426,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
               videoClassName="max-h-72 object-contain opacity-95"
               iconSize={23}
               label={getFileName(message.fileUrl) || 'Video attachment'}
+              preload="none"
             />
           </button>
         </div>
@@ -446,30 +456,60 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
 
   useEffect(() => {
     socket = getSocket();
-    setVisibleMessageCount(GROUP_MESSAGE_RENDER_BATCH);
+    setVisibleMessageCount(getGroupMessageRenderBatch());
     socket.emit('join-group', groupId);
     fetchMessages();
 
+    const receiveBatcher = createFrameBatcher((batch) => {
+      const incomingMessages = batch.filter(message => getEntityId(message.groupId) === getEntityId(groupId));
+      if (!incomingMessages.length) return;
+
+      const shouldAutoScroll = incomingMessages.some(message => getEntityId(message.userId) === currentUserId) || isThreadNearBottom();
+      const unreadIncomingIds = incomingMessages
+        .filter(message => getEntityId(message.userId) !== currentUserId)
+        .map(getEntityId)
+        .filter(Boolean);
+
+      pendingAutoScrollRef.current = shouldAutoScroll;
+      pendingAutoScrollBehaviorRef.current = incomingMessages.length > 1 ? 'auto' : 'smooth';
+      React.startTransition(() => {
+        setMessages(prev => {
+          const seenIds = new Set(prev.map(getEntityId));
+          const uniqueMessages = incomingMessages.filter(message => {
+            const messageId = getEntityId(message);
+            return messageId && !seenIds.has(messageId);
+          });
+          return uniqueMessages.length ? [...prev, ...uniqueMessages] : prev;
+        });
+      });
+
+      if (unreadIncomingIds.length) {
+        playUiSound('message');
+        markMessagesSeen(unreadIncomingIds);
+      }
+    });
+
+    const updateBatcher = createFrameBatcher((batch) => {
+      const latestById = new Map();
+      batch.forEach(message => {
+        if (getEntityId(message.groupId) !== getEntityId(groupId)) return;
+        const messageId = getEntityId(message);
+        if (messageId) latestById.set(messageId, message);
+      });
+      if (!latestById.size) return;
+      React.startTransition(() => {
+        setMessages(prev => prev.map(message => latestById.get(getEntityId(message)) || message));
+      });
+    });
+
     const handleReceive = (message) => {
       if (getEntityId(message.groupId) !== getEntityId(groupId)) return;
-
-      const shouldAutoScroll = getEntityId(message.userId) === currentUserId || isThreadNearBottom();
-      pendingAutoScrollRef.current = shouldAutoScroll;
-      setMessages(prev => {
-        if (prev.some(item => getEntityId(item) === getEntityId(message))) return prev;
-        return [...prev, message];
-      });
-      if (shouldAutoScroll) scrollToBottom();
-
-      if (getEntityId(message.userId) !== currentUserId) {
-        playUiSound('message');
-        markMessagesSeen([getEntityId(message)]);
-      }
+      receiveBatcher.push(message);
     };
 
     const handleUpdate = (message) => {
       if (getEntityId(message.groupId) !== getEntityId(groupId)) return;
-      upsertMessage(message);
+      updateBatcher.push(message);
     };
 
     const handleSeen = ({ groupId: seenGroupId, messageIds = [], seenBy }) => {
@@ -503,13 +543,17 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
       socket.off('group-message-updated', handleUpdate);
       socket.off('group-messages-seen', handleSeen);
       socket.off('message-deleted-for-everyone', handleDeleteForEveryone);
+      receiveBatcher.cancel();
+      updateBatcher.cancel();
     };
   }, [groupId, currentUserId]);
 
   useEffect(() => {
     if (pendingAutoScrollRef.current || isThreadNearBottom()) {
       pendingAutoScrollRef.current = false;
-      scrollToBottom();
+      const behavior = pendingAutoScrollBehaviorRef.current || 'smooth';
+      pendingAutoScrollBehaviorRef.current = 'smooth';
+      scrollToBottom(behavior);
     }
   }, [messages.length]);
 
@@ -660,7 +704,7 @@ export default function GroupChat({ groupId, group, members = [], onUserClick, b
               <div className="flex justify-center">
                 <button
                   type="button"
-                  onClick={() => setVisibleMessageCount(count => Math.min(filteredMessages.length, count + GROUP_MESSAGE_RENDER_BATCH))}
+                  onClick={() => setVisibleMessageCount(count => Math.min(filteredMessages.length, count + getGroupMessageRenderBatch()))}
                   className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-black text-gray-600 shadow-sm transition hover:border-pink-200 hover:text-pink-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-pink-900/60 dark:hover:text-pink-200"
                 >
                   Show earlier messages ({hiddenMessageCount})

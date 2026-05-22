@@ -8,6 +8,11 @@ const withPreviewTime = (src) => {
   return `${src}#t=0.1`;
 };
 
+const isTouchMediaViewport = () => {
+  if (typeof window === 'undefined') return false;
+  return Boolean(window.matchMedia?.('(max-width: 767px), (pointer: coarse)').matches);
+};
+
 function VideoThumbnail({
   src,
   className = '',
@@ -22,9 +27,11 @@ function VideoThumbnail({
   const wrapperRef = useRef(null);
   const videoRef = useRef(null);
   const revealedRef = useRef(false);
+  const loadFrameRef = useRef(null);
+  const pendingShouldLoadRef = useRef(false);
   const previewSrc = useMemo(() => withPreviewTime(src), [src]);
   const canUseIntersectionObserver = typeof window !== 'undefined' && 'IntersectionObserver' in window;
-  const [shouldLoad, setShouldLoad] = useState(!canUseIntersectionObserver);
+  const [shouldLoad, setShouldLoad] = useState(!canUseIntersectionObserver || !isTouchMediaViewport());
 
   useRenderDebug('VideoThumbnail', () => ({
     src: previewSrc,
@@ -33,23 +40,52 @@ function VideoThumbnail({
 
   useEffect(() => {
     revealedRef.current = false;
-    setShouldLoad(!canUseIntersectionObserver);
+    setShouldLoad(!canUseIntersectionObserver || !isTouchMediaViewport());
   }, [canUseIntersectionObserver, previewSrc]);
 
   useEffect(() => {
-    if (!canUseIntersectionObserver || shouldLoad || !wrapperRef.current) return undefined;
+    if (!canUseIntersectionObserver || !wrapperRef.current) return undefined;
+
+    const unloadOffscreen = isTouchMediaViewport();
+    if (!unloadOffscreen && shouldLoad) return undefined;
 
     const observer = new IntersectionObserver((entries) => {
-      if (!entries.some(entry => entry.isIntersecting || entry.intersectionRatio > 0)) return;
-      setShouldLoad(true);
-      observer.disconnect();
+      const isNearViewport = entries.some(entry => entry.isIntersecting || entry.intersectionRatio > 0);
+      pendingShouldLoadRef.current = isNearViewport;
+      if (loadFrameRef.current) return;
+      loadFrameRef.current = window.requestAnimationFrame(() => {
+        loadFrameRef.current = null;
+        setShouldLoad(previous => (
+          unloadOffscreen ? pendingShouldLoadRef.current : previous || pendingShouldLoadRef.current
+        ));
+      });
     }, {
-      rootMargin: '360px 0px'
+      rootMargin: unloadOffscreen ? '720px 0px' : '360px 0px'
     });
 
     observer.observe(wrapperRef.current);
-    return () => observer.disconnect();
-  }, [canUseIntersectionObserver, shouldLoad, previewSrc]);
+    return () => {
+      observer.disconnect();
+      if (loadFrameRef.current) {
+        window.cancelAnimationFrame(loadFrameRef.current);
+        loadFrameRef.current = null;
+      }
+    };
+  }, [canUseIntersectionObserver, previewSrc, shouldLoad]);
+
+  useEffect(() => {
+    if (shouldLoad) return;
+    const video = videoRef.current;
+    if (!video) return;
+    // Performance-sensitive: drop decoded frames for far-offscreen mobile thumbnails.
+    try {
+      video.pause?.();
+      video.removeAttribute('src');
+      video.load?.();
+    } catch {
+      // Some WebViews can throw while a video element is being detached.
+    }
+  }, [previewSrc, shouldLoad]);
 
   const revealFirstFrame = (event) => {
     if (revealedRef.current) return;

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Toaster } from 'react-hot-toast';
@@ -11,6 +11,7 @@ import Layout from './components/Layout';
 import AppUpdatePrompt from './components/AppUpdatePrompt';
 import WebUpdatePrompt from './components/WebUpdatePrompt';
 import { PageSkeleton } from './components/SkeletonLoader';
+import useFrameHealthMonitor from './hooks/useFrameHealthMonitor';
 
 const Login = lazy(() => import('./components/Login'));
 const Register = lazy(() => import('./components/Register'));
@@ -223,6 +224,89 @@ function NativeAppEnvironment() {
   return null;
 }
 
+function FrameStabilityMonitor() {
+  useFrameHealthMonitor();
+  return null;
+}
+
+function MobileScrollPerformanceGovernor() {
+  const removeClassTimerRef = useRef(null);
+  const removeInteractionTimerRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+
+    const root = document.documentElement;
+    const isMobileViewport = () => (
+      root.classList.contains('syncrova-native-app') ||
+      window.matchMedia?.('(max-width: 900px), (pointer: coarse)').matches
+    );
+
+    const clearScrollStateLater = () => {
+      if (removeClassTimerRef.current) window.clearTimeout(removeClassTimerRef.current);
+      removeClassTimerRef.current = window.setTimeout(() => {
+        root.classList.remove('syncrova-scroll-active');
+      }, 150);
+    };
+
+    const clearInteractionStateLater = () => {
+      if (removeInteractionTimerRef.current) window.clearTimeout(removeInteractionTimerRef.current);
+      removeInteractionTimerRef.current = window.setTimeout(() => {
+        root.classList.remove('syncrova-interaction-active');
+      }, 120);
+    };
+
+    const markActiveScroll = () => {
+      if (!isMobileViewport() || rafRef.current) return;
+      // Performance-sensitive: keep this DOM write on the next frame so scroll handlers stay passive.
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = null;
+        root.classList.add('syncrova-scroll-active');
+        clearScrollStateLater();
+      });
+    };
+
+    const markInteractionActive = () => {
+      if (!isMobileViewport()) return;
+      root.classList.add('syncrova-interaction-active');
+      clearInteractionStateLater();
+    };
+
+    const listenerOptions = { passive: true, capture: true };
+    window.addEventListener('scroll', markActiveScroll, listenerOptions);
+    window.addEventListener('touchmove', markActiveScroll, listenerOptions);
+    window.addEventListener('wheel', markActiveScroll, listenerOptions);
+    window.addEventListener('pointerdown', markInteractionActive, listenerOptions);
+    window.addEventListener('pointermove', markInteractionActive, listenerOptions);
+    window.addEventListener('pointerup', clearInteractionStateLater, listenerOptions);
+    window.addEventListener('pointercancel', clearInteractionStateLater, listenerOptions);
+    window.addEventListener('touchstart', markInteractionActive, listenerOptions);
+    window.addEventListener('touchend', clearInteractionStateLater, listenerOptions);
+    window.addEventListener('touchcancel', clearInteractionStateLater, listenerOptions);
+
+    return () => {
+      window.removeEventListener('scroll', markActiveScroll, listenerOptions);
+      window.removeEventListener('touchmove', markActiveScroll, listenerOptions);
+      window.removeEventListener('wheel', markActiveScroll, listenerOptions);
+      window.removeEventListener('pointerdown', markInteractionActive, listenerOptions);
+      window.removeEventListener('pointermove', markInteractionActive, listenerOptions);
+      window.removeEventListener('pointerup', clearInteractionStateLater, listenerOptions);
+      window.removeEventListener('pointercancel', clearInteractionStateLater, listenerOptions);
+      window.removeEventListener('touchstart', markInteractionActive, listenerOptions);
+      window.removeEventListener('touchend', clearInteractionStateLater, listenerOptions);
+      window.removeEventListener('touchcancel', clearInteractionStateLater, listenerOptions);
+      if (removeClassTimerRef.current) window.clearTimeout(removeClassTimerRef.current);
+      if (removeInteractionTimerRef.current) window.clearTimeout(removeInteractionTimerRef.current);
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      root.classList.remove('syncrova-scroll-active');
+      root.classList.remove('syncrova-interaction-active');
+    };
+  }, []);
+
+  return null;
+}
+
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return <PageSkeleton variant="dashboard" rows={4} />;
@@ -354,6 +438,8 @@ function App() {
             <AppErrorBoundary>
               <BrowserRouter>
                 <NativeAppEnvironment />
+                <FrameStabilityMonitor />
+                <MobileScrollPerformanceGovernor />
                 <NativeBackButtonHandler />
                 <NativeNotificationRouter />
                 <CallProvider>

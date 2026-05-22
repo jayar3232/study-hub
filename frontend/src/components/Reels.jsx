@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Bookmark,
@@ -62,7 +62,7 @@ const getGalleryFileType = (file = {}) => {
   return '';
 };
 
-function MemoryPlayer({ memory, active }) {
+const MemoryPlayer = memo(function MemoryPlayer({ memory, active }) {
   const videoRef = useRef(null);
   const [videoFailed, setVideoFailed] = useState(false);
   const mediaSrc = resolveMediaUrl(memory?.embedUrl || memory?.sourceUrl);
@@ -77,7 +77,6 @@ function MemoryPlayer({ memory, active }) {
     const video = videoRef.current;
     if (!video || !isVideo) return undefined;
 
-    video.load?.();
     if (active) {
       video.muted = true;
       video.play().catch(() => {});
@@ -106,7 +105,9 @@ function MemoryPlayer({ memory, active }) {
           src={mediaSrc}
           alt={memory?.title || 'Memory'}
           loading={active ? 'eager' : 'lazy'}
+          fetchPriority={active ? 'high' : 'auto'}
           decoding="async"
+          draggable={false}
           className="h-full w-full object-contain"
         />
       </div>
@@ -142,7 +143,7 @@ function MemoryPlayer({ memory, active }) {
         loop
         muted
         autoPlay={Boolean(active)}
-        preload={active ? 'auto' : 'metadata'}
+        preload={active ? 'auto' : 'none'}
         onError={() => setVideoFailed(true)}
         className="h-full w-full object-contain"
       >
@@ -155,9 +156,9 @@ function MemoryPlayer({ memory, active }) {
       )}
     </div>
   );
-}
+});
 
-function MemoryActionButton({ active, children, label, onClick }) {
+const MemoryActionButton = memo(function MemoryActionButton({ active, children, label, onClick }) {
   return (
     <button
       type="button"
@@ -168,9 +169,9 @@ function MemoryActionButton({ active, children, label, onClick }) {
       {children}
     </button>
   );
-}
+});
 
-function MemoryCard({ memory, active, canDelete, deleting, onDelete, onReact, onSave, onView }) {
+const MemoryCard = memo(function MemoryCard({ memory, active, shouldRenderPlayer, canDelete, deleting, onDelete, onReact, onSave, onView }) {
   const viewedRef = useRef(false);
   const memoryId = getMemoryId(memory);
 
@@ -186,7 +187,16 @@ function MemoryCard({ memory, active, canDelete, deleting, onDelete, onReact, on
       data-reel-id={memoryId}
     >
       <div className="reel-player-shell">
-        <MemoryPlayer memory={memory} active={active} />
+        {shouldRenderPlayer ? (
+          <MemoryPlayer memory={memory} active={active} />
+        ) : (
+          <div className="grid h-full w-full place-items-center bg-black text-white">
+            <div className="text-center opacity-70">
+              <ImageIcon size={34} className="mx-auto" />
+              <p className="mt-2 text-xs font-black uppercase tracking-wide">Gallery</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="reel-gesture-zone reel-gesture-zone--left" aria-hidden="true" />
@@ -233,7 +243,13 @@ function MemoryCard({ memory, active, canDelete, deleting, onDelete, onReact, on
       </div>
     </article>
   );
-}
+}, (previous, next) => (
+  previous.memory === next.memory &&
+  previous.active === next.active &&
+  previous.shouldRenderPlayer === next.shouldRenderPlayer &&
+  previous.canDelete === next.canDelete &&
+  previous.deleting === next.deleting
+));
 
 export default function Reels() {
   const { user } = useAuth();
@@ -252,6 +268,7 @@ export default function Reels() {
   const feedRef = useRef(null);
   const touchStartYRef = useRef(0);
   const wheelLockedRef = useRef(false);
+  const activeMemoryIdRef = useRef('');
   const currentUserId = getEntityId(user);
   const currentUserEmail = normalizeEmail(user?.email);
 
@@ -271,7 +288,7 @@ export default function Reels() {
       .find(node => node.getAttribute('data-reel-id') === String(memoryId));
     if (!target) return;
     root.scrollTo({ top: target.offsetTop, behavior: 'auto' });
-    setActiveMemoryId(String(memoryId));
+    if (activeMemoryIdRef.current !== String(memoryId)) setActiveMemoryId(String(memoryId));
   }, []);
 
   const goToMemory = useCallback((direction) => {
@@ -305,19 +322,37 @@ export default function Reels() {
   }, [galleryPreview]);
 
   useEffect(() => {
+    activeMemoryIdRef.current = activeMemoryId;
+  }, [activeMemoryId]);
+
+  useEffect(() => {
     const root = feedRef.current;
     if (!root || !memories.length) return undefined;
+
+    let frameId = 0;
+    let pendingActiveId = '';
+    const commitActiveId = () => {
+      frameId = 0;
+      if (pendingActiveId && activeMemoryIdRef.current !== pendingActiveId) {
+        setActiveMemoryId(pendingActiveId);
+      }
+    };
 
     const observer = new IntersectionObserver(entries => {
       const visible = entries
         .filter(entry => entry.isIntersecting)
         .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
       const nextId = visible?.target?.getAttribute('data-reel-id');
-      if (nextId) setActiveMemoryId(nextId);
+      if (!nextId || nextId === activeMemoryIdRef.current) return;
+      pendingActiveId = nextId;
+      if (!frameId) frameId = window.requestAnimationFrame(commitActiveId);
     }, { root, threshold: [0.6, 0.82] });
 
     root.querySelectorAll('[data-reel-id]').forEach(node => observer.observe(node));
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
   }, [memories]);
 
   useEffect(() => {
@@ -711,11 +746,12 @@ export default function Reels() {
                 </div>
               </div>
             ) : memories.length ? (
-              memories.map(memory => (
+              memories.map((memory, index) => (
                 <MemoryCard
                   key={getMemoryId(memory)}
                   memory={memory}
                   active={getMemoryId(memory) === getMemoryId(activeMemory)}
+                  shouldRenderPlayer={Math.abs(index - activeIndex) <= 1}
                   canDelete={canDeleteMemory(memory)}
                   deleting={deletingMemoryId === getMemoryId(memory)}
                   onDelete={handleDeleteMemory}

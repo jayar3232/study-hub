@@ -7,6 +7,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
@@ -22,6 +24,7 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         clearStaleWebCacheOnce();
         enableSafeFullscreen();
+        configureWebViewForSmoothRendering();
     }
 
     @Override
@@ -64,6 +67,35 @@ public class MainActivity extends BridgeActivity {
             prefs.edit().putLong(CACHE_VERSION_KEY, currentVersion).apply();
         } catch (Exception ignored) {
             // Cache cleanup only removes stale bundled pages from old APK builds.
+        }
+    }
+
+    private void configureWebViewForSmoothRendering() {
+        try {
+            Window window = getWindow();
+            if (window != null) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+            }
+
+            WebView webView = getBridge() == null ? null : getBridge().getWebView();
+            if (webView == null) return;
+
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true);
+            }
+
+            WebSettings settings = webView.getSettings();
+            if (settings == null) return;
+
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                settings.setOffscreenPreRaster(false);
+            }
+        } catch (Exception ignored) {
+            // Rendering hints should never block app startup on device-specific WebView builds.
         }
     }
 
