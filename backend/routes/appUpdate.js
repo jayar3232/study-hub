@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.26',
-  versionCode: 73
+  versionName: '4.4.27',
+  versionCode: 74
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.26 adds playable voice messages|Nickname updates now sync to both people in chat|Messenger and main APK builds include the latest chat fixes'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.27 expands Messenger to the full screen|Conversation backgrounds now continue behind transparent headers and composer|Messenger now includes theme switching and the new centered logo'
   });
 });
 

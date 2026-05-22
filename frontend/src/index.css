@@ -12926,3 +12926,156 @@ html.syncrova-native-app .mobile-message-actions button {
     -ms-overflow-style: none !important;
   }
 }
+
+.messenger-logo-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(24, 119, 242, 0.16);
+}
+
+.messenger-logo-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.messages-rail-logo {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0.18rem;
+}
+
+.messages-mobile-brand-logo {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  padding: 0.14rem;
+}
+
+.messages-mobile-wordmark {
+  display: block;
+  color: #0f172a;
+  font-size: 1.45rem;
+  font-weight: 950;
+  line-height: 0.95;
+}
+
+.dark .messages-mobile-wordmark {
+  color: #f8fafc;
+}
+
+html.syncrova-messenger-standalone,
+html.syncrova-messenger-standalone body,
+html.syncrova-messenger-standalone #root {
+  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--messenger-page, #f6f8fb);
+}
+
+html.syncrova-messenger-standalone .syncrova-messenger-root,
+html.syncrova-messenger-standalone .syncrova-messenger-root > .relative.z-10 {
+  min-height: 100svh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  html.syncrova-messenger-standalone .syncrova-messenger-root,
+  html.syncrova-messenger-standalone .syncrova-messenger-root > .relative.z-10 {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell {
+  min-height: 100svh !important;
+  height: 100svh !important;
+  max-height: 100svh !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+@supports (height: 100dvh) {
+  html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell {
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell > .flex,
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-list,
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel {
+  min-height: 0;
+  height: 100%;
+}
+
+html.syncrova-messenger-standalone .mobile-messenger-shell:not(.mobile-chat-selected) {
+  height: 100svh !important;
+  max-height: 100svh !important;
+}
+
+@supports (height: 100dvh) {
+  html.syncrova-messenger-standalone .mobile-messenger-shell:not(.mobile-chat-selected) {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--chat-background-image) center / cover no-repeat;
+  transform: translateZ(0);
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(248, 250, 252, 0.14);
+}
+
+html.dark.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image::after {
+  background: rgba(2, 6, 23, 0.28);
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image > * {
+  position: relative;
+  z-index: 1;
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image .mobile-message-thread,
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image .group-chat-thread.chat-bg-image {
+  background: transparent !important;
+}
+
+html.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image :where(.mobile-chat-header, .mobile-chat-search-bar, .pinned-message-preview, .message-composer-footer, .group-chat-search-bar, .group-message-composer-footer) {
+  border-color: rgba(226, 232, 240, 0.5) !important;
+  background: rgba(255, 255, 255, 0.54) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(18px) saturate(1.15);
+}
+
+html.dark.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image :where(.mobile-chat-header, .mobile-chat-search-bar, .pinned-message-preview, .message-composer-footer, .group-chat-search-bar, .group-message-composer-footer) {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(3, 7, 18, 0.48) !important;
+}

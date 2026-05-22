@@ -9,12 +9,14 @@ android {
         applicationId isMessengerBuild ? "com.nemsu.studenthub.messenger" : "com.nemsu.studenthub"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 73
-        versionName "4.4.26"
+        versionCode 74
+        versionName "4.4.27"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
             appLabel: isMessengerBuild ? "Syncrova Messenger" : "Syncrova",
-            deepLinkScheme: isMessengerBuild ? "syncrova-messenger" : "syncrova"
+            deepLinkScheme: isMessengerBuild ? "syncrova-messenger" : "syncrova",
+            appIcon: isMessengerBuild ? "@mipmap/ic_launcher_messenger" : "@mipmap/ic_launcher",
+            appRoundIcon: isMessengerBuild ? "@mipmap/ic_launcher_messenger_round" : "@mipmap/ic_launcher_round"
         ]
         buildConfigField "boolean", "SYNCROVA_MESSENGER", isMessengerBuild ? "true" : "false"
         aaptOptions {

@@ -54,6 +54,8 @@ const INTRO_SPLASH_SESSION_KEY = 'syncrova-intro-splash-shown';
 const MESSENGER_SPLASH_SESSION_KEY = 'syncrova-messenger-intro-splash-shown';
 const MESSENGER_STANDALONE_STORAGE_KEY = 'syncrova:standalone-messenger';
 const MESSENGER_APK_PATH = '/releases/syncrova-messenger-latest.apk';
+const SYNCROVA_LOGO_SRC = '/syncrova-app-logo.png';
+const MESSENGER_LOGO_SRC = '/syncrovaalogoformessenger.png';
 const DEFAULT_MESSENGER_DOWNLOAD_ORIGIN = 'https://study-hub-77ta.onrender.com';
 
 const isNativeAndroid = () => {
@@ -202,7 +204,7 @@ function MessengerLoadingFallback() {
   return (
     <div className="syncrova-messenger-loading skeleton-motion-zone" role="status" aria-label="Loading Syncrova Messenger">
       <div className="syncrova-messenger-loading-card">
-        <img src="/syncrova-app-logo.png" alt="" draggable={false} />
+        <img src={MESSENGER_LOGO_SRC} alt="" draggable={false} />
         <p>Syncrova Messenger</p>
         <span>made by sigmaboyz</span>
         <div className="syncrova-messenger-loading-bar" aria-hidden="true">
@@ -589,7 +591,7 @@ function AppIntroSplash({ standaloneMessenger = false }) {
       <div className="syncrova-intro-glow" />
       <div className="syncrova-intro-card">
         <div className="syncrova-intro-logo">
-          <img src="/syncrova-app-logo.png" alt="" draggable={false} />
+          <img src={standaloneMessenger ? MESSENGER_LOGO_SRC : SYNCROVA_LOGO_SRC} alt="" draggable={false} />
         </div>
         <p className="syncrova-intro-eyebrow">{standaloneMessenger ? 'Opening' : 'Welcome to'}</p>
         <h1>{standaloneMessenger ? 'Messenger' : 'Syncrova'}</h1>

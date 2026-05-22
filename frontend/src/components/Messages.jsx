@@ -20,6 +20,7 @@ import {
   MessageCircle,
   Mic,
   MicOff,
+  Moon,
   MoreVertical,
   Pause,
   Phone,
@@ -37,6 +38,7 @@ import {
   Settings,
   Star,
   StickyNote,
+  Sun,
   Square,
   Trash2,
   User,
@@ -54,6 +56,7 @@ import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import { useCall } from '../context/CallContext';
+import { useTheme } from '../context/ThemeContext';
 import NewChatModal from './NewChatModal';
 import GroupChat from './GroupChat';
 import UserProfileModal from './UserProfileModal';
@@ -68,7 +71,6 @@ import StoryViewer from './StoryViewer';
 import { isNativeMediaLibraryAvailable, nativeMediaAssetToFile } from '../utils/nativeMediaLibrary';
 import { DeveloperAvatarFrame, DeveloperBadge } from './DeveloperIdentity';
 import AnimatedEmojiText from './AnimatedEmojiText';
-import { AppLogoMark, AppWordmark } from './AppLogo';
 import { CHAT_BACKGROUND_OPTIONS, DEFAULT_CHAT_BACKGROUND_ID, getChatBackground } from '../data/chatBackgroundPresets';
 import { getStoryListForActiveStory } from '../utils/stories';
 import useRenderDebug from '../hooks/useRenderDebug';
@@ -84,6 +86,7 @@ const INITIAL_MESSAGE_PAGE_LIMIT = 64;
 const OLDER_MESSAGE_PAGE_LIMIT = 56;
 const CONVERSATION_ROW_HEIGHT = 90;
 const CONVERSATION_VIRTUAL_OVERSCAN = 6;
+const MESSENGER_LOGO_SRC = '/syncrovaalogoformessenger.png';
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 const getStableMessageKey = (message = {}, index = '') => {
   const id = getEntityId(message);
@@ -119,6 +122,14 @@ const shouldPreloadAdjacentMedia = () => (
   typeof window !== 'undefined'
   && window.matchMedia?.('(pointer: fine) and (min-width: 768px)').matches
 );
+
+function MessengerLogoMark({ className = '' }) {
+  return (
+    <span className={`messenger-logo-mark ${className}`} aria-hidden="true">
+      <img src={MESSENGER_LOGO_SRC} alt="" draggable={false} />
+    </span>
+  );
+}
 
 const getDisplayName = (entity, fallback = 'User') => entity?.name || fallback;
 const getStoryGroupPreview = (group) => group?.preview || group?.stories?.[0] || null;
@@ -626,6 +637,7 @@ function VoiceMessagePlayer({ src, fileName = '', fileSize = 0, isMe = false }) 
 
 export default function Messages() {
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const {
     callHistory: sharedCallHistory,
     callIsActive: sharedCallIsActive,
@@ -634,6 +646,8 @@ export default function Messages() {
     getCallStatusLabel: getSharedCallStatusLabel,
     startCall: startSharedCall
   } = useCall();
+  const ThemeIcon = theme === 'dark' ? Sun : Moon;
+  const themeToggleLabel = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -5192,9 +5206,7 @@ export default function Messages() {
       <div className="flex h-full min-h-0">
         <aside className="messages-tools-rail hidden w-56 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
           <div className="flex items-center gap-3 px-1 py-2">
-            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-gray-900 dark:ring-gray-800">
-              <img src="/syncrova-app-logo.png" alt="Syncrova" className="h-full w-full object-contain" />
-            </div>
+            <MessengerLogoMark className="messages-rail-logo" />
             <div className="min-w-0">
               <p className="truncate text-lg font-black text-slate-950 dark:text-white">Syncrova</p>
               <p className="truncate text-[10px] font-black uppercase text-slate-400">Messenger</p>
@@ -5246,13 +5258,22 @@ export default function Messages() {
           <div className="border-b border-gray-200/80 p-3 dark:border-gray-800 md:p-4">
             <div className="messages-mobile-hero mb-4 flex items-center justify-between md:hidden">
               <div className="messages-mobile-brand flex min-w-0 items-center gap-2.5">
-                <AppLogoMark size="xs" className="messages-mobile-brand-logo" />
+                <MessengerLogoMark className="messages-mobile-brand-logo" />
                 <span className="messages-mobile-brand-copy min-w-0">
-                  <AppWordmark size="sm" className="messages-mobile-wordmark" />
+                  <span className="messages-mobile-wordmark">Syncrova</span>
                   <span>Made by Sigma Boyz</span>
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="messages-mobile-action-button"
+                  aria-label={themeToggleLabel}
+                  title={themeToggleLabel}
+                >
+                  <ThemeIcon size={20} />
+                </button>
                 <button
                   type="button"
                   onClick={() => toast('Open a conversation to start a video call')}
@@ -5722,6 +5743,15 @@ export default function Messages() {
                 </button>
                 <button
                   type="button"
+                  onClick={toggleTheme}
+                  className="mobile-chat-icon-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
+                  aria-label={themeToggleLabel}
+                  title={themeToggleLabel}
+                >
+                  <ThemeIcon size={18} />
+                </button>
+                <button
+                  type="button"
                   onClick={openGroupSettings}
                   className="mobile-chat-icon-button mobile-chat-details-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
                   aria-label="Open group details"
@@ -5799,6 +5829,15 @@ export default function Messages() {
                     <Phone size={18} />
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="mobile-chat-icon-button rounded-full p-2 text-gray-500 transition hover:bg-blue-50 hover:text-[#1877f2] dark:hover:bg-blue-950/30 dark:hover:text-sky-300"
+                  aria-label={themeToggleLabel}
+                  title={themeToggleLabel}
+                >
+                  <ThemeIcon size={18} />
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowChatDetails(true)}
