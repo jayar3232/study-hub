@@ -5,7 +5,7 @@ const BACKEND_URL = (
   process.env.BACKEND_URL ||
   process.env.VITE_BACKEND_URL ||
   process.env.RENDER_BACKEND_URL ||
-  'https://study-hub-77ta.onrender.com'
+  'https://study-hub-app.onrender.com'
 ).replace(/\/+$/, '');
 
 export const config = {

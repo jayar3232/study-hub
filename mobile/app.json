@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Syncrova Messenger",
+    "slug": "syncrova-messenger-native",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "syncrova-messenger",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nemsu.studenthub.messenger.native",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Syncrova uses the camera to send photo and video messages.",
+        "NSMicrophoneUsageDescription": "Syncrova uses the microphone for media messages.",
+        "NSPhotoLibraryUsageDescription": "Syncrova uses your library to attach photos and videos."
+      }
+    },
+    "android": {
+      "package": "com.nemsu.studenthub.messenger.native",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
+      ]
+    },
+    "plugins": [
+      "expo-image-picker",
+      "expo-camera",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Syncrova uses the microphone for media messages."
+        }
+      ]
+    ],
+    "extra": {
+      "backendOrigin": "https://study-hub-app.onrender.com",
+      "apiBaseUrl": "https://study-hub-app.onrender.com/api"
+    }
+  }
+}

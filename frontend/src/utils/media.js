@@ -1,4 +1,4 @@
-const DEFAULT_REMOTE_BACKEND = 'https://study-hub-77ta.onrender.com';
+const DEFAULT_REMOTE_BACKEND = 'https://study-hub-app.onrender.com';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 const REMOTE_FRONTEND_HOST_SUFFIXES = ['.vercel.app'];
 const TUNNEL_HOST_SUFFIXES = [

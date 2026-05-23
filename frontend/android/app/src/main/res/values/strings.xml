@@ -4,5 +4,5 @@
     <string name="title_activity_main">Syncrova</string>
     <string name="package_name">com.nemsu.syncrova</string>
     <string name="custom_url_scheme">com.nemsu.syncrova</string>
-    <string name="syncrova_api_base_url">https://study-hub-77ta.onrender.com/api</string>
+    <string name="syncrova_api_base_url">https://study-hub-app.onrender.com/api</string>
 </resources>

@@ -56,7 +56,7 @@ const MESSENGER_SPLASH_SESSION_KEY = 'syncrova-messenger-intro-splash-shown';
 const MESSENGER_STANDALONE_STORAGE_KEY = 'syncrova:standalone-messenger';
 const MESSENGER_APK_PATH = '/releases/syncrova-messenger-latest.apk';
 const SYNCROVA_LOGO_SRC = '/syncrova-app-logo.png';
-const DEFAULT_MESSENGER_DOWNLOAD_ORIGIN = 'https://study-hub-77ta.onrender.com';
+const DEFAULT_MESSENGER_DOWNLOAD_ORIGIN = 'https://study-hub-app.onrender.com';
 const REQUIRED_MESSENGER_VERSION_CODE = RELEASE_ANDROID_VERSION_CODE;
 
 const isNativeAndroid = () => {

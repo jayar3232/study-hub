@@ -36,7 +36,7 @@ const getNativeApiBaseUrl = () => {
     return `${window.location.origin}${path}`.replace(/\/+$/, '');
   }
 
-  return 'https://study-hub-77ta.onrender.com/api';
+  return 'https://study-hub-app.onrender.com/api';
 };
 
 const getNativePlatform = () => {
