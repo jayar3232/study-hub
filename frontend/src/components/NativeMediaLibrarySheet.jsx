@@ -6,6 +6,7 @@ import {
   listNativeMedia,
   requestNativeMediaPermission
 } from '../utils/nativeMediaLibrary';
+import VideoThumbnail from './VideoThumbnail';
 
 const PAGE_SIZE = 30;
 const INITIAL_RENDER_COUNT = 18;
@@ -17,20 +18,41 @@ const FILTERS = [
   { id: 'video', label: 'Videos', icon: Video }
 ];
 
+const formatNativeMediaDuration = (duration = 0) => {
+  const rawSeconds = Number(duration || 0) > 999 ? Number(duration || 0) / 1000 : Number(duration || 0);
+  const totalSeconds = Math.max(0, Math.round(rawSeconds));
+  if (!totalSeconds) return '';
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
 function NativeMediaVideoPreview({ asset }) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const thumbnailSrc = thumbnailFailed ? '' : asset.thumbnailWebPath;
+  const durationLabel = formatNativeMediaDuration(asset.duration);
 
   return (
     <span className="native-media-video-preview">
       {thumbnailSrc ? (
         <img src={thumbnailSrc} alt="" loading="lazy" decoding="async" draggable="false" onError={() => setThumbnailFailed(true)} />
+      ) : asset.webPath ? (
+        <VideoThumbnail
+          src={asset.webPath}
+          className="h-full w-full"
+          rounded="rounded-none"
+          iconSize={20}
+          showOverlay={false}
+          preload="metadata"
+          label={asset.name || 'Video preview'}
+        />
       ) : (
         <span className="native-media-video-placeholder">
           <Video size={24} />
         </span>
       )}
       <span className="native-media-play"><PlayCircle size={20} /></span>
+      {durationLabel && <span className="native-media-duration">{durationLabel}</span>}
     </span>
   );
 }
@@ -212,7 +234,7 @@ export default function NativeMediaLibrarySheet({
   if (!open || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="native-media-overlay" onClick={onClose}>
+    <div className="native-media-overlay messenger-motion-zone" onClick={onClose}>
       <section className="native-media-sheet" onClick={event => event.stopPropagation()} aria-label={title}>
         <header className="native-media-header">
           <div className="native-media-title">

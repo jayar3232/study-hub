@@ -2,7 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <queries>
+        <package android:name="com.nemsu.studenthub" />
         <package android:name="com.nemsu.studenthub.messenger" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="syncrova" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="syncrova-messenger" />

@@ -26,6 +26,12 @@ const normalizeStatus = (status = {}) => ({
   canDrawOverlays: Boolean(status.canDrawOverlays)
 });
 
+const normalizeOpenResult = (result = {}) => ({
+  supported: true,
+  installed: Boolean(result.installed),
+  opened: Boolean(result.opened)
+});
+
 export const getChatHeadsStatus = async () => {
   if (!isNativeAndroid()) return defaultStatus;
 
@@ -59,5 +65,20 @@ export const openChatHeadSettings = async () => {
     return normalizeStatus(await bridge.openChatHeadSettings());
   } catch {
     return defaultStatus;
+  }
+};
+
+export const openMainApp = async (path = '/') => {
+  if (!isNativeAndroid()) {
+    if (typeof window !== 'undefined') window.location.assign(path || '/');
+    return { supported: false, installed: false, opened: true };
+  }
+
+  try {
+    const bridge = await getNativeBridge();
+    if (!bridge?.openMainApp) return { supported: true, installed: false, opened: false };
+    return normalizeOpenResult(await bridge.openMainApp({ path: path || '/' }));
+  } catch {
+    return { supported: true, installed: false, opened: false };
   }
 };

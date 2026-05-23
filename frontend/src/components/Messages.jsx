@@ -1,6 +1,7 @@
 import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import {
   ArrowLeft,
   AtSign,
@@ -42,6 +43,7 @@ import {
   Square,
   Trash2,
   User,
+  UserPlus,
   Users,
   Video,
   VideoOff,
@@ -51,7 +53,7 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ConnectionState, Room, RoomEvent, Track } from 'livekit-client';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
@@ -64,7 +66,6 @@ import { optimizeImageFile, resolveMediaUrl, resolveMediaVariantUrl } from '../u
 import { MEDIA_FILTERS, applyImageEdits, getDefaultMediaEdit, getMediaEditPreviewStyle } from '../utils/mediaEditor';
 import { playUiSound } from '../utils/sound';
 import { getChatHeadsStatus, setChatHeadsEnabled } from '../utils/chatHeads';
-import { ListSkeleton } from './SkeletonLoader';
 import MediaViewer from './MediaViewer';
 import VideoThumbnail from './VideoThumbnail';
 import NativeMediaLibrarySheet from './NativeMediaLibrarySheet';
@@ -78,6 +79,7 @@ import useRenderDebug from '../hooks/useRenderDebug';
 import { createFrameBatcher } from '../utils/performance';
 
 let socket;
+const SyncrovaNativeBridge = registerPlugin('SyncrovaNativeBridge');
 
 const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
 const MAX_MESSAGE_MEDIA_SELECTION = 10;
@@ -87,7 +89,7 @@ const INITIAL_MESSAGE_PAGE_LIMIT = 64;
 const OLDER_MESSAGE_PAGE_LIMIT = 56;
 const CONVERSATION_ROW_HEIGHT = 90;
 const CONVERSATION_VIRTUAL_OVERSCAN = 6;
-const MESSENGER_LOGO_SRC = '/syncrovaalogoformessenger.png';
+const SYNCROVA_APP_LOGO_SRC = '/syncrova-app-logo.png';
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
 const getStableMessageKey = (message = {}, index = '') => {
   const id = getEntityId(message);
@@ -124,11 +126,82 @@ const shouldPreloadAdjacentMedia = () => (
   && window.matchMedia?.('(pointer: fine) and (min-width: 768px)').matches
 );
 
-function MessengerLogoMark({ className = '' }) {
+function SyncrovaAppLogoButton({ onClick, className = '', showLabel = false }) {
   return (
-    <span className={`messenger-logo-mark ${className}`} aria-hidden="true">
-      <img src={MESSENGER_LOGO_SRC} alt="" draggable={false} />
-    </span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`messages-main-app-button ${className}`}
+      aria-label="Open Syncrova"
+      title="Open Syncrova"
+    >
+      <span className="messages-main-app-logo" aria-hidden="true">
+        <img src={SYNCROVA_APP_LOGO_SRC} alt="" draggable={false} />
+      </span>
+      {showLabel && (
+        <span className="messages-main-app-label">
+          <span>Syncrova</span>
+          <span>Main app</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+function MessengerInitialSkeleton() {
+  return (
+    <div className="messages-pro-shell mobile-chat-shell mobile-messenger-shell messenger-motion-zone messenger-initial-skeleton-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20">
+      <div className="grid h-full min-h-0 gap-0 md:grid-cols-[22rem_minmax(0,1fr)]">
+        <section className="flex min-h-0 flex-col border-r border-slate-200/80 p-3 dark:border-gray-800 md:p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="skeleton-motion-zone skeleton-block h-11 w-11 rounded-full bg-slate-200 dark:bg-slate-800" />
+              <div className="space-y-2">
+                <span className="skeleton-motion-zone skeleton-block block h-4 w-28 rounded-full bg-slate-200 dark:bg-slate-800" />
+                <span className="skeleton-motion-zone skeleton-block block h-3 w-20 rounded-full bg-slate-200 dark:bg-slate-800" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <span className="skeleton-motion-zone skeleton-block h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-800" />
+              <span className="skeleton-motion-zone skeleton-block h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-800" />
+            </div>
+          </div>
+          <span className="skeleton-motion-zone skeleton-block mt-4 h-11 w-full rounded-2xl bg-slate-200 dark:bg-slate-800" />
+          <div className="mt-4 flex gap-3 overflow-hidden pb-1">
+            {[0, 1, 2, 3].map(item => (
+              <div key={item} className="w-16 shrink-0 space-y-2">
+                <span className="skeleton-motion-zone skeleton-block block h-14 w-14 rounded-full bg-slate-200 dark:bg-slate-800" />
+                <span className="skeleton-motion-zone skeleton-block block h-2.5 w-12 rounded-full bg-slate-200 dark:bg-slate-800" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            {[0, 1, 2].map(item => (
+              <span key={item} className="skeleton-motion-zone skeleton-block h-9 flex-1 rounded-full bg-slate-200 dark:bg-slate-800" />
+            ))}
+          </div>
+          <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-hidden">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 p-3 dark:border-gray-800 dark:bg-gray-900/70">
+                <span className="skeleton-motion-zone skeleton-block h-12 w-12 shrink-0 rounded-full bg-slate-200 dark:bg-slate-800" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <span className="skeleton-motion-zone skeleton-block block h-3.5 w-2/3 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  <span className="skeleton-motion-zone skeleton-block block h-3 w-4/5 rounded-full bg-slate-200 dark:bg-slate-800" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="hidden min-h-0 flex-col justify-end gap-3 bg-slate-50/70 p-5 dark:bg-gray-950 md:flex">
+          {[0, 1, 2, 3].map(item => (
+            <div key={item} className={`flex ${item % 2 ? 'justify-end' : 'justify-start'}`}>
+              <span className={`skeleton-motion-zone skeleton-block h-12 rounded-3xl bg-slate-200 dark:bg-slate-800 ${item % 2 ? 'w-2/5' : 'w-1/3'}`} />
+            </div>
+          ))}
+          <span className="skeleton-motion-zone skeleton-block mt-3 h-12 w-full rounded-full bg-slate-200 dark:bg-slate-800" />
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -639,6 +712,7 @@ function VoiceMessagePlayer({ src, fileName = '', fileSize = 0, isMe = false }) 
 export default function Messages() {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const {
     callHistory: sharedCallHistory,
     callIsActive: sharedCallIsActive,
@@ -656,6 +730,8 @@ export default function Messages() {
   const [conversationSearch, setConversationSearch] = useState('');
   const [conversationFilter, setConversationFilter] = useState('all');
   const [acceptedFriendIds, setAcceptedFriendIds] = useState(null);
+  const [pendingFriendRequestIds, setPendingFriendRequestIds] = useState(() => new Set());
+  const [friendActionUserId, setFriendActionUserId] = useState('');
   const [favoriteConversationIds, setFavoriteConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.favoriteChats, LEGACY_STORAGE_KEYS.favoriteChats));
   const [mutedConversationIds, setMutedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.mutedChats, LEGACY_STORAGE_KEYS.mutedChats));
   const [pinnedConversationIds, setPinnedConversationIds] = useState(() => readStoredIdSet(STORAGE_KEYS.pinnedChats, LEGACY_STORAGE_KEYS.pinnedChats));
@@ -810,6 +886,34 @@ export default function Messages() {
   const selectedGroupId = getEntityId(selectedGroup);
   const targetUserId = searchParams.get('user');
   const targetDraftText = searchParams.get('draft') || '';
+
+  const openMainSyncrova = useCallback(async () => {
+    const path = '/dashboard';
+    const isAndroidNative = (
+      (Capacitor?.getPlatform?.() || window.Capacitor?.getPlatform?.()) === 'android'
+      && (Capacitor?.isNativePlatform?.() || window.Capacitor?.isNativePlatform?.())
+    );
+
+    if (isAndroidNative && SyncrovaNativeBridge?.openMainApp) {
+      try {
+        const result = await SyncrovaNativeBridge.openMainApp({ path });
+        if (result?.opened) return;
+      } catch {
+        // Old APKs may not expose this bridge method yet; keep the web fallback below.
+      }
+    }
+
+    if (typeof window !== 'undefined' && window.__SYNCROVA_MESSENGER_APP__ === true) {
+      try {
+        window.location.href = `syncrova://open${path}`;
+        return;
+      } catch {
+        // Fall through to router navigation for web previews.
+      }
+    }
+
+    navigate(path);
+  }, [navigate]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1295,19 +1399,25 @@ export default function Messages() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/friends/summary')
-      .then(res => {
-        if (cancelled) return;
-        const ids = new Set((res.data?.friends || [])
-          .map(item => getEntityId(item.user))
-          .filter(Boolean));
-        setAcceptedFriendIds(ids);
-      })
-      .catch(() => {
-        if (!cancelled) setAcceptedFriendIds(new Set());
-      });
+    const refreshFriends = () => {
+      api.get('/friends/summary')
+        .then(res => {
+          if (cancelled) return;
+          const ids = new Set((res.data?.friends || [])
+            .map(item => getEntityId(item.user))
+            .filter(Boolean));
+          setAcceptedFriendIds(ids);
+        })
+        .catch(() => {
+          if (!cancelled) setAcceptedFriendIds(new Set());
+        });
+    };
+
+    refreshFriends();
+    window.addEventListener('friendsUpdated', refreshFriends);
     return () => {
       cancelled = true;
+      window.removeEventListener('friendsUpdated', refreshFriends);
     };
   }, []);
 
@@ -3309,6 +3419,29 @@ export default function Messages() {
     handleOpenNote(item);
   };
 
+  const handleTrayFriendRequest = async (event, person) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const personId = getEntityId(person);
+    if (!personId || personId === currentUserId || friendActionUserId) return;
+
+    setFriendActionUserId(personId);
+    try {
+      const res = await api.post(`/friends/request/${personId}`);
+      setPendingFriendRequestIds(prev => {
+        const next = new Set(prev);
+        next.add(personId);
+        return next;
+      });
+      window.dispatchEvent(new CustomEvent('friendsUpdated'));
+      toast.success(res.data?.msg || 'Friend request sent');
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Friend request failed');
+    } finally {
+      setFriendActionUserId('');
+    }
+  };
+
   const toggleGroupMember = (person) => {
     const personId = getEntityId(person);
     if (!personId || personId === currentUserId) return;
@@ -4986,7 +5119,7 @@ export default function Messages() {
     </div>
   );
 
-  const ChatDetailsContent = ({ compact = false }) => (
+  const renderChatDetailsContent = (compact = false) => (
     <div className={`${compact ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-6 lg:max-h-[calc(90svh-4.5rem)]' : ''}`}>
       <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
         <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
@@ -5222,29 +5355,14 @@ export default function Messages() {
   );
 
   if (initialLoading) {
-    return (
-      <div className="messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20">
-        <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
-          <ListSkeleton count={5} />
-          <div className="hidden lg:block">
-            <ListSkeleton count={4} />
-          </div>
-        </div>
-      </div>
-    );
+    return <MessengerInitialSkeleton />;
   }
 
   return (
-    <div className={`messages-pro-shell mobile-chat-shell mobile-messenger-shell overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20 ${selectedUser || selectedGroup ? 'mobile-chat-selected' : ''}`}>
+    <div className={`messages-pro-shell mobile-chat-shell mobile-messenger-shell messenger-motion-zone overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-300/20 dark:border-gray-800/80 dark:bg-gray-950 dark:shadow-black/20 ${selectedUser || selectedGroup ? 'mobile-chat-selected' : ''}`}>
       <div className="flex h-full min-h-0">
         <aside className="messages-tools-rail hidden w-56 shrink-0 flex-col border-r border-slate-200/80 bg-slate-50/90 p-4 dark:border-gray-800 dark:bg-gray-950/95 2xl:flex">
-          <div className="flex items-center gap-3 px-1 py-2">
-            <MessengerLogoMark className="messages-rail-logo" />
-            <div className="min-w-0">
-              <p className="truncate text-lg font-black text-slate-950 dark:text-white">Syncrova</p>
-              <p className="truncate text-[10px] font-black uppercase text-slate-400">Messenger</p>
-            </div>
-          </div>
+          <SyncrovaAppLogoButton onClick={openMainSyncrova} className="px-1 py-2" showLabel />
 
           <nav className="mt-6 space-y-1">
             {[
@@ -5290,13 +5408,7 @@ export default function Messages() {
         <aside className={`${selectedUser || selectedGroup ? 'hidden md:flex' : 'flex'} mobile-conversation-list messages-conversation-column w-full flex-col border-r border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950 md:w-[22rem] md:max-w-none md:flex xl:w-[23rem]`}>
           <div className="border-b border-gray-200/80 p-3 dark:border-gray-800 md:p-4">
             <div className="messages-mobile-hero mb-4 flex items-center justify-between md:hidden">
-              <div className="messages-mobile-brand flex min-w-0 items-center gap-2.5">
-                <MessengerLogoMark className="messages-mobile-brand-logo" />
-                <span className="messages-mobile-brand-copy min-w-0">
-                  <span className="messages-mobile-wordmark">Syncrova</span>
-                  <span>Made by Sigma Boyz</span>
-                </span>
-              </div>
+              <SyncrovaAppLogoButton onClick={openMainSyncrova} className="min-w-0" showLabel />
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
@@ -5447,6 +5559,11 @@ export default function Messages() {
                 </span>
               </button>
               {noteTrayItems.map(item => {
+                const personId = getEntityId(item.person);
+                const friendshipKnown = acceptedFriendIds instanceof Set;
+                const isFriend = item.isMe || (friendshipKnown && acceptedFriendIds.has(personId));
+                const friendRequestPending = pendingFriendRequestIds.has(personId);
+                const showAddFriend = friendshipKnown && !item.isMe && personId && !isFriend;
                 const noteAvatar = renderAvatar(item.person, 'h-12 w-12', 20);
                 const storyOnly = item.hasStory && !item.hasNote;
                 const storyRingClass = item.hasStory
@@ -5482,6 +5599,24 @@ export default function Messages() {
                       >
                         {noteAvatar}
                       </button>
+                      {showAddFriend && (
+                        <button
+                          type="button"
+                          onClick={event => handleTrayFriendRequest(event, item.person)}
+                          disabled={friendRequestPending || friendActionUserId === personId}
+                          className={`messenger-note-friend-add ${friendRequestPending ? 'is-pending' : ''}`}
+                          aria-label={friendRequestPending ? 'Friend request sent' : `Add ${item.person?.name || 'user'} as friend`}
+                          title={friendRequestPending ? 'Friend request sent' : 'Add friend'}
+                        >
+                          {friendActionUserId === personId ? (
+                            <Loader2 size={12} className="skeleton-motion-zone animate-spin" />
+                          ) : friendRequestPending ? (
+                            <CheckCheck size={12} strokeWidth={3} />
+                          ) : (
+                            <UserPlus size={12} strokeWidth={3} />
+                          )}
+                        </button>
+                      )}
                       {item.isMe && !storyOnly && (
                         <button
                           type="button"
@@ -7220,7 +7355,7 @@ export default function Messages() {
                 <X size={18} />
               </button>
             </div>
-            <ChatDetailsContent compact />
+            {renderChatDetailsContent(true)}
           </div>
         </div>
       )}

@@ -40,8 +40,8 @@ const toAbsoluteUrl = (req, value) => {
 };
 
 const bundledRelease = {
-  versionName: '4.4.30',
-  versionCode: 77
+  versionName: '4.4.32',
+  versionCode: 79
 };
 
 const getConfiguredVersionCode = () => {
@@ -242,7 +242,7 @@ router.get('/update', (req, res) => {
     apkSize,
     apkSha256,
     calls: getLiveKitStatus(),
-    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.30 fixes a Messenger conversation crash when opening chats|My Day rings on chat headers now load safely|Includes the latest chat head and incoming call sound improvements'
+    notes: process.env.APP_UPDATE_NOTES || 'Syncrova 4.4.32 blocks outdated Messenger handoff from the main app|Messenger update flow now checks installed versionCode before opening chats|Fixes nickname editing so the keyboard stays open while typing'
   });
 });
 

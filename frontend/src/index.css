@@ -3942,10 +3942,10 @@ html.syncrova-native-app .mobile-bottom-nav {
   scroll-behavior: auto !important;
 }
 
-.app-no-motion :where(*, *::before, *::after):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji),
-.app-no-motion :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji),
-html :where(*, *::before, *::after):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji),
-html :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji) {
+.app-no-motion :where(*, *::before, *::after):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji):not(.messenger-motion-zone):not(.messenger-motion-zone *),
+.app-no-motion :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji):not(.messenger-motion-zone):not(.messenger-motion-zone *),
+html :where(*, *::before, *::after):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji):not(.messenger-motion-zone):not(.messenger-motion-zone *),
+html :where(.animate-spin, .animate-pulse, .animate-bounce, .transition, [class*="duration-"], [class*="animate-"]):not(.reaction-motion-zone):not(.reaction-motion-zone *):not(.skeleton-motion-zone):not(.skeleton-motion-zone *):not(.skeleton-block):not(.animated-noto-emoji):not(.messenger-motion-zone):not(.messenger-motion-zone *) {
   animation: none !important;
   transition-property: none !important;
   transition-duration: 0s !important;
@@ -4896,8 +4896,9 @@ html.syncrova-frame-unstable :where(
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(2, 6, 23, 0.42);
+  background: rgba(2, 6, 23, 0.38);
   backdrop-filter: none;
+  animation: messengerPickerFadeIn 150ms ease-out both;
 }
 
 .native-media-sheet {
@@ -4911,6 +4912,8 @@ html.syncrova-frame-unstable :where(
   background: #f8fafc;
   color: #0f172a;
   box-shadow: 0 -24px 80px rgba(15, 23, 42, 0.28);
+  transform-origin: bottom center;
+  animation: messengerPickerSheetIn 210ms cubic-bezier(.2, .88, .2, 1) both;
 }
 
 .native-media-header {
@@ -5012,6 +5015,7 @@ html.syncrova-frame-unstable :where(
   -webkit-overflow-scrolling: touch;
   padding: 0.55rem;
   background: #f8fafc;
+  scroll-behavior: smooth;
 }
 
 .native-media-tile {
@@ -5058,6 +5062,10 @@ html.syncrova-frame-unstable :where(
 
 .native-media-video-preview .relative {
   border-radius: 0;
+}
+
+.native-media-video-preview video {
+  border-radius: 0 !important;
 }
 
 .native-media-video-placeholder {
@@ -5115,6 +5123,20 @@ html.syncrova-frame-unstable :where(
   border-radius: 9999px;
   background: rgba(2, 6, 23, 0.52);
   color: #ffffff;
+}
+
+.native-media-duration {
+  position: absolute;
+  left: 0.45rem;
+  bottom: 0.46rem;
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.62);
+  padding: 0.18rem 0.42rem;
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
 }
 
 .native-media-loading,
@@ -5347,8 +5369,8 @@ html.syncrova-frame-unstable :where(
   place-items: center;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 35%, rgba(37, 99, 235, 0.45), transparent 34rem),
-    linear-gradient(145deg, #050044 0%, #0b086a 45%, #07111f 100%);
+    linear-gradient(180deg, rgba(37, 99, 235, 0.26), transparent 38%),
+    linear-gradient(145deg, #07111f 0%, #0b1b3d 48%, #05070c 100%);
   color: #ffffff;
   pointer-events: none;
   animation: syncrovaIntroExit 260ms ease 1.64s both;
@@ -5356,18 +5378,21 @@ html.syncrova-frame-unstable :where(
 
 .syncrova-intro-splash.is-messenger {
   background:
-    radial-gradient(circle at 50% 34%, rgba(24, 119, 242, 0.34), transparent 30rem),
+    linear-gradient(180deg, rgba(24, 119, 242, 0.24), transparent 36%),
     linear-gradient(145deg, #020617 0%, #071a33 52%, #05070c 100%);
 }
 
 .syncrova-intro-glow {
   position: absolute;
-  width: 18rem;
-  height: 18rem;
-  border-radius: 9999px;
-  background: rgba(34, 211, 238, 0.2);
-  filter: blur(28px);
-  animation: syncrovaIntroPulse 1.6s ease-in-out infinite alternate;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent),
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 56% 100%, 2.6rem 2.6rem, 2.6rem 2.6rem;
+  opacity: 0.72;
+  transform: translateX(-65%);
+  animation: syncrovaIntroSweep 1.55s cubic-bezier(.2, .82, .2, 1) both;
 }
 
 .syncrova-intro-card {
@@ -5386,10 +5411,11 @@ html.syncrova-frame-unstable :where(
   height: 5rem;
   place-items: center;
   overflow: hidden;
-  border-radius: 1.35rem;
+  border-radius: 1.15rem;
   background: #ffffff;
   padding: 0.42rem;
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.45);
+  animation: syncrovaIntroLogoPop 620ms cubic-bezier(.18, 1.12, .22, 1) both;
 }
 
 .syncrova-intro-logo img {
@@ -5481,12 +5507,14 @@ html.syncrova-frame-unstable :where(
   place-items: center;
   gap: 0.42rem;
   text-align: center;
+  animation: messengerSurfaceIn 220ms cubic-bezier(.2, .82, .2, 1) both;
 }
 
 .syncrova-messenger-loading-card img {
   width: 4.2rem;
   height: 4.2rem;
   object-fit: contain;
+  animation: syncrovaIntroLogoPop 620ms cubic-bezier(.18, 1.12, .22, 1) both;
 }
 
 .syncrova-messenger-loading-card p {
@@ -5670,9 +5698,15 @@ html.syncrova-frame-unstable :where(
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@keyframes syncrovaIntroPulse {
-  from { transform: scale(0.86); opacity: 0.66; }
-  to { transform: scale(1.08); opacity: 1; }
+@keyframes syncrovaIntroSweep {
+  from { transform: translateX(-65%); }
+  to { transform: translateX(95%); }
+}
+
+@keyframes syncrovaIntroLogoPop {
+  0% { opacity: 0; transform: translateY(0.55rem) scale(0.92); }
+  62% { opacity: 1; transform: translateY(0) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes syncrovaIntroDot {
@@ -5687,6 +5721,33 @@ html.syncrova-frame-unstable :where(
 @keyframes messengerLoadingBar {
   from { transform: translateX(-92%); }
   to { transform: translateX(232%); }
+}
+
+@keyframes messengerPickerFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes messengerPickerSheetIn {
+  from {
+    opacity: 0.92;
+    transform: translate3d(0, 1.35rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes messengerSurfaceIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.55rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 .syncrova-error-fallback {
@@ -12929,6 +12990,98 @@ html.syncrova-native-app .mobile-message-actions button {
   }
 }
 
+.messages-main-app-button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.72rem;
+  border-radius: 9999px;
+  color: #0f172a;
+  text-align: left;
+  transition: transform 170ms cubic-bezier(.2, .8, .2, 1), opacity 170ms ease;
+}
+
+.messages-main-app-button:active {
+  transform: scale(0.97);
+}
+
+.messages-main-app-logo {
+  display: inline-grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #ffffff;
+  padding: 0.18rem;
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.12),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.messages-main-app-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.messages-main-app-label {
+  display: grid;
+  min-width: 0;
+  line-height: 1;
+}
+
+.messages-main-app-label span:first-child {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 1.32rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messages-main-app-label span:last-child {
+  margin-top: 0.22rem;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dark .messages-main-app-label span:first-child {
+  color: #f8fafc;
+}
+
+.dark .messages-main-app-label span:last-child {
+  color: rgba(248, 250, 252, 0.56);
+}
+
+.messages-mobile-hero .messages-main-app-button {
+  max-width: calc(100% - 8.7rem);
+}
+
+.messages-mobile-hero .messages-main-app-logo {
+  width: 2.55rem;
+  height: 2.55rem;
+}
+
+.messages-mobile-hero .messages-main-app-label span:first-child {
+  font-size: 1.4rem;
+}
+
+@media (max-width: 380px) {
+  .messages-mobile-hero .messages-main-app-label span:first-child {
+    font-size: 1.18rem;
+  }
+
+  .messages-mobile-hero .messages-main-app-label span:last-child {
+    font-size: 0.62rem;
+  }
+}
+
 .messenger-logo-mark {
   display: inline-grid;
   place-items: center;
@@ -13118,9 +13271,55 @@ html.dark.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-she
   background: rgba(3, 7, 18, 0.48) !important;
 }
 
+html:not(.dark).syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image :where(.mobile-chat-header, .mobile-chat-search-bar, .pinned-message-preview, .message-composer-footer, .group-chat-search-bar, .group-message-composer-footer) {
+  border-color: rgba(203, 213, 225, 0.58) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.12);
+  backdrop-filter: blur(18px) saturate(1.12);
+}
+
+html:not(.dark).syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-shell .mobile-conversation-panel.chat-bg-image .message-composer-footer {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.82) 24%),
+    rgba(255, 255, 255, 0.78) !important;
+}
+
+html:not(.dark) .messages-pro-shell.mobile-messenger-shell .mobile-chat-header {
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.16), 0 10px 30px rgba(15, 23, 42, 0.06) !important;
+}
+
+html:not(.dark) .messages-pro-shell.mobile-messenger-shell .message-composer-footer {
+  box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.06) !important;
+}
+
 .messages-pro-shell.mobile-messenger-shell {
   --messenger-story-new: #1877f2;
   --messenger-story-seen: #9ca3af;
+}
+
+.messages-pro-shell.mobile-messenger-shell.messenger-motion-zone {
+  animation: messengerSurfaceIn 180ms cubic-bezier(.2, .82, .2, 1) both;
+}
+
+.messages-pro-shell.mobile-messenger-shell.messenger-motion-zone :where(.conversation-list-row, .messages-mobile-action-button, .mobile-chat-icon-button, .message-composer-action, .message-composer-send, .messages-filter-tab) {
+  transition:
+    transform 160ms cubic-bezier(.2, .82, .2, 1),
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.messages-pro-shell.mobile-messenger-shell.messenger-motion-zone :where(.conversation-list-row, .messages-mobile-action-button, .mobile-chat-icon-button, .message-composer-action, .message-composer-send, .messages-filter-tab):active {
+  transform: scale(0.98);
+}
+
+.messages-pro-shell.mobile-messenger-shell.messenger-motion-zone .message-row {
+  animation: messengerSurfaceIn 140ms cubic-bezier(.2, .82, .2, 1) both;
+}
+
+html.syncrova-scroll-active .messages-pro-shell.mobile-messenger-shell.messenger-motion-zone .message-row {
+  animation: none;
 }
 
 .messages-pro-shell.mobile-messenger-shell .mobile-message-thread {
@@ -13234,6 +13433,41 @@ html.dark.syncrova-messenger-standalone .messages-pro-shell.mobile-messenger-she
 
 .messages-pro-shell.mobile-messenger-shell .messenger-note-head > span.messenger-note-card > button.messenger-note-avatar.is-story-viewed {
   background: var(--messenger-story-seen) !important;
+}
+
+.messages-pro-shell.mobile-messenger-shell .messenger-note-friend-add {
+  position: absolute;
+  right: 0.62rem;
+  bottom: 0.1rem;
+  z-index: 24;
+  display: grid;
+  width: 1.48rem;
+  height: 1.48rem;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 9999px;
+  background: #1877f2;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(24, 119, 242, 0.28);
+  transition: transform 150ms ease, background-color 150ms ease, opacity 150ms ease;
+}
+
+.messages-pro-shell.mobile-messenger-shell .messenger-note-friend-add:active {
+  transform: scale(0.92);
+}
+
+.messages-pro-shell.mobile-messenger-shell .messenger-note-friend-add.is-pending {
+  background: #10b981;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.24);
+}
+
+.messages-pro-shell.mobile-messenger-shell .messenger-note-friend-add:disabled {
+  cursor: default;
+  opacity: 0.86;
+}
+
+.dark .messages-pro-shell.mobile-messenger-shell .messenger-note-friend-add {
+  border-color: #050505;
 }
 
 .messages-pro-shell.mobile-messenger-shell .messenger-note-head > span.messenger-note-card > button.messenger-note-bubble {

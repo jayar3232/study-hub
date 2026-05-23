@@ -14,6 +14,7 @@ import WebUpdatePrompt from './components/WebUpdatePrompt';
 import { PageSkeleton } from './components/SkeletonLoader';
 import useFrameHealthMonitor from './hooks/useFrameHealthMonitor';
 import { getBackendOrigin } from './utils/media';
+import { RELEASE_ANDROID_VERSION_CODE, RELEASE_VERSION_NAME } from './generated/releaseInfo';
 
 const Login = lazy(() => import('./components/Login'));
 const Register = lazy(() => import('./components/Register'));
@@ -55,8 +56,8 @@ const MESSENGER_SPLASH_SESSION_KEY = 'syncrova-messenger-intro-splash-shown';
 const MESSENGER_STANDALONE_STORAGE_KEY = 'syncrova:standalone-messenger';
 const MESSENGER_APK_PATH = '/releases/syncrova-messenger-latest.apk';
 const SYNCROVA_LOGO_SRC = '/syncrova-app-logo.png';
-const MESSENGER_LOGO_SRC = '/syncrovaalogoformessenger.png';
 const DEFAULT_MESSENGER_DOWNLOAD_ORIGIN = 'https://study-hub-77ta.onrender.com';
+const REQUIRED_MESSENGER_VERSION_CODE = RELEASE_ANDROID_VERSION_CODE;
 
 const isNativeAndroid = () => {
   if (typeof window === 'undefined') return false;
@@ -204,9 +205,9 @@ function MessengerLoadingFallback() {
   return (
     <div className="syncrova-messenger-loading skeleton-motion-zone" role="status" aria-label="Loading Syncrova Messenger">
       <div className="syncrova-messenger-loading-card">
-        <img src={MESSENGER_LOGO_SRC} alt="" draggable={false} />
+        <img src={SYNCROVA_LOGO_SRC} alt="" draggable={false} />
         <p>Syncrova Messenger</p>
-        <span>made by sigmaboyz</span>
+        <span>Opening chats</span>
         <div className="syncrova-messenger-loading-bar" aria-hidden="true">
           <i />
         </div>
@@ -394,13 +395,17 @@ function MessengerHandoff() {
   const [checking, setChecking] = useState(nativeAndroid);
   const [opening, setOpening] = useState(false);
   const [installed, setInstalled] = useState(null);
+  const [messengerStatus, setMessengerStatus] = useState(null);
   const [statusText, setStatusText] = useState(nativeAndroid ? 'Checking for Syncrova Messenger...' : '');
   const messengerPath = `${location.pathname || '/messages'}${location.search || ''}${location.hash || ''}`;
   const downloadUrl = getMessengerDownloadUrl();
+  const installedMessengerVersionCode = Number(messengerStatus?.versionCode || 0);
+  const messengerNeedsUpdate = Boolean(installed && installedMessengerVersionCode > 0 && installedMessengerVersionCode < REQUIRED_MESSENGER_VERSION_CODE);
+  const messengerReady = Boolean(installed && !messengerNeedsUpdate);
 
-  const openInstallLink = async () => {
+  const openInstallLink = async ({ update = false } = {}) => {
     setOpening(true);
-    setStatusText('Opening the Syncrova Messenger installer...');
+    setStatusText(update ? 'Opening the Syncrova Messenger update...' : 'Opening the Syncrova Messenger installer...');
     try {
       if (nativeAndroid && SyncrovaNativeBridge?.openExternalUrl) {
         await SyncrovaNativeBridge.openExternalUrl({ url: downloadUrl });
@@ -416,7 +421,7 @@ function MessengerHandoff() {
 
   const openMessenger = async ({ silent = false } = {}) => {
     if (!nativeAndroid || !SyncrovaNativeBridge?.openMessenger) {
-      if (!silent) await openInstallLink();
+      if (!silent) await openInstallLink({ update: messengerNeedsUpdate });
       return;
     }
 
@@ -426,9 +431,18 @@ function MessengerHandoff() {
     }
 
     try {
-      const result = await SyncrovaNativeBridge.openMessenger({ path: messengerPath });
+      const result = await SyncrovaNativeBridge.openMessenger({
+        path: messengerPath,
+        minVersionCode: REQUIRED_MESSENGER_VERSION_CODE
+      });
       const nextInstalled = Boolean(result?.installed);
+      setMessengerStatus(result || null);
       setInstalled(nextInstalled);
+      if (result?.updateRequired) {
+        setStatusText(`Syncrova Messenger needs update ${RELEASE_VERSION_NAME} before chats can open.`);
+        if (!silent) await openInstallLink({ update: true });
+        return;
+      }
       if (result?.opened) return;
       setStatusText(nextInstalled ? 'Syncrova Messenger is installed, but Android blocked the auto-open. Tap open again.' : 'Syncrova Messenger is not installed yet.');
       if (!silent && !nextInstalled) await openInstallLink();
@@ -450,14 +464,24 @@ function MessengerHandoff() {
     const checkMessenger = async () => {
       setChecking(true);
       try {
-        const result = await SyncrovaNativeBridge.getMessengerStatus();
+        const result = await SyncrovaNativeBridge.getMessengerStatus({
+          minVersionCode: REQUIRED_MESSENGER_VERSION_CODE
+        });
         if (cancelled) return;
         const nextInstalled = Boolean(result?.installed);
+        const nextNeedsUpdate = Boolean(result?.updateRequired);
+        setMessengerStatus(result || null);
         setInstalled(nextInstalled);
+        if (nextNeedsUpdate) {
+          setStatusText(`Syncrova Messenger is outdated. Update to ${RELEASE_VERSION_NAME} to continue.`);
+          await openInstallLink({ update: true });
+          return;
+        }
         setStatusText(nextInstalled ? 'Syncrova Messenger is installed. Opening it now...' : 'Syncrova Messenger is not installed yet.');
         if (nextInstalled) await openMessenger({ silent: true });
       } catch {
         if (!cancelled) {
+          setMessengerStatus(null);
           setInstalled(false);
           setStatusText('Install Syncrova Messenger to continue chatting.');
         }
@@ -481,7 +505,7 @@ function MessengerHandoff() {
         <p className="messenger-handoff-kicker">Syncrova Messenger</p>
         <h1>Chats now open in Messenger</h1>
         <p className="messenger-handoff-copy">
-          For better experience, please install Syncrova Messenger. Once installed, this tab will automatically open the Messenger app for smoother chats.
+          Keep Syncrova Messenger updated for smoother chats. This tab opens Messenger only when the installed app matches the current Syncrova build.
         </p>
         {statusText && (
           <p className="messenger-handoff-status">
@@ -492,12 +516,12 @@ function MessengerHandoff() {
         <div className="messenger-handoff-actions">
           <button
             type="button"
-            onClick={() => (installed ? openMessenger() : openInstallLink())}
+            onClick={() => (messengerReady ? openMessenger() : openInstallLink({ update: messengerNeedsUpdate }))}
             disabled={checking || opening}
             className="messenger-handoff-primary"
           >
-            {checking || opening ? <Loader2 size={17} className="skeleton-motion-zone animate-spin" /> : installed ? <ExternalLink size={17} /> : <Download size={17} />}
-            {installed ? 'Open Messenger' : 'Install Syncrova Messenger'}
+            {checking || opening ? <Loader2 size={17} className="skeleton-motion-zone animate-spin" /> : messengerReady ? <ExternalLink size={17} /> : <Download size={17} />}
+            {messengerReady ? 'Open Messenger' : messengerNeedsUpdate ? 'Update Syncrova Messenger' : 'Install Syncrova Messenger'}
           </button>
           <button
             type="button"
@@ -505,7 +529,7 @@ function MessengerHandoff() {
             disabled={checking || opening}
             className="messenger-handoff-secondary"
           >
-            I already installed it
+            {messengerNeedsUpdate ? 'I already updated it' : 'I already installed it'}
           </button>
         </div>
       </section>
@@ -587,15 +611,15 @@ function AppIntroSplash({ standaloneMessenger = false }) {
   if (!visible) return null;
 
   return (
-    <div className={`syncrova-intro-splash ${standaloneMessenger ? 'is-messenger' : ''}`} aria-label={`Welcome to ${standaloneMessenger ? 'Syncrova Messenger' : 'Syncrova'}`}>
+    <div className={`syncrova-intro-splash messenger-motion-zone ${standaloneMessenger ? 'is-messenger' : ''}`} aria-label={`Welcome to ${standaloneMessenger ? 'Syncrova Messenger' : 'Syncrova'}`}>
       <div className="syncrova-intro-glow" />
       <div className="syncrova-intro-card">
         <div className="syncrova-intro-logo">
-          <img src={standaloneMessenger ? MESSENGER_LOGO_SRC : SYNCROVA_LOGO_SRC} alt="" draggable={false} />
+          <img src={SYNCROVA_LOGO_SRC} alt="" draggable={false} />
         </div>
         <p className="syncrova-intro-eyebrow">{standaloneMessenger ? 'Opening' : 'Welcome to'}</p>
         <h1>{standaloneMessenger ? 'Messenger' : 'Syncrova'}</h1>
-        <p className="syncrova-intro-credit">made by sigmaboyz</p>
+        <p className="syncrova-intro-credit">{standaloneMessenger ? 'Opening chats' : 'Loading workspace'}</p>
         <div className="syncrova-intro-loader">
           <span />
           <span />
