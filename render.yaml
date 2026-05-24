@@ -15,9 +15,9 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CLIENT_ORIGINS
-        value: https://study-hub-app-six.vercel.app,https://syncrovaa.vercel.app,https://syncrova.vercel.app
+        value: https://study-hub-two-sandy.vercel.app,https://study-hub-app-six.vercel.app,https://syncrovaa.vercel.app,https://syncrova.vercel.app
       - key: FRONTEND_URL
-        value: https://study-hub-app-six.vercel.app
+        value: https://study-hub-two-sandy.vercel.app
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY

@@ -35,6 +35,7 @@ const getFrontendOrigin = (fallback) => (
 const getOAuthRedirectUri = (req, provider) => `${getBackendOrigin(req)}/api/auth/oauth/${provider}/callback`;
 
 const DEFAULT_FRONTEND_ORIGINS = [
+  'https://study-hub-two-sandy.vercel.app',
   'https://study-hub-app-six.vercel.app',
   'https://syncrovaa.vercel.app',
   'https://syncrova.vercel.app',

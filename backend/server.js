@@ -46,6 +46,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 const DEFAULT_CLIENT_ORIGINS = [
+  'https://study-hub-two-sandy.vercel.app',
   'https://study-hub-app-six.vercel.app',
   'https://syncrovaa.vercel.app',
   'https://syncrova.vercel.app',
