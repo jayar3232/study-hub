@@ -15,8 +15,8 @@ const mongoStates = {
 };
 
 const bundledRelease = {
-  versionName: '4.4.32',
-  versionCode: 79
+  versionName: '4.4.33',
+  versionCode: 80
 };
 
 const getReleaseApkPath = () => {
