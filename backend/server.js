@@ -256,11 +256,27 @@ const mongoAutoIndex = process.env.NODE_ENV !== 'production';
 const mongoRetryMs = Number(process.env.MONGO_RETRY_MS || 5000);
 const mongoRetryEnabled = process.env.MONGO_RETRY !== 'false';
 
+const getMongoDatabaseName = (uri = '') => {
+  const match = String(uri).match(/^mongodb(?:\+srv)?:\/\/(?:[^@/?#]+@)?[^/?#]+(?:\/([^?#]*))?/i);
+  return decodeURIComponent(match?.[1] || '').trim();
+};
+
+const validateMongoTarget = () => {
+  if (!isProduction) return;
+
+  const databaseName = getMongoDatabaseName(MONGODB_URI);
+  if (!databaseName) {
+    throw new Error('MONGODB_URI must include a database name in production, for example: mongodb+srv://.../IntegrativeProgramming');
+  }
+};
+
 const getMongoTargetLabel = (uri = '') => {
   if (/mongodb\.net/i.test(uri)) return 'MongoDB Atlas';
   if (/localhost|127\.0\.0\.1/i.test(uri)) return 'local MongoDB';
   return 'MongoDB';
 };
+
+validateMongoTarget();
 
 const connectMongo = (attempt = 1) => mongoose.connect(MONGODB_URI, {
   maxPoolSize: Number.isFinite(mongoMaxPoolSize) ? mongoMaxPoolSize : 20,
@@ -269,7 +285,7 @@ const connectMongo = (attempt = 1) => mongoose.connect(MONGODB_URI, {
   socketTimeoutMS: 45000,
   autoIndex: mongoAutoIndex
 })
-  .then(() => console.log(`${getMongoTargetLabel(MONGODB_URI)} connected`))
+  .then(() => console.log(`${getMongoTargetLabel(MONGODB_URI)} connected to ${mongoose.connection.name}`))
   .catch(err => {
     console.error(`${getMongoTargetLabel(MONGODB_URI)} connection error: ${err.message || err}`);
     if (!mongoRetryEnabled) return;
