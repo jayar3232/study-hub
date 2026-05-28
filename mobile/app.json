@@ -2,7 +2,7 @@
   "expo": {
     "name": "Syncrova Messenger",
     "slug": "syncrova-messenger-native",
-    "version": "4.4.42",
+    "version": "4.4.43",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.nemsu.studenthub.messenger",
-      "versionCode": 89,
+      "versionCode": 90,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"

@@ -1,7 +1,7 @@
 import { Image as ExpoImage } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { ResizeMode, Video } from 'expo-av';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -88,21 +88,17 @@ const getRequestErrorMessage = (error: unknown, fallback: string) => {
 };
 
 function StoryVideo({ uri }: { uri: string }) {
-  const videoRef = useRef<Video>(null);
-
-  useEffect(() => () => {
-    videoRef.current?.unloadAsync().catch(() => {});
-  }, []);
+  const player = useVideoPlayer(uri, nextPlayer => {
+    nextPlayer.loop = true;
+    nextPlayer.play();
+  });
 
   return (
-    <Video
-      isLooping
-      ref={videoRef}
-      resizeMode={ResizeMode.COVER}
-      shouldPlay
-      source={{ uri }}
+    <VideoView
+      contentFit="cover"
+      nativeControls
+      player={player}
       style={{ height: 420, width: '100%' }}
-      useNativeControls
     />
   );
 }

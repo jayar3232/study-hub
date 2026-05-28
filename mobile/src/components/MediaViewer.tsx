@@ -1,5 +1,5 @@
 import { Image as ExpoImage } from 'expo-image';
-import { ResizeMode, Video } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, ListRenderItemInfo, Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -33,29 +33,24 @@ type ViewerItemProps = {
 
 function VideoSlide({ item, width, height }: { item: MediaViewerItem; width: number; height: number }) {
   const [started, setStarted] = useState(false);
-  const videoRef = useRef<Video>(null);
-
-  useEffect(() => () => {
-    videoRef.current?.unloadAsync().catch(() => {});
-  }, []);
+  const player = useVideoPlayer(item.url, nextPlayer => {
+    nextPlayer.loop = false;
+  });
 
   return (
     <View className="items-center justify-center" style={{ height, width }}>
-      <Video
-        isLooping={false}
-        ref={videoRef}
-        resizeMode={ResizeMode.CONTAIN}
-        shouldPlay={started}
-        source={{ uri: item.url }}
+      <VideoView
+        contentFit="contain"
+        nativeControls={started}
+        player={player}
         style={{ height, width }}
-        useNativeControls={started}
       />
       {!started ? (
         <Pressable
           className="absolute h-16 w-16 items-center justify-center rounded-full bg-black/45"
           onPress={() => {
             setStarted(true);
-            videoRef.current?.playAsync().catch(() => {});
+            player.play();
           }}
         >
           <Play color="#FFFFFF" fill="#FFFFFF" size={30} />
