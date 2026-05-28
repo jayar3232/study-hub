@@ -1,11 +1,12 @@
 import { Image as ExpoImage } from 'expo-image';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { ResizeMode, Video } from 'expo-av';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
-import { BellOff, Check, Edit3, MessageCircle, Plus, Search, Settings, Star, Trash2, UserCircle2, Users, X } from 'lucide-react-native';
+import { BellOff, Check, MessageCircle, Plus, Search, Settings, Star, Trash2, UserCircle2, Users, X } from 'lucide-react-native';
 import Avatar from '../components/Avatar';
 import ChatListItem from '../components/ChatListItem';
 import ContactsList from '../components/ContactsList';
@@ -13,6 +14,7 @@ import EmptyState from '../components/EmptyState';
 import GroupListItem from '../components/GroupListItem';
 import {
   createGroup,
+  createStory,
   deleteMyNote,
   deleteConversation,
   fetchActiveNotes,
@@ -73,13 +75,36 @@ const storyWasViewed = (group: StoryGroup, currentUserId: string) => {
   return stories.every(story => story.viewers?.some(view => getEntityId(view.userId) === currentUserId));
 };
 
-function StoryVideo({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, playerInstance => {
-    playerInstance.loop = true;
-    playerInstance.play();
-  });
+const getRequestErrorMessage = (error: unknown, fallback: string) => {
+  const requestError = error as {
+    response?: { data?: { msg?: string; message?: string; error?: string } };
+    message?: string;
+  };
+  return requestError?.response?.data?.msg
+    || requestError?.response?.data?.message
+    || requestError?.response?.data?.error
+    || requestError?.message
+    || fallback;
+};
 
-  return <VideoView contentFit="cover" nativeControls player={player} style={{ height: 420, width: '100%' }} surfaceType="textureView" />;
+function StoryVideo({ uri }: { uri: string }) {
+  const videoRef = useRef<Video>(null);
+
+  useEffect(() => () => {
+    videoRef.current?.unloadAsync().catch(() => {});
+  }, []);
+
+  return (
+    <Video
+      isLooping
+      ref={videoRef}
+      resizeMode={ResizeMode.COVER}
+      shouldPlay
+      source={{ uri }}
+      style={{ height: 420, width: '100%' }}
+      useNativeControls
+    />
+  );
 }
 
 export default function ChatListScreen() {
@@ -110,6 +135,7 @@ export default function ChatListScreen() {
   const [activeStoryGroup, setActiveStoryGroup] = useState<StoryGroup | null>(null);
   const [storyIndex, setStoryIndex] = useState(0);
   const [storyReplyText, setStoryReplyText] = useState('');
+  const [storyUploading, setStoryUploading] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
 
   const [groupCreatorOpen, setGroupCreatorOpen] = useState(false);
@@ -298,6 +324,13 @@ export default function ChatListScreen() {
     });
   }, [contacts, conversations, query]);
 
+  const myStoryGroup = useMemo(() => (
+    storyGroups.find(group => {
+      const ownerId = group.ownerId || getEntityId(getStoryOwner(group));
+      return ownerId === currentUserId;
+    }) || null
+  ), [currentUserId, storyGroups]);
+
   const storyBarItems = useMemo<StoryBarItem[]>(() => {
     const storyItems = storyGroups.map(group => {
       const story = getStoryPreview(group);
@@ -319,7 +352,10 @@ export default function ChatListScreen() {
         storyRing: viewed ? 'viewed' as const : 'unviewed' as const,
         user: owner
       };
-    }).filter(item => getEntityId(item.user));
+    }).filter(item => {
+      const ownerId = getEntityId(item.user);
+      return ownerId && ownerId !== currentUserId;
+    });
 
     const storyOwnerIds = new Set(storyItems.map(item => getEntityId(item.user)));
     const contactMap = new Map<string, User>();
@@ -346,6 +382,10 @@ export default function ChatListScreen() {
     const viewedStories = storyItems.filter(item => item.storyRing === 'viewed');
     const onlineContacts = contactItems.filter(item => item.online);
     const recentContacts = contactItems.filter(item => !item.online);
+    const myStory = getStoryPreview(myStoryGroup);
+    const myPreviewUri = myStory?.fileType === 'image'
+      ? resolveMediaVariantUrl({ fileUrl: myStory.fileUrl || '', fileType: 'image', variants: myStory.mediaVariants || myStory.variants })
+      : resolveMediaUrl(myStory?.fileUrl || '');
 
     return [
       {
@@ -353,7 +393,10 @@ export default function ChatListScreen() {
         kind: 'me' as const,
         label: 'Your story',
         online: true,
-        storyRing: myNote ? 'unviewed' as const : 'none' as const,
+        previewType: myStory?.fileType,
+        previewUri: myPreviewUri,
+        storyGroup: myStoryGroup || undefined,
+        storyRing: myStoryGroup ? 'unviewed' as const : 'none' as const,
         user: user || undefined
       },
       ...unviewedStories,
@@ -361,7 +404,7 @@ export default function ChatListScreen() {
       ...viewedStories,
       ...recentContacts.slice(0, 12)
     ];
-  }, [contacts, conversations, currentUserId, myNote, onlineSet, storyGroups, user]);
+  }, [contacts, conversations, currentUserId, myStoryGroup, onlineSet, storyGroups, user]);
 
   const groupMemberResults = useMemo(() => {
     const selectedIds = new Set(selectedGroupMembers.map(member => getEntityId(member)));
@@ -373,6 +416,54 @@ export default function ChatListScreen() {
       return needle ? name.includes(needle) : true;
     }).slice(0, 40);
   }, [contacts, groupMemberQuery, selectedGroupMembers]);
+
+  const publishStoryAsset = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
+    if (storyUploading) return;
+    const isSupported = asset.type === 'image'
+      || asset.type === 'video'
+      || String(asset.mimeType || '').startsWith('image/')
+      || String(asset.mimeType || '').startsWith('video/');
+    if (!isSupported) {
+      Alert.alert('My Day', 'My Day supports photos and videos only.');
+      return;
+    }
+    if (asset.fileSize && asset.fileSize > 30 * 1024 * 1024) {
+      Alert.alert('My Day', 'My Day upload is too large. Maximum size is 30MB.');
+      return;
+    }
+
+    setStoryUploading(true);
+    try {
+      await createStory({ asset, privacy: 'friends' });
+      const nextStories = await fetchStoryGroups().catch(() => []);
+      setStoryGroups(nextStories);
+      Alert.alert('My Day posted', 'Your story is now live.');
+    } catch (error) {
+      Alert.alert('My Day failed', getRequestErrorMessage(error, 'Could not post your story.'));
+    } finally {
+      setStoryUploading(false);
+    }
+  }, [storyUploading]);
+
+  const pickStoryMedia = useCallback(async () => {
+    if (storyUploading) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to create a My Day.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: false,
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.72,
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      await publishStoryAsset(result.assets[0]);
+    }
+  }, [publishStoryAsset, storyUploading]);
 
   const removeConversation = async (item: Conversation) => {
     const chatId = getEntityId(item.user);
@@ -580,7 +671,11 @@ export default function ChatListScreen() {
           renderItem={({ item }) => {
             const openItem = () => {
               if (item.kind === 'me') {
-                setNoteComposerOpen(true);
+                if (item.storyGroup) {
+                  openStory(item.storyGroup);
+                } else {
+                  pickStoryMedia();
+                }
                 return;
               }
               if (item.kind === 'story' && item.storyGroup) {
@@ -612,9 +707,17 @@ export default function ChatListScreen() {
                     />
                   )}
                   {item.kind === 'me' ? (
-                    <View className="absolute bottom-0 right-0 h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-blue-600">
-                      {myNote ? <Edit3 color="#FFFFFF" size={12} /> : <Plus color="#FFFFFF" size={14} />}
-                    </View>
+                    <Pressable
+                      className="absolute bottom-0 right-0 h-6 w-6 items-center justify-center rounded-full border-2 bg-blue-600"
+                      disabled={storyUploading}
+                      onPress={event => {
+                        event.stopPropagation();
+                        pickStoryMedia();
+                      }}
+                      style={{ borderColor: colors.background }}
+                    >
+                      {storyUploading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Plus color="#FFFFFF" size={14} />}
+                    </Pressable>
                   ) : null}
                 </View>
                 <Text className="mt-1 max-w-[72px] text-center text-[11px] font-semibold" numberOfLines={1} style={{ color: colors.text }}>

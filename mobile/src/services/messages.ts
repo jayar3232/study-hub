@@ -169,6 +169,33 @@ export const uploadLocalMessageAsset = async (asset: {
   };
 };
 
+export const createStory = async ({
+  asset,
+  caption = '',
+  privacy = 'friends'
+}: {
+  asset: ImagePickerAsset;
+  caption?: string;
+  privacy?: 'friends' | 'public' | 'private';
+}) => {
+  const meta = getAssetUploadMeta(asset);
+  if (meta.fileType !== 'image' && meta.fileType !== 'video') {
+    throw new Error('My Day supports photos and videos only');
+  }
+
+  const formData = new FormData();
+  formData.append('media', {
+    uri: asset.uri,
+    name: meta.fileName,
+    type: meta.mimeType
+  } as unknown as Blob);
+  formData.append('privacy', privacy);
+  if (caption.trim()) formData.append('caption', caption.trim());
+
+  const res = await api.post<Story>('/stories', formData, { timeout: 120000 });
+  return res.data;
+};
+
 export const sendMessage = async (payload: {
   to: string;
   text?: string;
