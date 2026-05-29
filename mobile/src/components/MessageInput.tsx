@@ -1,15 +1,18 @@
 import * as ImagePicker from 'expo-image-picker';
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { Camera, ImagePlus, Send, X } from 'lucide-react-native';
+import { Camera, ImagePlus, Mic, Send, X } from 'lucide-react-native';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import VoiceRecorder from './VoiceRecorder';
+import type { VoiceRecordingResult } from '../utils/mediaHelpers';
 
 type MessageInputProps = {
   value: string;
   onChangeText: (text: string) => void;
   onSend: () => void;
   onAttach: (assets: ImagePickerAsset[]) => void;
+  onVoiceSend?: (recording: VoiceRecordingResult) => void;
   sending?: boolean;
   replyLabel?: string;
   editingLabel?: string;
@@ -22,12 +25,14 @@ export default function MessageInput({
   onChangeText,
   onSend,
   onAttach,
+  onVoiceSend,
   sending = false,
   replyLabel,
   editingLabel,
   onClearReply,
   onClearEdit
 }: MessageInputProps) {
+  const [recordingVoice, setRecordingVoice] = useState(false);
   const scale = useSharedValue(1);
   const sendStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const canSend = Boolean(value.trim()) && !sending;
@@ -95,6 +100,15 @@ export default function MessageInput({
           </View>
         ) : null}
 
+        {recordingVoice ? (
+          <VoiceRecorder
+            onCancel={() => setRecordingVoice(false)}
+            onSend={recording => {
+              setRecordingVoice(false);
+              onVoiceSend?.(recording);
+            }}
+          />
+        ) : (
         <View className="flex-row items-end gap-2">
           <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={pickLibrary}>
             <ImagePlus color="#0A7CFF" size={22} />
@@ -111,6 +125,11 @@ export default function MessageInput({
             placeholderTextColor="#94A3B8"
             value={value}
           />
+          {!value.trim() && onVoiceSend ? (
+            <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={() => setRecordingVoice(true)}>
+              <Mic color="#0A7CFF" size={21} />
+            </Pressable>
+          ) : null}
           <Animated.View style={sendStyle}>
             <Pressable
               className={`h-11 w-11 items-center justify-center rounded-full ${canSend ? 'bg-blue-600' : 'bg-slate-300'}`}
@@ -127,6 +146,7 @@ export default function MessageInput({
             </Pressable>
           </Animated.View>
         </View>
+        )}
       </View>
     </View>
   );

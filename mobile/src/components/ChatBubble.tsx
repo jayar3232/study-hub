@@ -1,14 +1,15 @@
-import { Image as ExpoImage } from 'expo-image';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useState } from 'react';
-import { Linking, Pressable, StyleProp, Text, View, ViewStyle } from 'react-native';
+import React from 'react';
+import { Linking, Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { FileText, Mic, Pin, Play } from 'lucide-react-native';
+import { FileText, Pin } from 'lucide-react-native';
+import ImageGridBubble from './ImageGridBubble';
+import VoiceMessageBubble from './VoiceMessageBubble';
 import type { GroupMessage, Message } from '../types';
 import { formatMessageTime } from '../utils/date';
 import { getEntityId } from '../utils/ids';
-import { getMessageAttachments, resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
+import { getMessageAttachments, resolveMediaUrl } from '../utils/media';
+import { isAudioAttachment, isMediaAttachment } from '../utils/mediaHelpers';
 
 type ThreadMessage = Message | GroupMessage;
 
@@ -22,53 +23,8 @@ type ChatBubbleProps = {
   highlighted?: boolean;
   ownBubbleColor?: string;
   otherBubbleColor?: string;
+  onOpenMedia?: (message: ThreadMessage, index: number) => void;
 };
-
-type MessageVideoProps = {
-  uri: string;
-  style: StyleProp<ViewStyle>;
-  isMe: boolean;
-};
-
-function VideoPlayerSurface({ uri, style }: Omit<MessageVideoProps, 'isMe'>) {
-  const player = useVideoPlayer(uri, playerInstance => {
-    playerInstance.loop = false;
-  });
-
-  return (
-    <VideoView
-      contentFit="cover"
-      fullscreenOptions={{ enable: true }}
-      nativeControls
-      player={player}
-      style={style}
-      surfaceType="textureView"
-    />
-  );
-}
-
-function MessageVideo({ uri, style, isMe }: MessageVideoProps) {
-  const [playing, setPlaying] = useState(false);
-
-  if (playing) {
-    return <VideoPlayerSurface uri={uri} style={style} />;
-  }
-
-  return (
-    <Pressable
-      className={`mb-2 h-[220px] w-[220px] items-center justify-center rounded-[18px] ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}
-      onPress={() => setPlaying(true)}
-      style={style}
-    >
-      <View className={`h-14 w-14 items-center justify-center rounded-full ${isMe ? 'bg-white/25' : 'bg-white'}`}>
-        <Play color={isMe ? '#FFFFFF' : '#0A7CFF'} fill={isMe ? '#FFFFFF' : '#0A7CFF'} size={24} />
-      </View>
-      <Text className={`mt-3 text-xs font-semibold ${isMe ? 'text-white/80' : 'text-slate-600'}`}>
-        Tap to play video
-      </Text>
-    </Pressable>
-  );
-}
 
 export default function ChatBubble({
   message,
@@ -79,12 +35,16 @@ export default function ChatBubble({
   groupMode = false,
   highlighted = false,
   ownBubbleColor = '#2563EB',
-  otherBubbleColor = '#FFFFFF'
+  otherBubbleColor = '#FFFFFF',
+  onOpenMedia
 }: ChatBubbleProps) {
   const sender = (message as GroupMessage).userId !== undefined ? (message as GroupMessage).userId : (message as Message).from;
   const isMe = getEntityId(sender) === currentUserId;
   const translateX = useSharedValue(0);
   const attachments = getMessageAttachments(message as Message);
+  const mediaAttachments = attachments.filter(isMediaAttachment);
+  const audioAttachments = attachments.filter(isAudioAttachment);
+  const fileAttachments = attachments.filter(attachment => !isMediaAttachment(attachment) && !isAudioAttachment(attachment));
   const replyMessage = typeof message.replyTo === 'object' ? message.replyTo : null;
   const senderName = typeof sender === 'object' ? sender?.name || sender?.email || 'Member' : 'Member';
 
@@ -150,42 +110,34 @@ export default function ChatBubble({
             </View>
           ) : null}
 
-          {attachments.map((attachment, index) => {
+          {mediaAttachments.length ? (
+            <ImageGridBubble
+              attachments={mediaAttachments}
+              onOpen={index => onOpenMedia?.(message, index)}
+            />
+          ) : null}
+
+          {audioAttachments.map((attachment, index) => (
+            <VoiceMessageBubble
+              attachment={attachment}
+              id={`${getEntityId(message)}-audio-${index}`}
+              isMe={isMe}
+              key={`${attachment.fileUrl}-${index}`}
+            />
+          ))}
+
+          {fileAttachments.map((attachment, index) => {
             const type = attachment.fileType || message.fileType;
-            const uri = type === 'image' ? resolveMediaVariantUrl(attachment) : resolveMediaUrl(attachment.fileUrl);
-            if (type === 'image') {
-              return (
-                <ExpoImage
-                  key={`${attachment.fileUrl}-${index}`}
-                  cachePolicy="memory-disk"
-                  contentFit="cover"
-                  source={{ uri }}
-                  style={{ width: 220, height: 220, borderRadius: 18, marginBottom: message.text ? 8 : 0 }}
-                />
-              );
-            }
-
-            if (type === 'video') {
-              return (
-                <MessageVideo
-                  isMe={isMe}
-                  key={`${attachment.fileUrl}-${index}`}
-                  uri={uri}
-                  style={{ width: 220, height: 220, borderRadius: 18, marginBottom: message.text ? 8 : 0 }}
-                />
-              );
-            }
-
             return (
               <Pressable
                 key={`${attachment.fileUrl}-${index}`}
                 className={`mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2 ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}
                 onPress={() => Linking.openURL(resolveMediaUrl(attachment.fileUrl)).catch(() => {})}
               >
-                {type === 'audio' ? <Mic color={isMe ? '#FFFFFF' : '#0A7CFF'} size={17} /> : <FileText color={isMe ? '#FFFFFF' : '#0A7CFF'} size={17} />}
+                <FileText color={isMe ? '#FFFFFF' : '#0A7CFF'} size={17} />
                 <View className="min-w-0 flex-1">
                   <Text className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
-                    {attachment.fileName || (type === 'audio' ? 'Voice message' : 'Attachment')}
+                    {attachment.fileName || (type === 'video' ? 'Video' : 'Attachment')}
                   </Text>
                   <Text className={`text-[11px] ${isMe ? 'text-white/70' : 'text-slate-500'}`} numberOfLines={1}>
                     Tap to open

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Syncrova Messenger",
     "slug": "syncrova-messenger-native",
-    "version": "4.4.39",
+    "version": "4.4.40",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.nemsu.studenthub.messenger",
-      "versionCode": 86,
+      "versionCode": 87,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
@@ -47,7 +47,15 @@
       "@config-plugins/react-native-webrtc",
       "expo-image-picker",
       "expo-camera",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Syncrova to save photos and videos from chats to your gallery.",
+          "savePhotosPermission": "Allow Syncrova to save chat media to your gallery."
+        }
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "backendOrigin": "https://study-hub-app.onrender.com",

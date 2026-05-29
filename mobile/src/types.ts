@@ -21,6 +21,7 @@ export type MessageAttachment = {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  durationMs?: number;
   storagePath?: string;
   storageProvider?: string;
   variants?: Record<string, string | { fileUrl?: string; url?: string }>;
@@ -51,6 +52,7 @@ export type Message = {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  durationMs?: number;
 };
 
 export type ConversationSettings = {
@@ -103,6 +105,7 @@ export type GroupMessage = {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  durationMs?: number;
   pinned?: boolean;
   pinnedAt?: string;
   system?: boolean;
@@ -166,6 +169,7 @@ export type UploadedAttachment = {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  durationMs?: number;
   storagePath?: string;
   storageProvider?: string;
   variants?: Record<string, unknown>;

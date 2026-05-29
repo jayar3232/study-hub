@@ -144,6 +144,7 @@ const getMessageAttachments = (message = {}) => {
     fileName: message.fileName,
     mimeType: message.mimeType,
     fileSize: message.fileSize,
+    durationMs: message.durationMs,
     storagePath: message.storagePath,
     storageProvider: message.storageProvider,
     variants: message.mediaVariants || {}
@@ -190,6 +191,7 @@ const sanitizeAttachment = (attachment = {}, userId = '') => {
     fileName: String(attachment.fileName || '').slice(0, 240),
     mimeType: String(attachment.mimeType || '').slice(0, 120),
     fileSize: Math.max(0, Number(attachment.fileSize) || 0),
+    durationMs: Math.max(0, Math.floor(Number(attachment.durationMs) || 0)),
     storagePath,
     storageProvider: storagePath ? storageProvider : (fileUrl.startsWith('/uploads/messages/') ? 'local' : ''),
     variants: normalizeMediaVariants(attachment.variants || attachment.mediaVariants)
@@ -697,6 +699,7 @@ router.post('/', auth, async (req, res) => {
       fileName = '',
       mimeType = '',
       fileSize = 0,
+      durationMs = 0,
       storagePath = '',
       storageProvider = '',
       attachments = []
@@ -717,6 +720,7 @@ router.post('/', auth, async (req, res) => {
       fileName,
       mimeType,
       fileSize,
+      durationMs,
       storagePath,
       storageProvider,
       variants: req.body.variants || req.body.mediaVariants
@@ -740,6 +744,7 @@ router.post('/', auth, async (req, res) => {
       fileName: primaryAttachment?.fileName || '',
       mimeType: primaryAttachment?.mimeType || '',
       fileSize: primaryAttachment?.fileSize || 0,
+      durationMs: primaryAttachment?.durationMs || 0,
       storagePath: primaryAttachment?.storagePath || '',
       storageProvider: primaryAttachment?.storageProvider || '',
       mediaVariants: primaryAttachment?.variants || {},
@@ -929,6 +934,7 @@ router.delete('/:messageId/everyone', auth, async (req, res) => {
     message.fileName = '';
     message.mimeType = '';
     message.fileSize = 0;
+    message.durationMs = 0;
     message.storagePath = '';
     message.storageProvider = '';
     message.mediaVariants = {};

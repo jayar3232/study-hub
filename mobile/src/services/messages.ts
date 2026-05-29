@@ -114,6 +114,31 @@ export const uploadMessageAsset = async (asset: ImagePickerAsset): Promise<Uploa
   return res.data;
 };
 
+export const uploadLocalMessageAsset = async (asset: {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+  fileType: string;
+  durationMs?: number;
+}): Promise<UploadedAttachment> => {
+  const formData = new FormData();
+
+  formData.append('file', {
+    uri: asset.uri,
+    name: asset.fileName,
+    type: asset.mimeType
+  } as unknown as Blob);
+
+  const res = await api.post<UploadedAttachment>('/messages/upload', formData);
+  return {
+    ...res.data,
+    fileName: res.data.fileName || asset.fileName,
+    fileType: asset.fileType || res.data.fileType,
+    mimeType: res.data.mimeType || asset.mimeType,
+    durationMs: asset.durationMs || 0
+  };
+};
+
 export const sendMessage = async (payload: {
   to: string;
   text?: string;

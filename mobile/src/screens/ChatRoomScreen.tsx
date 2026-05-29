@@ -1,12 +1,15 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
 import { ArrowLeft, BellOff, Check, Edit3, Info, MoreVertical, Palette, Phone, Pin, Search, Send, Star, Trash2, UserRound, Users, Video, X } from 'lucide-react-native';
+import AudioPlayerBanner from '../components/AudioPlayerBanner';
 import Avatar from '../components/Avatar';
 import ChatBubble from '../components/ChatBubble';
+import MediaViewer from '../components/MediaViewer';
 import MessageInput from '../components/MessageInput';
 import NativeCallOverlay from '../components/NativeCallOverlay';
 import TypingIndicator from '../components/TypingIndicator';
@@ -30,6 +33,7 @@ import {
   reactToMessage,
   sendGroupMessage,
   sendMessage,
+  uploadLocalMessageAsset,
   unsendMessageForEveryone,
   updateConversationBackground,
   updateConversationNickname,
@@ -55,7 +59,9 @@ import { CHAT_BACKGROUNDS, CHAT_THEMES, QUICK_REACTIONS, getBackgroundById, getT
 import { formatActiveStatus, formatMessageTime } from '../utils/date';
 import { getEntityId, getMessageKey } from '../utils/ids';
 import { getMessageAttachments } from '../utils/media';
+import { buildMediaViewerItems, VoiceRecordingResult } from '../utils/mediaHelpers';
 import { ChatFlagState, hasChatFlag, loadChatFlags, loadChatThemes, saveChatFlags, saveChatTheme, toggleChatFlag } from '../utils/preferences';
+import { useMediaViewer } from '../hooks/useMediaViewer';
 
 type RouteProps = NativeStackScreenProps<RootStackParamList, 'ChatRoom'>['route'];
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'ChatRoom'>;
@@ -168,6 +174,8 @@ export default function ChatRoomScreen() {
   const backgroundId = groupMode ? group?.backgroundId : conversation?.backgroundId;
   const background = getBackgroundById(backgroundId);
   const activeChatId = chatId;
+  const mediaViewer = useMediaViewer();
+  const presenceConnected = usePresenceStore(state => state.connected);
   const presenceStatus = usePresenceStore(state => state.statuses[chatId]);
   const storeRemoteTyping = usePresenceStore(state => Boolean(state.typingByChat[chatId]?.length));
 
@@ -802,6 +810,42 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const sendVoiceMessage = async (recording: VoiceRecordingResult) => {
+    if (!recording?.uri || sending) return;
+    if (groupMode) {
+      Alert.alert('Voice messages', 'Voice messages are available in direct chats first.');
+      await FileSystem.deleteAsync(recording.uri, { idempotent: true }).catch(() => {});
+      return;
+    }
+
+    setSending(true);
+    stopTyping().catch(() => {});
+    try {
+      const uploaded = await uploadLocalMessageAsset(recording);
+      const sent = await sendMessage({
+        to: chatId,
+        attachments: [uploaded],
+        replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+      });
+      setMessages(prev => mergeMessage(prev as Message[], sent));
+      setReplyingTo(null);
+      await FileSystem.deleteAsync(recording.uri, { idempotent: true }).catch(() => {});
+    } catch {
+      Alert.alert('Voice failed', 'Could not send this voice message.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const openMediaViewer = (targetMessage: ThreadMessage, index: number) => {
+    const sender = getSender(targetMessage, groupMode);
+    const items = buildMediaViewerItems({
+      message: targetMessage as Message,
+      sender: typeof sender === 'object' ? sender as User : null
+    });
+    mediaViewer.open(items, index);
+  };
+
   const handleReaction = async (emoji: string) => {
     const messageId = getEntityId(actionMessage);
     if (!messageId) return;
@@ -1031,13 +1075,15 @@ export default function ChatRoomScreen() {
   const effectiveRemoteTyping = remoteTyping || storeRemoteTyping;
   const effectiveRemoteOnline = presenceStatus?.online ?? remoteOnline;
   const effectiveRemoteLastSeen = presenceStatus?.lastSeen ?? remoteLastSeen;
+  const effectivePresenceReady = presenceReady || Boolean(presenceStatus);
+  const effectiveSocketConnected = socketConnected || presenceConnected || Boolean(presenceStatus);
   const presenceText = groupMode
     ? `${group?.members?.length || 0} members`
     : effectiveRemoteTyping
       ? 'Typing...'
-      : !socketConnected
+      : !effectivePresenceReady && !effectiveSocketConnected
         ? 'Connecting...'
-        : !presenceReady
+        : !effectivePresenceReady
           ? 'Checking status...'
           : formatActiveStatus({
             online: effectiveRemoteOnline,
@@ -1122,6 +1168,8 @@ export default function ChatRoomScreen() {
         </Pressable>
       ) : null}
 
+      <AudioPlayerBanner />
+
       {loading ? (
         <View className="flex-1 items-center justify-center" style={background.style}>
           <ActivityIndicator color="#0A7CFF" />
@@ -1145,6 +1193,7 @@ export default function ChatRoomScreen() {
                 highlighted={searchedMessageIds.has(getEntityId(item))}
                 message={item}
                 onAction={setActionMessage}
+                onOpenMedia={openMediaViewer}
                 onReactionPress={setReactionViewerMessage}
                 onReply={message => {
                   setEditingMessage(null);
@@ -1167,6 +1216,7 @@ export default function ChatRoomScreen() {
         editingLabel={editingMessage ? getText(editingMessage) : undefined}
         onAttach={attachAssets}
         onChangeText={updateComposer}
+        onVoiceSend={sendVoiceMessage}
         onClearEdit={() => {
           setEditingMessage(null);
           setComposer('');
@@ -1176,6 +1226,16 @@ export default function ChatRoomScreen() {
         replyLabel={replyingTo ? getText(replyingTo) || 'Replying to media' : undefined}
         sending={sending}
         value={composer}
+      />
+
+      <MediaViewer
+        initialIndex={mediaViewer.initialIndex}
+        items={mediaViewer.items}
+        onClose={mediaViewer.close}
+        onReply={() => {
+          mediaViewer.close();
+        }}
+        visible={mediaViewer.visible}
       />
 
       {callState !== 'idle' ? (
