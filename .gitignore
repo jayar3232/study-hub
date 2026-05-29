@@ -6,3 +6,7 @@ frontend/dist/
 backend/dist/
 *.log
 *.zip
+
+# Native Messenger APKs are generated artifacts. Force-add only verified
+# release builds that stay below GitHub's 100 MB normal Git limit.
+backend/public/releases/syncrova-messenger-*.apk

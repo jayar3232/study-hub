@@ -1,33 +1,101 @@
-import { Video, ResizeMode } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
-import React from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import React, { useState } from 'react';
+import { Linking, Pressable, StyleProp, Text, View, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import type { Message } from '../types';
+import { FileText, Mic, Pin, Play } from 'lucide-react-native';
+import type { GroupMessage, Message } from '../types';
 import { formatMessageTime } from '../utils/date';
 import { getEntityId } from '../utils/ids';
 import { getMessageAttachments, resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 
+type ThreadMessage = Message | GroupMessage;
+
 type ChatBubbleProps = {
-  message: Message;
+  message: ThreadMessage;
   currentUserId: string;
-  onReply: (message: Message) => void;
+  onReply: (message: ThreadMessage) => void;
+  onAction?: (message: ThreadMessage) => void;
+  onReactionPress?: (message: ThreadMessage) => void;
+  groupMode?: boolean;
+  highlighted?: boolean;
+  ownBubbleColor?: string;
+  otherBubbleColor?: string;
 };
 
-export default function ChatBubble({ message, currentUserId, onReply }: ChatBubbleProps) {
-  const isMe = getEntityId(message.from) === currentUserId;
+type MessageVideoProps = {
+  uri: string;
+  style: StyleProp<ViewStyle>;
+  isMe: boolean;
+};
+
+function VideoPlayerSurface({ uri, style }: Omit<MessageVideoProps, 'isMe'>) {
+  const player = useVideoPlayer(uri, playerInstance => {
+    playerInstance.loop = false;
+  });
+
+  return (
+    <VideoView
+      contentFit="cover"
+      fullscreenOptions={{ enable: true }}
+      nativeControls
+      player={player}
+      style={style}
+      surfaceType="textureView"
+    />
+  );
+}
+
+function MessageVideo({ uri, style, isMe }: MessageVideoProps) {
+  const [playing, setPlaying] = useState(false);
+
+  if (playing) {
+    return <VideoPlayerSurface uri={uri} style={style} />;
+  }
+
+  return (
+    <Pressable
+      className={`mb-2 h-[220px] w-[220px] items-center justify-center rounded-[18px] ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}
+      onPress={() => setPlaying(true)}
+      style={style}
+    >
+      <View className={`h-14 w-14 items-center justify-center rounded-full ${isMe ? 'bg-white/25' : 'bg-white'}`}>
+        <Play color={isMe ? '#FFFFFF' : '#0A7CFF'} fill={isMe ? '#FFFFFF' : '#0A7CFF'} size={24} />
+      </View>
+      <Text className={`mt-3 text-xs font-semibold ${isMe ? 'text-white/80' : 'text-slate-600'}`}>
+        Tap to play video
+      </Text>
+    </Pressable>
+  );
+}
+
+export default function ChatBubble({
+  message,
+  currentUserId,
+  onReply,
+  onAction,
+  onReactionPress,
+  groupMode = false,
+  highlighted = false,
+  ownBubbleColor = '#2563EB',
+  otherBubbleColor = '#FFFFFF'
+}: ChatBubbleProps) {
+  const sender = (message as GroupMessage).userId !== undefined ? (message as GroupMessage).userId : (message as Message).from;
+  const isMe = getEntityId(sender) === currentUserId;
   const translateX = useSharedValue(0);
-  const attachments = getMessageAttachments(message);
+  const attachments = getMessageAttachments(message as Message);
   const replyMessage = typeof message.replyTo === 'object' ? message.replyTo : null;
+  const senderName = typeof sender === 'object' ? sender?.name || sender?.email || 'Member' : 'Member';
 
   const pan = Gesture.Pan()
     .activeOffsetX([-12, 12])
     .onUpdate(event => {
-      translateX.value = Math.max(0, Math.min(72, event.translationX));
+      const nextValue = isMe ? Math.min(0, Math.max(-72, event.translationX)) : Math.max(0, Math.min(72, event.translationX));
+      translateX.value = nextValue;
     })
     .onEnd(() => {
-      if (translateX.value > 48) runOnJS(onReply)(message);
+      if ((!isMe && translateX.value > 48) || (isMe && translateX.value < -48)) runOnJS(onReply)(message);
       translateX.value = withSpring(0, { damping: 18, stiffness: 220 });
     });
 
@@ -35,16 +103,11 @@ export default function ChatBubble({ message, currentUserId, onReply }: ChatBubb
     transform: [{ translateX: translateX.value }]
   }));
 
-  const openMenu = () => {
-    Alert.alert('Message', message.unsent ? 'Message was unsent' : message.text || 'Media message', [
-      { text: 'Reply', onPress: () => onReply(message) },
-      { text: 'Close', style: 'cancel' }
-    ]);
-  };
+  const openMenu = () => (onAction ? onAction(message) : onReply(message));
 
   if (message.system) {
     return (
-      <Animated.View entering={FadeInDown.springify().damping(18)} className="items-center px-8 py-2">
+      <Animated.View entering={FadeInDown.duration(120)} className="items-center px-8 py-2">
         <Text className="rounded-full bg-slate-200 px-3 py-1 text-center text-xs text-slate-600" numberOfLines={2}>
           {message.text}
         </Text>
@@ -55,14 +118,27 @@ export default function ChatBubble({ message, currentUserId, onReply }: ChatBubb
   return (
     <GestureDetector gesture={pan}>
       <Animated.View
-        entering={FadeInDown.springify().damping(18)}
+        entering={FadeInDown.duration(120)}
         className={`px-3 py-1 ${isMe ? 'items-end' : 'items-start'}`}
         style={animatedStyle}
       >
+        {groupMode && !isMe ? (
+          <Text className="mb-0.5 ml-2 text-[11px] font-semibold text-slate-500" numberOfLines={1}>
+            {senderName}
+          </Text>
+        ) : null}
         <Pressable
-          className={`max-w-[82%] rounded-[22px] px-3.5 py-2.5 ${isMe ? 'bg-blue-600' : 'bg-white shadow-sm shadow-slate-200'}`}
+          className={`max-w-[82%] rounded-[22px] px-3.5 py-2.5 ${!isMe ? 'shadow-sm shadow-slate-200' : ''} ${highlighted ? 'border-2 border-amber-300' : ''}`}
           onLongPress={openMenu}
+          style={{ backgroundColor: isMe ? ownBubbleColor : otherBubbleColor }}
         >
+          {message.pinned ? (
+            <View className={`mb-1 flex-row items-center gap-1 ${isMe ? 'self-end' : 'self-start'}`}>
+              <Pin color={isMe ? '#FFFFFF' : '#64748B'} size={11} />
+              <Text className={`text-[10px] font-semibold ${isMe ? 'text-white/80' : 'text-slate-500'}`}>Pinned</Text>
+            </View>
+          ) : null}
+
           {replyMessage ? (
             <View className={`mb-2 rounded-2xl border-l-2 px-3 py-2 ${isMe ? 'border-white/70 bg-white/15' : 'border-blue-500 bg-slate-100'}`}>
               <Text className={`text-xs font-semibold ${isMe ? 'text-white/80' : 'text-blue-600'}`} numberOfLines={1}>
@@ -91,26 +167,35 @@ export default function ChatBubble({ message, currentUserId, onReply }: ChatBubb
 
             if (type === 'video') {
               return (
-                <Video
+                <MessageVideo
+                  isMe={isMe}
                   key={`${attachment.fileUrl}-${index}`}
-                  resizeMode={ResizeMode.COVER}
-                  source={{ uri }}
+                  uri={uri}
                   style={{ width: 220, height: 220, borderRadius: 18, marginBottom: message.text ? 8 : 0 }}
-                  useNativeControls
                 />
               );
             }
 
             return (
-              <View key={`${attachment.fileUrl}-${index}`} className={`mb-2 rounded-2xl px-3 py-2 ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}>
-                <Text className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
-                  {attachment.fileName || 'Attachment'}
-                </Text>
-              </View>
+              <Pressable
+                key={`${attachment.fileUrl}-${index}`}
+                className={`mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2 ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}
+                onPress={() => Linking.openURL(resolveMediaUrl(attachment.fileUrl)).catch(() => {})}
+              >
+                {type === 'audio' ? <Mic color={isMe ? '#FFFFFF' : '#0A7CFF'} size={17} /> : <FileText color={isMe ? '#FFFFFF' : '#0A7CFF'} size={17} />}
+                <View className="min-w-0 flex-1">
+                  <Text className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
+                    {attachment.fileName || (type === 'audio' ? 'Voice message' : 'Attachment')}
+                  </Text>
+                  <Text className={`text-[11px] ${isMe ? 'text-white/70' : 'text-slate-500'}`} numberOfLines={1}>
+                    Tap to open
+                  </Text>
+                </View>
+              </Pressable>
             );
           })}
 
-          {message.unsent ? (
+          {(message as Message).unsent ? (
             <Text className={`text-sm italic ${isMe ? 'text-white/75' : 'text-slate-500'}`} numberOfLines={3}>
               Message unsent
             </Text>
@@ -121,16 +206,19 @@ export default function ChatBubble({ message, currentUserId, onReply }: ChatBubb
           ) : null}
 
           <Text className={`mt-1 text-[10px] ${isMe ? 'text-white/70' : 'text-slate-400'}`} numberOfLines={1}>
-            {formatMessageTime(message.createdAt)}
+            {formatMessageTime(message.createdAt)}{message.editedAt ? ' · Edited' : ''}
           </Text>
         </Pressable>
 
         {message.reactions?.length ? (
-          <View className={`-mt-2 rounded-full bg-white px-2 py-0.5 shadow-sm shadow-slate-200 ${isMe ? 'mr-2' : 'ml-2'}`}>
+          <Pressable
+            className={`-mt-2 rounded-full bg-white px-2 py-0.5 shadow-sm shadow-slate-200 ${isMe ? 'mr-2' : 'ml-2'}`}
+            onPress={() => onReactionPress?.(message)}
+          >
             <Text className="text-xs" numberOfLines={1}>
               {message.reactions.map(reaction => reaction.emoji).join(' ')}
             </Text>
-          </View>
+          </Pressable>
         ) : null}
       </Animated.View>
     </GestureDetector>

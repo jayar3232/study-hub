@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { Trash2 } from 'lucide-react-native';
+import { BellOff, Pin, Star, Trash2 } from 'lucide-react-native';
 import Avatar from './Avatar';
 import type { Conversation } from '../types';
 import { formatConversationTime } from '../utils/date';
@@ -12,12 +12,27 @@ type ChatListItemProps = {
   item: Conversation;
   onPress: () => void;
   onDelete: () => void;
+  displayName?: string;
+  pinned?: boolean;
+  muted?: boolean;
+  favorite?: boolean;
+  online?: boolean;
 };
 
-export default function ChatListItem({ item, onPress, onDelete }: ChatListItemProps) {
+export default function ChatListItem({
+  item,
+  onPress,
+  onDelete,
+  displayName,
+  pinned = false,
+  muted = false,
+  favorite = false,
+  online = false
+}: ChatListItemProps) {
   const user = item.user;
   const userId = getEntityId(user);
   const translateX = useSharedValue(0);
+  const name = displayName || user.name || user.email || 'Syncrova user';
 
   const confirmDelete = () => {
     Alert.alert('Delete conversation?', user.name || 'This chat', [
@@ -52,12 +67,18 @@ export default function ChatListItem({ item, onPress, onDelete }: ChatListItemPr
             onLongPress={confirmDelete}
             onPress={onPress}
           >
-            <Avatar user={user} size={52} sharedTag={`avatar-${userId}`} />
+            <View>
+              <Avatar user={user} size={52} sharedTag={`avatar-${userId}`} />
+              {online ? <View className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" /> : null}
+            </View>
             <View className="min-w-0 flex-1">
               <View className="flex-row items-center gap-2">
                 <Text className="flex-1 text-[15px] font-semibold text-slate-950" numberOfLines={1}>
-                  {user.name || user.email || 'Syncrova user'}
+                  {name}
                 </Text>
+                {pinned ? <Pin color="#64748B" size={13} /> : null}
+                {favorite ? <Star color="#F59E0B" fill="#F59E0B" size={13} /> : null}
+                {muted ? <BellOff color="#94A3B8" size={13} /> : null}
                 <Text className="text-xs text-slate-400" numberOfLines={1}>
                   {formatConversationTime(item.lastTime)}
                 </Text>

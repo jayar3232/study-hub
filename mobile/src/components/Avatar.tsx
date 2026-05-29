@@ -1,11 +1,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import type { User } from '../types';
-import { getEntityId } from '../utils/ids';
 import { resolveMediaUrl } from '../utils/media';
-
-const AnimatedImage = Animated.createAnimatedComponent(Image);
 
 type AvatarProps = {
   user?: User | null;
@@ -15,7 +11,7 @@ type AvatarProps = {
   sharedTag?: string;
 };
 
-export default function Avatar({ user, uri, name, size = 48, sharedTag }: AvatarProps) {
+export default function Avatar({ user, uri, name, size = 48 }: AvatarProps) {
   const displayName = name || user?.name || user?.email || 'User';
   const avatarUri = resolveMediaUrl(uri || user?.avatar || '');
   const initials = displayName
@@ -28,11 +24,10 @@ export default function Avatar({ user, uri, name, size = 48, sharedTag }: Avatar
 
   if (avatarUri) {
     return (
-      <AnimatedImage
+      <Image
         source={{ uri: avatarUri }}
         resizeMode="cover"
         style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#E2E8F0' }}
-        {...({ sharedTransitionTag: sharedTag || `avatar-${getEntityId(user)}` } as object)}
       />
     );
   }

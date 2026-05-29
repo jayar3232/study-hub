@@ -1,22 +1,112 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
-import { ArrowLeft, MoreVertical } from 'lucide-react-native';
+import { ArrowLeft, BellOff, Check, Edit3, Info, MoreVertical, Palette, Phone, Pin, Search, Send, Star, Trash2, UserRound, Users, Video, X } from 'lucide-react-native';
 import Avatar from '../components/Avatar';
 import ChatBubble from '../components/ChatBubble';
 import MessageInput from '../components/MessageInput';
+import NativeCallOverlay from '../components/NativeCallOverlay';
 import TypingIndicator from '../components/TypingIndicator';
-import { fetchMessages, markMessagesRead, sendMessage, uploadMessageAsset } from '../services/messages';
+import {
+  deleteGroupMessageForEveryone,
+  editMessage,
+  fetchChatStreak,
+  fetchContacts,
+  fetchOnlineUsers,
+  fetchGroupMessages,
+  fetchGroups,
+  fetchMessages,
+  fetchUserPresence,
+  hideGroupMessageForMe,
+  hideMessageForMe,
+  markGroupMessagesSeen,
+  markMessagesRead,
+  pinGroupMessage,
+  pinMessage,
+  reactToGroupMessage,
+  reactToMessage,
+  sendGroupMessage,
+  sendMessage,
+  unsendMessageForEveryone,
+  updateConversationBackground,
+  updateConversationNickname,
+  updateGroupBackground,
+  uploadMessageAsset
+} from '../services/messages';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../store/AuthContext';
-import type { Message, RootStackParamList, User } from '../types';
+import type { ChatStreak, ConversationSettings, Group, GroupMessage, Message, RootStackParamList, User } from '../types';
+import {
+  CallMode,
+  CallSignalPayload,
+  CallState,
+  LiveKitCallSession,
+  createCallId,
+  getCallErrorMessage,
+  requestLiveKitCallSession,
+  serializeCallUser
+} from '../services/calls';
+import { CHAT_BACKGROUNDS, CHAT_THEMES, QUICK_REACTIONS, getBackgroundById, getThemeById } from '../utils/chatCustomizations';
+import { formatConversationTime, formatMessageTime } from '../utils/date';
 import { getEntityId, getMessageKey } from '../utils/ids';
+import { getMessageAttachments } from '../utils/media';
+import { ChatFlagState, hasChatFlag, loadChatFlags, loadChatThemes, saveChatFlags, saveChatTheme, toggleChatFlag } from '../utils/preferences';
 
 type RouteProps = NativeStackScreenProps<RootStackParamList, 'ChatRoom'>['route'];
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'ChatRoom'>;
+type ThreadMessage = Message | GroupMessage;
+type ActiveCallRef = {
+  callId: string;
+  mode: CallMode;
+  partnerId: string;
+  state: CallState;
+};
+
+const emptyFlags: ChatFlagState = {
+  pinned: [],
+  muted: [],
+  favorites: []
+};
+
+const getSender = (message: ThreadMessage, groupMode: boolean) => (
+  groupMode && 'userId' in message ? message.userId : (message as Message).from
+);
+
+const getText = (message?: ThreadMessage | null) => String(message?.text || '').trim();
+const getSenderName = (message: ThreadMessage, groupMode: boolean) => {
+  const sender = getSender(message, groupMode);
+  return typeof sender === 'object' ? sender?.name || sender?.email || 'Member' : 'Member';
+};
+
+const getDisplayName = (user?: User | null, fallback = 'Syncrova user') => user?.name || user?.email || fallback;
+
+const isOwnMessage = (message: ThreadMessage, currentUserId: string, groupMode: boolean) => (
+  getEntityId(getSender(message, groupMode)) === currentUserId
+);
+
+const formatPresenceLastSeen = (lastSeen?: string | null) => {
+  if (!lastSeen) return 'Offline';
+  return `Active ${formatConversationTime(lastSeen)}`;
+};
+
+const formatCallDuration = (startedAt?: number | null) => {
+  if (!startedAt) return '';
+  const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+};
+
+const mergeMessage = <T extends ThreadMessage>(rows: T[], next: T) => {
+  const nextId = getEntityId(next);
+  if (!nextId) return rows;
+  return rows.some(item => getEntityId(item) === nextId)
+    ? rows.map(item => (getEntityId(item) === nextId ? next : item))
+    : [...rows, next];
+};
 
 export default function ChatRoomScreen() {
   const navigation = useNavigation<Navigation>();
@@ -24,38 +114,133 @@ export default function ChatRoomScreen() {
   const { user } = useAuth();
   const currentUserId = getEntityId(user);
   const { chatId, userName, avatar } = route.params;
+  const groupMode = route.params.mode === 'group';
+  const [group, setGroup] = useState<Group | undefined>(route.params.group);
   const remoteUser: User = route.params.user || { _id: chatId, name: userName, avatar };
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [composer, setComposer] = useState('');
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ThreadMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ThreadMessage | null>(null);
+  const [conversation, setConversation] = useState<ConversationSettings | undefined>(route.params.conversation);
+  const [chatStreak, setChatStreak] = useState<ChatStreak | null>(null);
+  const [chatFlags, setChatFlags] = useState<ChatFlagState>(emptyFlags);
+  const [themeId, setThemeId] = useState('messenger');
+  const [nicknameDraft, setNicknameDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
   const [remoteTyping, setRemoteTyping] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [presenceReady, setPresenceReady] = useState(false);
+  const [remoteOnline, setRemoteOnline] = useState(false);
+  const [remoteLastSeen, setRemoteLastSeen] = useState<string | null>(remoteUser.lastSeen || null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [actionMessage, setActionMessage] = useState<ThreadMessage | null>(null);
+  const [infoMessage, setInfoMessage] = useState<ThreadMessage | null>(null);
+  const [reactionViewerMessage, setReactionViewerMessage] = useState<ThreadMessage | null>(null);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<ThreadMessage | null>(null);
+  const [forwardContacts, setForwardContacts] = useState<User[]>([]);
+  const [forwardGroups, setForwardGroups] = useState<Group[]>([]);
+  const [forwardQuery, setForwardQuery] = useState('');
+  const [forwardingBusyId, setForwardingBusyId] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [messageSearch, setMessageSearch] = useState('');
+  const [callState, setCallState] = useState<CallState>('idle');
+  const [callMode, setCallMode] = useState<CallMode>('audio');
+  const [callPartner, setCallPartner] = useState<User | null>(null);
+  const [incomingCall, setIncomingCall] = useState<CallSignalPayload | null>(null);
+  const [liveKitSession, setLiveKitSession] = useState<LiveKitCallSession | null>(null);
+  const [callError, setCallError] = useState('');
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(true);
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [callClock, setCallClock] = useState(Date.now());
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCallRef = useRef<ActiveCallRef>({ callId: '', mode: 'audio', partnerId: '', state: 'idle' });
+
+  const selectedTheme = getThemeById(themeId);
+  const displayName = groupMode
+    ? group?.name || userName || 'Group chat'
+    : conversation?.nicknames?.[chatId] || userName || getDisplayName(remoteUser);
+  const backgroundId = groupMode ? group?.backgroundId : conversation?.backgroundId;
+  const background = getBackgroundById(backgroundId);
+  const activeChatId = chatId;
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([loadChatFlags(), loadChatThemes()]).then(([flags, themes]) => {
+      if (!mounted) return;
+      setChatFlags(flags);
+      setThemeId(themes[activeChatId] || 'messenger');
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [activeChatId]);
+
+  useEffect(() => {
+    setPresenceReady(false);
+    setRemoteOnline(false);
+    setRemoteLastSeen(remoteUser.lastSeen || null);
+  }, [chatId, remoteUser.lastSeen]);
+
+  useEffect(() => {
+    setNicknameDraft(conversation?.nicknames?.[chatId] || '');
+  }, [chatId, conversation]);
+
+  useEffect(() => {
+    if (!forwardingMessage) return;
+    let mounted = true;
+    Promise.all([
+      fetchContacts().catch(() => []),
+      fetchGroups().catch(() => [])
+    ]).then(([contactRows, groupRows]) => {
+      if (!mounted) return;
+      setForwardContacts(contactRows);
+      setForwardGroups(groupRows);
+    }).catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
+  }, [forwardingMessage]);
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
+      if (groupMode) {
+        const rows = await fetchGroupMessages(chatId);
+        setMessages(rows);
+        setHasMore(false);
+        setNextCursor(undefined);
+        await markGroupMessagesSeen(chatId, rows.map(item => getEntityId(item)).filter(Boolean)).catch(() => {});
+        return;
+      }
+
       const page = await fetchMessages(chatId);
       setMessages(page.items);
+      setConversation(page.conversation || route.params.conversation);
       setHasMore(page.hasMore);
       setNextCursor(page.nextCursor);
-      await markMessagesRead(chatId).catch(() => {});
+      await Promise.all([
+        markMessagesRead(chatId).catch(() => {}),
+        fetchChatStreak(chatId).then(setChatStreak).catch(() => {})
+      ]);
     } finally {
       setLoading(false);
     }
-  }, [chatId]);
+  }, [chatId, groupMode, route.params.conversation]);
 
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
 
   const loadOlder = useCallback(async () => {
-    if (!hasMore || loadingOlder || !nextCursor) return;
+    if (groupMode || !hasMore || loadingOlder || !nextCursor) return;
     setLoadingOlder(true);
     try {
       const page = await fetchMessages(chatId, nextCursor);
@@ -69,7 +254,208 @@ export default function ChatRoomScreen() {
     } finally {
       setLoadingOlder(false);
     }
-  }, [chatId, hasMore, loadingOlder, nextCursor]);
+  }, [chatId, groupMode, hasMore, loadingOlder, nextCursor]);
+
+  const setActiveCall = useCallback((next: ActiveCallRef) => {
+    activeCallRef.current = next;
+    setCallState(next.state);
+    setCallMode(next.mode);
+  }, []);
+
+  const resetCall = useCallback((message = '') => {
+    activeCallRef.current = { callId: '', mode: 'audio', partnerId: '', state: 'idle' };
+    setCallState('idle');
+    setCallMode('audio');
+    setCallPartner(null);
+    setIncomingCall(null);
+    setLiveKitSession(null);
+    setCallStartedAt(null);
+    setCallError(message);
+    setMicMuted(false);
+    setCameraOff(true);
+  }, []);
+
+  const emitCallSignal = useCallback(async (eventName: string, payload: CallSignalPayload) => {
+    const socket = await getSocket();
+    if (!socket.connected) socket.connect();
+    socket.emit(eventName, payload);
+  }, []);
+
+  const connectLiveKitCall = useCallback(async ({
+    callId,
+    mode,
+    partnerId,
+    roomName
+  }: {
+    callId: string;
+    mode: CallMode;
+    partnerId: string;
+    roomName: string;
+  }) => {
+    const session = await requestLiveKitCallSession({ callId, mode, partnerId, roomName });
+    setLiveKitSession(session);
+    setMicMuted(false);
+    setCameraOff(mode !== 'video');
+    return session;
+  }, []);
+
+  const startCall = useCallback(async (mode: CallMode) => {
+    if (groupMode) {
+      Alert.alert('Calls', 'Calls are available in direct messages.');
+      return;
+    }
+    if (!currentUserId || !chatId || chatId === currentUserId) {
+      Alert.alert('Calls', 'Could not start this call.');
+      return;
+    }
+    if (presenceReady && !remoteOnline) {
+      Alert.alert('Not active', `${displayName} is not active right now.`);
+      return;
+    }
+    if (activeCallRef.current.state !== 'idle') {
+      Alert.alert('Call active', 'Finish your current call first.');
+      return;
+    }
+
+    const nextCallId = createCallId();
+    const roomName = `syncrova-call-${nextCallId}`;
+    setCallPartner(remoteUser);
+    setIncomingCall(null);
+    setCallError('');
+    setLiveKitSession(null);
+    setActiveCall({ callId: nextCallId, mode, partnerId: chatId, state: 'calling' });
+
+    try {
+      const session = await connectLiveKitCall({ callId: nextCallId, mode, partnerId: chatId, roomName });
+      await emitCallSignal('call:start', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: chatId,
+        type: mode,
+        caller: serializeCallUser(user),
+        provider: 'livekit',
+        livekit: true,
+        roomName: session.roomName
+      });
+    } catch (error) {
+      const message = getCallErrorMessage(error, 'Could not start the call.');
+      resetCall(message);
+      Alert.alert('Call failed', message);
+    }
+  }, [
+    chatId,
+    connectLiveKitCall,
+    currentUserId,
+    displayName,
+    emitCallSignal,
+    groupMode,
+    presenceReady,
+    remoteOnline,
+    remoteUser,
+    resetCall,
+    setActiveCall,
+    user
+  ]);
+
+  const acceptCall = useCallback(async () => {
+    const pendingCall = incomingCall;
+    const callerId = getEntityId(pendingCall?.from);
+    const nextCallId = pendingCall?.callId;
+    const mode = pendingCall?.type || 'audio';
+    if (!pendingCall || !callerId || !nextCallId || !currentUserId) return;
+
+    setCallPartner((pendingCall.caller || { _id: callerId, id: callerId, name: 'Caller' }) as User);
+    setCallError('');
+    setActiveCall({ callId: nextCallId, mode, partnerId: callerId, state: 'connecting' });
+
+    try {
+      const session = await connectLiveKitCall({
+        callId: nextCallId,
+        mode,
+        partnerId: callerId,
+        roomName: pendingCall.roomName || `syncrova-call-${nextCallId}`
+      });
+      await emitCallSignal('call:answer', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: callerId,
+        type: mode,
+        accepted: true,
+        provider: 'livekit',
+        livekit: true,
+        roomName: session.roomName
+      });
+      setIncomingCall(null);
+    } catch (error) {
+      const message = getCallErrorMessage(error, 'Could not join the call.');
+      await emitCallSignal('call:reject', {
+        callId: nextCallId,
+        from: currentUserId,
+        to: callerId,
+        type: mode,
+        reason: 'media-error'
+      }).catch(() => {});
+      resetCall(message);
+      Alert.alert('Call failed', message);
+    }
+  }, [connectLiveKitCall, currentUserId, emitCallSignal, incomingCall, resetCall, setActiveCall]);
+
+  const rejectCall = useCallback((reason = 'declined') => {
+    const pending = incomingCall;
+    const callerId = getEntityId(pending?.from);
+    if (pending?.callId && callerId && currentUserId) {
+      emitCallSignal('call:reject', {
+        callId: pending.callId,
+        from: currentUserId,
+        to: callerId,
+        type: pending.type || callMode,
+        reason
+      }).catch(() => {});
+    }
+    resetCall();
+  }, [callMode, currentUserId, emitCallSignal, incomingCall, resetCall]);
+
+  const endCall = useCallback((reason = 'ended', notify = true) => {
+    const active = activeCallRef.current;
+    if (notify && active.callId && active.partnerId && currentUserId) {
+      emitCallSignal('call:end', {
+        callId: active.callId,
+        from: currentUserId,
+        to: active.partnerId,
+        type: active.mode,
+        reason
+      }).catch(() => {});
+    }
+    resetCall();
+  }, [currentUserId, emitCallSignal, resetCall]);
+
+  const handleLiveKitConnected = useCallback(() => {
+    const active = activeCallRef.current;
+    setCallError('');
+    if (active.state === 'connecting') {
+      activeCallRef.current = { ...active, state: 'connected' };
+      setCallState('connected');
+      setCallStartedAt(Date.now());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!['calling', 'connecting'].includes(callState)) return undefined;
+    const expectedCallId = activeCallRef.current.callId;
+    const timer = setTimeout(() => {
+      if (activeCallRef.current.callId !== expectedCallId || !['calling', 'connecting'].includes(activeCallRef.current.state)) return;
+      endCall('timeout');
+      Alert.alert('Call timed out', 'Please try again.');
+    }, 35000);
+
+    return () => clearTimeout(timer);
+  }, [callState, endCall]);
+
+  useEffect(() => {
+    if (callState !== 'connected') return undefined;
+    const timer = setInterval(() => setCallClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [callState]);
 
   useEffect(() => {
     let mounted = true;
@@ -83,46 +469,215 @@ export default function ChatRoomScreen() {
         return (fromId === chatId && toId === currentUserId) || (fromId === currentUserId && toId === chatId);
       };
       const onReceiveMessage = (message: Message) => {
-        if (!mounted || !belongsToChat(message)) return;
-        setMessages(prev => (
-          prev.some(item => getEntityId(item) === getEntityId(message)) ? prev : [...prev, message]
-        ));
+        if (!mounted || groupMode || !belongsToChat(message)) return;
+        setMessages(prev => mergeMessage(prev as Message[], message));
         if (getEntityId(message.from) === chatId) markMessagesRead(chatId).catch(() => {});
       };
       const onMessageUpdated = (message: Message) => {
-        if (!mounted || !belongsToChat(message)) return;
+        if (!mounted || groupMode || !belongsToChat(message)) return;
         setMessages(prev => prev.map(item => (getEntityId(item) === getEntityId(message) ? message : item)));
       };
       const onMessageHidden = ({ messageId }: { messageId: string }) => {
-        if (!mounted) return;
+        if (!mounted || groupMode) return;
         setMessages(prev => prev.filter(item => getEntityId(item) !== messageId));
       };
+      const onMessagesRead = ({ readerId }: { readerId: string }) => {
+        if (!mounted || groupMode || readerId !== chatId) return;
+        setMessages(prev => prev.map(item => (
+          isOwnMessage(item, currentUserId, false) ? { ...(item as Message), read: true, readAt: new Date().toISOString() } : item
+        )));
+      };
+      const onConversationBackground = (payload: { participants?: string[]; conversation?: ConversationSettings; message?: Message | null }) => {
+        if (!mounted || groupMode || !payload.participants?.includes(chatId)) return;
+        setConversation(payload.conversation);
+        if (payload.message) setMessages(prev => mergeMessage(prev as Message[], payload.message as Message));
+      };
+      const onConversationNickname = onConversationBackground;
       const onTyping = ({ from }: { from: string }) => {
-        if (from === chatId) setRemoteTyping(true);
+        if (!groupMode && from === chatId) setRemoteTyping(true);
       };
       const onStopTyping = ({ from }: { from: string }) => {
-        if (from === chatId) setRemoteTyping(false);
+        if (!groupMode && from === chatId) setRemoteTyping(false);
+      };
+      const onReceiveGroupMessage = (message: GroupMessage) => {
+        if (!mounted || !groupMode || getEntityId(message.groupId) !== chatId) return;
+        setMessages(prev => mergeMessage(prev as GroupMessage[], message));
+        markGroupMessagesSeen(chatId, [getEntityId(message)].filter(Boolean)).catch(() => {});
+      };
+      const onGroupMessageUpdated = (message: GroupMessage) => {
+        if (!mounted || !groupMode || getEntityId(message.groupId) !== chatId) return;
+        setMessages(prev => prev.map(item => (getEntityId(item) === getEntityId(message) ? message : item)));
+      };
+      const onGroupUpdated = (nextGroup: Group) => {
+        if (!mounted || !groupMode || getEntityId(nextGroup) !== chatId) return;
+        setGroup(nextGroup);
+      };
+      const onGroupDeleted = (messageId: string) => {
+        if (!mounted || !groupMode) return;
+        setMessages(prev => prev.filter(item => getEntityId(item) !== messageId));
+      };
+      const updatePresence = (status: { online?: boolean; lastSeen?: string | null }) => {
+        if (!mounted || groupMode) return;
+        setRemoteOnline(Boolean(status.online));
+        if (status.lastSeen) setRemoteLastSeen(status.lastSeen);
+        setPresenceReady(true);
+      };
+      const onOnlineUsers = (payload: string[] | { users?: string[]; userIds?: string[] } = []) => {
+        if (!mounted || groupMode) return;
+        const ids = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.userIds)
+            ? payload.userIds
+            : Array.isArray(payload.users)
+              ? payload.users
+              : [];
+        setRemoteOnline(ids.includes(chatId));
+        setPresenceReady(true);
+      };
+      const refreshDirectPresence = () => {
+        if (groupMode || !chatId) return;
+        socket.emit('check-online', chatId, (status: { online?: boolean; lastSeen?: string | null }) => {
+          updatePresence(status || {});
+        });
       };
       const announceOnline = () => {
-        if (currentUserId) socket.emit('user-online', currentUserId);
+        if (currentUserId) socket.emit('user-online', currentUserId, onOnlineUsers);
+      };
+      const onConnect = () => {
+        if (!mounted) return;
+        setSocketConnected(true);
+        announceOnline();
+        refreshDirectPresence();
+      };
+      const onDisconnect = () => {
+        if (!mounted) return;
+        setSocketConnected(false);
+        setPresenceReady(false);
+      };
+      const onUserOnline = (payload: string | { userId?: string }) => {
+        const userId = typeof payload === 'string' ? payload : payload?.userId;
+        if (!mounted || groupMode || userId !== chatId) return;
+        setRemoteOnline(true);
+        setPresenceReady(true);
+      };
+      const onUserOffline = (payload: { userId?: string; lastSeen?: string }) => {
+        if (!mounted || groupMode || payload?.userId !== chatId) return;
+        setRemoteOnline(false);
+        setRemoteLastSeen(payload.lastSeen || new Date().toISOString());
+        setPresenceReady(true);
+      };
+      const onIncomingCallStart = (payload: CallSignalPayload) => {
+        const callerId = getEntityId(payload?.from);
+        const targetId = getEntityId(payload?.to);
+        if (!mounted || groupMode || !callerId || !payload?.callId) return;
+        if (targetId && targetId !== currentUserId) return;
+        if (activeCallRef.current.state !== 'idle') {
+          socket.emit('call:busy', {
+            callId: payload.callId,
+            from: currentUserId,
+            to: callerId,
+            type: payload.type || 'audio',
+            reason: 'busy'
+          });
+          return;
+        }
+
+        const mode = payload.type || 'audio';
+        activeCallRef.current = { callId: payload.callId, mode, partnerId: callerId, state: 'incoming' };
+        setCallMode(mode);
+        setCallPartner((payload.caller || { _id: callerId, id: callerId, name: 'Caller' }) as User);
+        setIncomingCall(payload);
+        setLiveKitSession(null);
+        setCallError('');
+        setCallState('incoming');
+      };
+      const onCallAnswer = (payload: CallSignalPayload) => {
+        const active = activeCallRef.current;
+        if (!mounted || !payload?.callId || payload.callId !== active.callId) return;
+        activeCallRef.current = { ...active, state: 'connected' };
+        if (payload.roomName) {
+          setLiveKitSession(prev => (prev ? { ...prev, roomName: payload.roomName || prev.roomName } : prev));
+        }
+        setCallError('');
+        setCallState('connected');
+        setCallStartedAt(Date.now());
+      };
+      const onRemoteCallEnd = (payload: CallSignalPayload) => {
+        const active = activeCallRef.current;
+        if (!mounted || !payload?.callId || payload.callId !== active.callId) return;
+        resetCall();
+      };
+      const onRemoteCallRejected = (payload: CallSignalPayload) => {
+        const active = activeCallRef.current;
+        if (!mounted || !payload?.callId || payload.callId !== active.callId) return;
+        resetCall();
+        Alert.alert('Call ended', payload.reason === 'busy' ? 'The other user is on another call.' : 'The call was declined.');
+      };
+      const onCallUnavailable = (payload: CallSignalPayload) => {
+        const active = activeCallRef.current;
+        if (!mounted || !payload?.callId || payload.callId !== active.callId) return;
+        resetCall();
+        Alert.alert('Call unavailable', 'The other user is offline or unavailable.');
       };
 
-      socket.on('connect', announceOnline);
+      socket.on('connect', onConnect);
+      socket.on('disconnect', onDisconnect);
+      socket.on('online-users', onOnlineUsers);
+      socket.on('user-online', onUserOnline);
+      socket.on('user-offline', onUserOffline);
       socket.on('receiveMessage', onReceiveMessage);
       socket.on('message-updated', onMessageUpdated);
       socket.on('message-hidden', onMessageHidden);
+      socket.on('messages-read', onMessagesRead);
+      socket.on('conversation-background-updated', onConversationBackground);
+      socket.on('conversation-nickname-updated', onConversationNickname);
       socket.on('user-typing', onTyping);
       socket.on('user-stop-typing', onStopTyping);
-      if (socket.connected) announceOnline();
+      socket.on('receive-group-message', onReceiveGroupMessage);
+      socket.on('group-message-updated', onGroupMessageUpdated);
+      socket.on('group-updated', onGroupUpdated);
+      socket.on('message-deleted', onGroupDeleted);
+      socket.on('message-deleted-for-everyone', onGroupDeleted);
+      socket.on('call:start', onIncomingCallStart);
+      socket.on('call:answer', onCallAnswer);
+      socket.on('call:end', onRemoteCallEnd);
+      socket.on('call:reject', onRemoteCallRejected);
+      socket.on('call:busy', onRemoteCallRejected);
+      socket.on('call:unavailable', onCallUnavailable);
+      if (groupMode) socket.emit('join-group', chatId);
+      if (!groupMode) {
+        fetchUserPresence(chatId).then(updatePresence).catch(() => setPresenceReady(true));
+        fetchOnlineUsers().then(onOnlineUsers).catch(() => {});
+      }
+      if (socket.connected) onConnect();
       else socket.connect();
 
       cleanup = () => {
-        socket.off('connect', announceOnline);
+        socket.off('connect', onConnect);
+        socket.off('disconnect', onDisconnect);
+        socket.off('online-users', onOnlineUsers);
+        socket.off('user-online', onUserOnline);
+        socket.off('user-offline', onUserOffline);
         socket.off('receiveMessage', onReceiveMessage);
         socket.off('message-updated', onMessageUpdated);
         socket.off('message-hidden', onMessageHidden);
+        socket.off('messages-read', onMessagesRead);
+        socket.off('conversation-background-updated', onConversationBackground);
+        socket.off('conversation-nickname-updated', onConversationNickname);
         socket.off('user-typing', onTyping);
         socket.off('user-stop-typing', onStopTyping);
+        socket.off('receive-group-message', onReceiveGroupMessage);
+        socket.off('group-message-updated', onGroupMessageUpdated);
+        socket.off('group-updated', onGroupUpdated);
+        socket.off('message-deleted', onGroupDeleted);
+        socket.off('message-deleted-for-everyone', onGroupDeleted);
+        socket.off('call:start', onIncomingCallStart);
+        socket.off('call:answer', onCallAnswer);
+        socket.off('call:end', onRemoteCallEnd);
+        socket.off('call:reject', onRemoteCallRejected);
+        socket.off('call:busy', onRemoteCallRejected);
+        socket.off('call:unavailable', onCallUnavailable);
+        if (groupMode) socket.emit('leave-group', chatId);
       };
     };
 
@@ -131,17 +686,17 @@ export default function ChatRoomScreen() {
       mounted = false;
       cleanup?.();
     };
-  }, [chatId, currentUserId]);
+  }, [chatId, currentUserId, groupMode, resetCall]);
 
   const stopTyping = useCallback(async () => {
-    if (!currentUserId) return;
+    if (!currentUserId || groupMode) return;
     const socket = await getSocket();
     socket.emit('stop-typing', { to: chatId, from: currentUserId });
-  }, [chatId, currentUserId]);
+  }, [chatId, currentUserId, groupMode]);
 
   const updateComposer = async (text: string) => {
     setComposer(text);
-    if (!currentUserId) return;
+    if (!currentUserId || groupMode) return;
     const socket = await getSocket();
     socket.emit('typing', { to: chatId, from: currentUserId });
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -157,12 +712,32 @@ export default function ChatRoomScreen() {
     setComposer('');
     stopTyping().catch(() => {});
     try {
+      if (editingMessage && !groupMode) {
+        const updated = await editMessage(getEntityId(editingMessage), text);
+        setMessages(prev => prev.map(item => (getEntityId(item) === getEntityId(updated) ? updated : item)));
+        setEditingMessage(null);
+        return;
+      }
+
+      if (groupMode) {
+        const sent = await sendGroupMessage({
+          groupId: chatId,
+          text,
+          replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+        });
+        setMessages(prev => mergeMessage(prev as GroupMessage[], sent));
+        const socket = await getSocket();
+        socket.emit('send-group-message', { groupId: chatId, message: sent });
+        setReplyingTo(null);
+        return;
+      }
+
       const sent = await sendMessage({
         to: chatId,
         text,
         replyTo: replyingTo ? getEntityId(replyingTo) : undefined
       });
-      setMessages(prev => (prev.some(item => getEntityId(item) === getEntityId(sent)) ? prev : [...prev, sent]));
+      setMessages(prev => mergeMessage(prev as Message[], sent));
       setReplyingTo(null);
     } catch {
       setComposer(text);
@@ -176,18 +751,35 @@ export default function ChatRoomScreen() {
     if (!assets.length || sending) return;
     setSending(true);
     stopTyping().catch(() => {});
+    const text = composer.trim();
     try {
-      const uploads = [];
-      for (const asset of assets.slice(0, 10)) {
-        uploads.push(await uploadMessageAsset(asset));
+      if (groupMode) {
+        for (const [index, asset] of assets.slice(0, 10).entries()) {
+          const upload = await uploadMessageAsset(asset);
+          const sent = await sendGroupMessage({
+            groupId: chatId,
+            text: index === 0 ? text : '',
+            fileUrl: upload.fileUrl,
+            fileType: upload.fileType,
+            replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+          });
+          setMessages(prev => mergeMessage(prev as GroupMessage[], sent));
+          const socket = await getSocket();
+          socket.emit('send-group-message', { groupId: chatId, message: sent });
+        }
+      } else {
+        const uploads = [];
+        for (const asset of assets.slice(0, 10)) {
+          uploads.push(await uploadMessageAsset(asset));
+        }
+        const sent = await sendMessage({
+          to: chatId,
+          text,
+          replyTo: replyingTo ? getEntityId(replyingTo) : undefined,
+          attachments: uploads
+        });
+        setMessages(prev => mergeMessage(prev as Message[], sent));
       }
-      const sent = await sendMessage({
-        to: chatId,
-        text: composer.trim(),
-        replyTo: replyingTo ? getEntityId(replyingTo) : undefined,
-        attachments: uploads
-      });
-      setMessages(prev => (prev.some(item => getEntityId(item) === getEntityId(sent)) ? prev : [...prev, sent]));
       setComposer('');
       setReplyingTo(null);
     } catch {
@@ -197,62 +789,748 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const handleReaction = async (emoji: string) => {
+    const messageId = getEntityId(actionMessage);
+    if (!messageId) return;
+    try {
+      const updated = groupMode
+        ? await reactToGroupMessage(messageId, emoji)
+        : await reactToMessage(messageId, emoji);
+      setMessages(prev => prev.map(item => (getEntityId(item) === messageId ? updated : item)));
+      setActionMessage(null);
+    } catch {
+      Alert.alert('Reaction failed', 'Could not react to this message.');
+    }
+  };
+
+  const handlePin = async (message: ThreadMessage) => {
+    const messageId = getEntityId(message);
+    if (!messageId) return;
+    try {
+      const updated = groupMode ? await pinGroupMessage(messageId) : await pinMessage(messageId);
+      setMessages(prev => prev.map(item => (getEntityId(item) === messageId ? updated : item)));
+      setActionMessage(null);
+    } catch {
+      Alert.alert('Pin failed', 'Could not update pinned state.');
+    }
+  };
+
+  const handleHide = async (message: ThreadMessage) => {
+    const messageId = getEntityId(message);
+    if (!messageId) return;
+    try {
+      if (groupMode) await hideGroupMessageForMe(messageId);
+      else await hideMessageForMe(messageId);
+      setMessages(prev => prev.filter(item => getEntityId(item) !== messageId));
+      setActionMessage(null);
+    } catch {
+      Alert.alert('Remove failed', 'Could not remove this message.');
+    }
+  };
+
+  const handleUnsend = async (message: ThreadMessage) => {
+    const messageId = getEntityId(message);
+    if (!messageId) return;
+    try {
+      if (groupMode) {
+        await deleteGroupMessageForEveryone(messageId);
+        setMessages(prev => prev.filter(item => getEntityId(item) !== messageId));
+        const socket = await getSocket();
+        socket.emit('delete-message-for-everyone', { messageId, groupId: chatId });
+      } else {
+        const updated = await unsendMessageForEveryone(messageId);
+        setMessages(prev => prev.map(item => (getEntityId(item) === messageId ? updated : item)));
+      }
+      setActionMessage(null);
+    } catch {
+      Alert.alert('Unsend failed', 'Could not unsend this message.');
+    }
+  };
+
+  const handleRemoveMyReaction = async (message: ThreadMessage, emoji: string) => {
+    const messageId = getEntityId(message);
+    if (!messageId) return;
+    try {
+      const updated = groupMode
+        ? await reactToGroupMessage(messageId, emoji)
+        : await reactToMessage(messageId, emoji);
+      setMessages(prev => prev.map(item => (getEntityId(item) === messageId ? updated : item)));
+      setReactionViewerMessage(updated);
+    } catch {
+      Alert.alert('Reaction failed', 'Could not remove this reaction.');
+    }
+  };
+
+  const openForwardSheet = (message: ThreadMessage | null) => {
+    if (!message) return;
+    setForwardingMessage(message);
+    setForwardQuery('');
+    setActionMessage(null);
+  };
+
+  const forwardToDirect = async (target: User) => {
+    if (!forwardingMessage) return;
+    const targetId = getEntityId(target);
+    if (!targetId || targetId === currentUserId || forwardingBusyId) return;
+    setForwardingBusyId(targetId);
+    try {
+      const attachments = getMessageAttachments(forwardingMessage as Message);
+      const text = getText(forwardingMessage);
+      if (!text && attachments.length === 0) {
+        Alert.alert('Forward failed', 'This message has no content to forward.');
+        return;
+      }
+      await sendMessage({
+        to: targetId,
+        text: text ? `Forwarded: ${text}` : '',
+        attachments: attachments.map(item => ({
+          fileUrl: item.fileUrl,
+          fileType: item.fileType || 'file',
+          fileName: item.fileName,
+          mimeType: item.mimeType,
+          fileSize: item.fileSize,
+          storagePath: item.storagePath,
+          storageProvider: item.storageProvider,
+          variants: item.variants
+        }))
+      });
+      setForwardingMessage(null);
+      Alert.alert('Forwarded', `Sent to ${getDisplayName(target)}.`);
+    } catch {
+      Alert.alert('Forward failed', 'Could not forward this message.');
+    } finally {
+      setForwardingBusyId('');
+    }
+  };
+
+  const forwardToGroup = async (targetGroup: Group) => {
+    if (!forwardingMessage) return;
+    const targetId = getEntityId(targetGroup);
+    if (!targetId || forwardingBusyId) return;
+    setForwardingBusyId(targetId);
+    try {
+      const attachments = getMessageAttachments(forwardingMessage as Message);
+      const text = getText(forwardingMessage);
+      if (!text && attachments.length === 0) {
+        Alert.alert('Forward failed', 'This message has no content to forward.');
+        return;
+      }
+      if (!attachments.length) {
+        await sendGroupMessage({ groupId: targetId, text: text ? `Forwarded: ${text}` : '' });
+      } else {
+        for (const [index, attachment] of attachments.entries()) {
+          await sendGroupMessage({
+            groupId: targetId,
+            text: index === 0 && text ? `Forwarded: ${text}` : '',
+            fileUrl: attachment.fileUrl,
+            fileType: attachment.fileType || 'file'
+          });
+        }
+      }
+      setForwardingMessage(null);
+      Alert.alert('Forwarded', `Sent to ${targetGroup.name || 'group chat'}.`);
+    } catch {
+      Alert.alert('Forward failed', 'Could not forward this message.');
+    } finally {
+      setForwardingBusyId('');
+    }
+  };
+
+  const startEdit = (message: ThreadMessage) => {
+    setEditingMessage(message);
+    setReplyingTo(null);
+    setComposer(getText(message));
+    setActionMessage(null);
+  };
+
+  const setFlag = async (flag: keyof ChatFlagState) => {
+    setChatFlags(prev => {
+      const next = toggleChatFlag(prev, flag, activeChatId);
+      saveChatFlags(next).catch(() => {});
+      return next;
+    });
+  };
+
+  const saveTheme = async (nextThemeId: string) => {
+    setThemeId(nextThemeId);
+    await saveChatTheme(activeChatId, nextThemeId).catch(() => {});
+  };
+
+  const saveBackground = async (backgroundIdToSave: string) => {
+    try {
+      if (groupMode) {
+        const payload = await updateGroupBackground(chatId, backgroundIdToSave);
+        if (payload.group) setGroup(payload.group);
+        if (payload.message) setMessages(prev => mergeMessage(prev as GroupMessage[], payload.message as GroupMessage));
+        return;
+      }
+
+      const payload = await updateConversationBackground(chatId, backgroundIdToSave);
+      setConversation(payload.conversation || { ...conversation, backgroundId: backgroundIdToSave });
+      if (payload.message) setMessages(prev => mergeMessage(prev as Message[], payload.message as Message));
+    } catch {
+      Alert.alert('Background failed', 'Could not update the chat background.');
+    }
+  };
+
+  const saveNickname = async () => {
+    try {
+      const payload = await updateConversationNickname(chatId, nicknameDraft);
+      setConversation(payload.conversation || { ...conversation, nicknames: { ...(conversation?.nicknames || {}), [chatId]: nicknameDraft } });
+      if (payload.message) setMessages(prev => mergeMessage(prev as Message[], payload.message as Message));
+    } catch {
+      Alert.alert('Nickname failed', 'Could not update this nickname.');
+    }
+  };
+
+  const searchedMessageIds = useMemo(() => {
+    const needle = messageSearch.trim().toLowerCase();
+    if (!needle) return new Set<string>();
+    return new Set(messages
+      .filter(message => getText(message).toLowerCase().includes(needle) || getSenderName(message, groupMode).toLowerCase().includes(needle))
+      .map(message => getEntityId(message))
+      .filter(Boolean));
+  }, [groupMode, messageSearch, messages]);
+
+  const pinnedMessages = useMemo(() => messages.filter(message => message.pinned), [messages]);
+  const sharedFiles = useMemo(() => messages.flatMap(message => getMessageAttachments(message as Message)), [messages]);
+  const forwardTargets = useMemo(() => {
+    const needle = forwardQuery.trim().toLowerCase();
+    const contacts = forwardContacts
+      .filter(contact => getEntityId(contact) !== currentUserId)
+      .filter(contact => {
+        if (!needle) return true;
+        return `${contact.name || ''} ${contact.email || ''}`.toLowerCase().includes(needle);
+      });
+    const groups = forwardGroups.filter(item => {
+      if (!needle) return true;
+      return String(item.name || '').toLowerCase().includes(needle);
+    });
+    return { contacts, groups };
+  }, [currentUserId, forwardContacts, forwardGroups, forwardQuery]);
+  const actionIsMine = actionMessage ? isOwnMessage(actionMessage, currentUserId, groupMode) : false;
+  const canEditAction = Boolean(actionMessage && actionIsMine && !groupMode && getText(actionMessage) && !getMessageAttachments(actionMessage as Message).length && !(actionMessage as Message).unsent);
+  const presenceText = groupMode
+    ? `${group?.members?.length || 0} members`
+    : remoteTyping
+      ? 'Typing...'
+      : !socketConnected
+        ? 'Connecting...'
+        : !presenceReady
+          ? 'Checking status...'
+          : remoteOnline
+            ? 'Active now'
+            : formatPresenceLastSeen(remoteLastSeen);
+  const callDurationText = useMemo(() => formatCallDuration(callStartedAt), [callClock, callStartedAt]);
+  const callStatusText = callState === 'incoming'
+    ? `Incoming ${callMode === 'video' ? 'video' : 'audio'} call`
+    : callState === 'calling'
+      ? 'Ringing...'
+      : callState === 'connecting'
+        ? 'Connecting...'
+        : callState === 'connected'
+          ? callDurationText || 'Connected'
+          : callError;
+
   return (
     <View className="flex-1 bg-slate-100 pt-12">
-      <View className="h-16 flex-row items-center gap-3 border-b border-slate-200 bg-white px-3">
-        <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => navigation.goBack()}>
-          <ArrowLeft color="#0F172A" size={22} />
-        </Pressable>
-        <Avatar user={remoteUser} uri={avatar} name={userName} size={42} sharedTag={`avatar-${chatId}`} />
-        <View className="min-w-0 flex-1">
-          <Text className="text-[16px] font-semibold text-slate-950" numberOfLines={1}>
-            {userName}
-          </Text>
-          <Text className="text-xs text-slate-500" numberOfLines={1}>
-            {remoteTyping ? 'Typing...' : 'Syncrova Messenger'}
-          </Text>
+      <View className="border-b border-slate-200 bg-white">
+        <View className="h-16 flex-row items-center gap-3 px-3">
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => navigation.goBack()}>
+            <ArrowLeft color="#0F172A" size={22} />
+          </Pressable>
+          <Avatar user={groupMode ? undefined : remoteUser} uri={groupMode ? group?.photo : avatar} name={displayName} size={42} sharedTag={`${groupMode ? 'group' : 'avatar'}-${chatId}`} />
+          <Pressable className="min-w-0 flex-1" onPress={() => setDetailsOpen(true)}>
+            <Text className="text-[16px] font-semibold text-slate-950" numberOfLines={1}>
+              {displayName}
+            </Text>
+            <Text className="text-xs text-slate-500" numberOfLines={1}>
+              {presenceText}
+            </Text>
+          </Pressable>
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => startCall('audio')}>
+            <Phone color="#0A7CFF" size={19} />
+          </Pressable>
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => startCall('video')}>
+            <Video color="#0A7CFF" size={19} />
+          </Pressable>
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => setSearchOpen(value => !value)}>
+            <Search color="#0F172A" size={19} />
+          </Pressable>
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => setDetailsOpen(true)}>
+            <MoreVertical color="#0F172A" size={20} />
+          </Pressable>
         </View>
-        <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-          <MoreVertical color="#0F172A" size={20} />
-        </Pressable>
+        {searchOpen ? (
+          <View className="px-3 pb-3">
+            <View className="h-11 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3">
+              <Search color="#64748B" size={17} />
+              <TextInput
+                className="flex-1 text-[15px] text-slate-950"
+                onChangeText={setMessageSearch}
+                placeholder="Search in conversation"
+                placeholderTextColor="#94A3B8"
+                value={messageSearch}
+              />
+              {messageSearch ? (
+                <Pressable onPress={() => setMessageSearch('')}>
+                  <X color="#64748B" size={17} />
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
       </View>
 
+      {pinnedMessages.length > 0 && !searchOpen ? (
+        <Pressable className="h-11 flex-row items-center gap-2 border-b border-slate-200 bg-white px-4" onPress={() => setPinnedOpen(true)}>
+          <Pin color="#0A7CFF" size={16} />
+          <Text className="flex-1 text-sm font-semibold text-slate-700" numberOfLines={1}>
+            {pinnedMessages.length} pinned {pinnedMessages.length === 1 ? 'message' : 'messages'}
+          </Text>
+          <Text className="text-xs font-semibold text-blue-600">View</Text>
+        </Pressable>
+      ) : null}
+
       {loading ? (
-        <View className="flex-1 items-center justify-center">
+        <View className="flex-1 items-center justify-center" style={background.style}>
           <ActivityIndicator color="#0A7CFF" />
         </View>
       ) : (
-        <FlashList
-          data={messages}
-          keyExtractor={(item, index) => getMessageKey(item, index)}
-          ListHeaderComponent={loadingOlder ? <ActivityIndicator className="my-3" color="#0A7CFF" /> : null}
-          maintainVisibleContentPosition={{
-            autoscrollToBottomThreshold: 0.2,
-            startRenderingFromBottom: true
-          }}
-          onStartReached={loadOlder}
-          onStartReachedThreshold={0.35}
-          renderItem={({ item }) => (
-            <ChatBubble currentUserId={currentUserId} message={item} onReply={setReplyingTo} />
-          )}
-        />
+        <View className="flex-1" style={background.style}>
+          <FlashList
+            data={messages}
+            keyExtractor={(item, index) => getMessageKey(item as Message, index)}
+            ListHeaderComponent={loadingOlder ? <ActivityIndicator className="my-3" color="#0A7CFF" /> : null}
+            maintainVisibleContentPosition={{
+              autoscrollToBottomThreshold: 0.2,
+              startRenderingFromBottom: true
+            }}
+            onStartReached={loadOlder}
+            onStartReachedThreshold={0.35}
+            renderItem={({ item }) => (
+              <ChatBubble
+                currentUserId={currentUserId}
+                groupMode={groupMode}
+                highlighted={searchedMessageIds.has(getEntityId(item))}
+                message={item}
+                onAction={setActionMessage}
+                onReactionPress={setReactionViewerMessage}
+                onReply={message => {
+                  setEditingMessage(null);
+                  setReplyingTo(message);
+                }}
+                ownBubbleColor={selectedTheme.ownBubble}
+              />
+            )}
+          />
+        </View>
       )}
 
       {remoteTyping ? (
-        <View className="px-3 pb-2">
+        <View className="px-3 pb-2" style={background.style}>
           <TypingIndicator />
         </View>
       ) : null}
 
       <MessageInput
+        editingLabel={editingMessage ? getText(editingMessage) : undefined}
         onAttach={attachAssets}
         onChangeText={updateComposer}
+        onClearEdit={() => {
+          setEditingMessage(null);
+          setComposer('');
+        }}
         onClearReply={() => setReplyingTo(null)}
         onSend={submitText}
-        replyLabel={replyingTo ? replyingTo.text || 'Replying to media' : undefined}
+        replyLabel={replyingTo ? getText(replyingTo) || 'Replying to media' : undefined}
         sending={sending}
         value={composer}
       />
+
+      {callState !== 'idle' ? (
+        <NativeCallOverlay
+          cameraOff={cameraOff}
+          callMode={callMode}
+          callState={callState}
+          callStatusText={callStatusText}
+          error={callError}
+          micMuted={micMuted}
+          onAccept={acceptCall}
+          onCameraMutedChange={setCameraOff}
+          onConnected={handleLiveKitConnected}
+          onEnd={() => endCall()}
+          onError={setCallError}
+          onMicMutedChange={setMicMuted}
+          onReject={() => rejectCall()}
+          partner={callPartner}
+          session={liveKitSession}
+        />
+      ) : null}
+
+      <Modal animationType="fade" transparent visible={Boolean(actionMessage)} onRequestClose={() => setActionMessage(null)}>
+        <Pressable className="flex-1 justify-end bg-black/35" onPress={() => setActionMessage(null)}>
+          <Pressable className="rounded-t-[28px] bg-white p-4" onPress={event => event.stopPropagation()}>
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-slate-950">Message</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setActionMessage(null)}>
+                <X color="#0F172A" size={18} />
+              </Pressable>
+            </View>
+            <View className="mb-4 flex-row justify-between rounded-3xl bg-slate-100 p-2">
+              {QUICK_REACTIONS.map(emoji => (
+                <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-white" key={emoji} onPress={() => handleReaction(emoji)}>
+                  <Text className="text-2xl">{emoji}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View className="gap-2">
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => {
+                if (actionMessage) setReplyingTo(actionMessage);
+                setEditingMessage(null);
+                setActionMessage(null);
+              }}>
+                <MoreVertical color="#0A7CFF" size={18} />
+                <Text className="font-semibold text-slate-950">Reply</Text>
+              </Pressable>
+              {canEditAction ? (
+                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => actionMessage && startEdit(actionMessage)}>
+                  <Edit3 color="#0A7CFF" size={18} />
+                  <Text className="font-semibold text-slate-950">Edit</Text>
+                </Pressable>
+              ) : null}
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => actionMessage && handlePin(actionMessage)}>
+                <Pin color="#0A7CFF" size={18} />
+                <Text className="font-semibold text-slate-950">{actionMessage?.pinned ? 'Unpin' : 'Pin'}</Text>
+              </Pressable>
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => openForwardSheet(actionMessage)}>
+                <Send color="#0A7CFF" size={18} />
+                <Text className="font-semibold text-slate-950">Forward</Text>
+              </Pressable>
+              {actionMessage?.reactions?.length ? (
+                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => {
+                  setReactionViewerMessage(actionMessage);
+                  setActionMessage(null);
+                }}>
+                  <Star color="#0A7CFF" size={18} />
+                  <Text className="font-semibold text-slate-950">View reactions</Text>
+                </Pressable>
+              ) : null}
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => {
+                setInfoMessage(actionMessage);
+                setActionMessage(null);
+              }}>
+                <Info color="#0A7CFF" size={18} />
+                <Text className="font-semibold text-slate-950">Info</Text>
+              </Pressable>
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-red-50 px-4" onPress={() => actionMessage && handleHide(actionMessage)}>
+                <Trash2 color="#DC2626" size={18} />
+                <Text className="font-semibold text-red-600">Remove for me</Text>
+              </Pressable>
+              {actionIsMine ? (
+                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-red-600 px-4" onPress={() => actionMessage && handleUnsend(actionMessage)}>
+                  <Trash2 color="#FFFFFF" size={18} />
+                  <Text className="font-semibold text-white">{groupMode ? 'Delete for everyone' : 'Unsend'}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal animationType="slide" transparent visible={pinnedOpen} onRequestClose={() => setPinnedOpen(false)}>
+        <View className="flex-1 justify-end bg-black/35">
+          <View className="max-h-[72%] rounded-t-[28px] bg-white p-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-slate-950">Pinned messages</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setPinnedOpen(false)}>
+                <X color="#0F172A" size={18} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {pinnedMessages.slice().reverse().map(message => (
+                <Pressable
+                  className="mb-2 rounded-2xl bg-slate-50 p-3"
+                  key={getEntityId(message)}
+                  onPress={() => {
+                    setPinnedOpen(false);
+                    setMessageSearch(getText(message));
+                    setSearchOpen(true);
+                  }}
+                >
+                  <View className="mb-1 flex-row items-center gap-2">
+                    <Pin color="#0A7CFF" size={14} />
+                    <Text className="text-xs font-bold text-slate-500" numberOfLines={1}>
+                      {isOwnMessage(message, currentUserId, groupMode) ? 'You' : getSenderName(message, groupMode)} · {formatMessageTime(message.createdAt)}
+                    </Text>
+                  </View>
+                  <Text className="text-sm font-semibold text-slate-950" numberOfLines={3}>
+                    {getText(message) || 'Media message'}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="slide" transparent visible={Boolean(forwardingMessage)} onRequestClose={() => setForwardingMessage(null)}>
+        <View className="flex-1 justify-end bg-black/35">
+          <View className="max-h-[82%] rounded-t-[28px] bg-white p-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-slate-950">Forward message</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setForwardingMessage(null)}>
+                <X color="#0F172A" size={18} />
+              </Pressable>
+            </View>
+            <View className="mb-3 rounded-2xl bg-slate-50 p-3">
+              <Text className="text-sm font-semibold text-slate-700" numberOfLines={3}>
+                {getText(forwardingMessage) || `${getMessageAttachments(forwardingMessage as Message).length || 1} media/file attachment`}
+              </Text>
+            </View>
+            <View className="mb-3 h-11 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3">
+              <Search color="#64748B" size={17} />
+              <TextInput
+                className="flex-1 text-[15px] text-slate-950"
+                onChangeText={setForwardQuery}
+                placeholder="Search people or groups"
+                placeholderTextColor="#94A3B8"
+                value={forwardQuery}
+              />
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {forwardTargets.contacts.map(contact => {
+                const targetId = getEntityId(contact);
+                return (
+                  <Pressable className="h-14 flex-row items-center gap-3 rounded-2xl px-2" key={`forward-user-${targetId}`} onPress={() => forwardToDirect(contact)}>
+                    <Avatar user={contact} size={40} />
+                    <View className="min-w-0 flex-1">
+                      <Text className="font-semibold text-slate-950" numberOfLines={1}>{getDisplayName(contact)}</Text>
+                      <Text className="text-xs text-slate-500" numberOfLines={1}>Direct message</Text>
+                    </View>
+                    {forwardingBusyId === targetId ? <ActivityIndicator color="#0A7CFF" /> : <Send color="#0A7CFF" size={18} />}
+                  </Pressable>
+                );
+              })}
+              {forwardTargets.groups.length ? (
+                <Text className="mb-1 mt-3 px-2 text-xs font-bold uppercase text-slate-400">Groups</Text>
+              ) : null}
+              {forwardTargets.groups.map(targetGroup => {
+                const targetId = getEntityId(targetGroup);
+                return (
+                  <Pressable className="h-14 flex-row items-center gap-3 rounded-2xl px-2" key={`forward-group-${targetId}`} onPress={() => forwardToGroup(targetGroup)}>
+                    <View className="h-10 w-10 items-center justify-center rounded-2xl bg-blue-100">
+                      <Users color="#0A7CFF" size={19} />
+                    </View>
+                    <View className="min-w-0 flex-1">
+                      <Text className="font-semibold text-slate-950" numberOfLines={1}>{targetGroup.name || 'Group chat'}</Text>
+                      <Text className="text-xs text-slate-500" numberOfLines={1}>Group message</Text>
+                    </View>
+                    {forwardingBusyId === targetId ? <ActivityIndicator color="#0A7CFF" /> : <Send color="#0A7CFF" size={18} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="slide" transparent visible={detailsOpen} onRequestClose={() => setDetailsOpen(false)}>
+        <View className="flex-1 justify-end bg-black/35">
+          <View className="max-h-[88%] rounded-t-[28px] bg-white">
+            <View className="flex-row items-center justify-between px-4 py-3">
+              <Text className="text-lg font-bold text-slate-950">Details</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setDetailsOpen(false)}>
+                <X color="#0F172A" size={18} />
+              </Pressable>
+            </View>
+            <ScrollView className="px-4" showsVerticalScrollIndicator={false}>
+              <View className="items-center pb-4">
+                <Avatar user={groupMode ? undefined : remoteUser} uri={groupMode ? group?.photo : avatar} name={displayName} size={88} />
+                <Text className="mt-3 text-xl font-black text-slate-950" numberOfLines={1}>{displayName}</Text>
+                <Text className="mt-1 text-sm text-slate-500" numberOfLines={1}>
+                  {groupMode ? `${group?.members?.length || 0} members` : chatStreak ? `${chatStreak.currentStreak} day streak` : 'Direct conversation'}
+                </Text>
+              </View>
+
+              <View className="mb-4 flex-row gap-2">
+                <Pressable className="flex-1 items-center rounded-2xl bg-slate-50 p-3" onPress={() => setFlag('pinned')}>
+                  <Pin color={hasChatFlag(chatFlags, 'pinned', activeChatId) ? '#0A7CFF' : '#64748B'} size={19} />
+                  <Text className="mt-1 text-xs font-bold text-slate-700">Pin</Text>
+                </Pressable>
+                <Pressable className="flex-1 items-center rounded-2xl bg-slate-50 p-3" onPress={() => setFlag('favorites')}>
+                  <Star color="#F59E0B" fill={hasChatFlag(chatFlags, 'favorites', activeChatId) ? '#F59E0B' : 'transparent'} size={19} />
+                  <Text className="mt-1 text-xs font-bold text-slate-700">Star</Text>
+                </Pressable>
+                <Pressable className="flex-1 items-center rounded-2xl bg-slate-50 p-3" onPress={() => setFlag('muted')}>
+                  <BellOff color={hasChatFlag(chatFlags, 'muted', activeChatId) ? '#DC2626' : '#64748B'} size={19} />
+                  <Text className="mt-1 text-xs font-bold text-slate-700">Mute</Text>
+                </Pressable>
+              </View>
+
+              {!groupMode ? (
+                <View className="mb-4 rounded-3xl bg-slate-50 p-4">
+                  <View className="mb-3 flex-row items-center gap-2">
+                    <UserRound color="#0A7CFF" size={18} />
+                    <Text className="font-bold text-slate-950">Nickname</Text>
+                  </View>
+                  <View className="flex-row items-center gap-2">
+                    <TextInput
+                      className="h-11 flex-1 rounded-2xl bg-white px-3 text-[15px] text-slate-950"
+                      onChangeText={setNicknameDraft}
+                      placeholder={userName}
+                      placeholderTextColor="#94A3B8"
+                      value={nicknameDraft}
+                    />
+                    <Pressable className="h-11 w-11 items-center justify-center rounded-2xl bg-blue-600" onPress={saveNickname}>
+                      <Check color="#FFFFFF" size={18} />
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
+              <View className="mb-4 rounded-3xl bg-slate-50 p-4">
+                <View className="mb-3 flex-row items-center gap-2">
+                  <Palette color="#0A7CFF" size={18} />
+                  <Text className="font-bold text-slate-950">Theme</Text>
+                </View>
+                <View className="flex-row flex-wrap gap-2">
+                  {CHAT_THEMES.map(theme => (
+                    <Pressable
+                      className={`h-10 min-w-20 flex-row items-center gap-2 rounded-2xl px-3 ${themeId === theme.id ? 'bg-white ring-2 ring-blue-500' : 'bg-white'}`}
+                      key={theme.id}
+                      onPress={() => saveTheme(theme.id)}
+                    >
+                      <View className="h-4 w-4 rounded-full" style={{ backgroundColor: theme.ownBubble }} />
+                      <Text className="text-xs font-bold text-slate-700">{theme.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View className="mb-4 rounded-3xl bg-slate-50 p-4">
+                <Text className="mb-3 font-bold text-slate-950">Background</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {CHAT_BACKGROUNDS.map(item => (
+                    <Pressable
+                      className={`h-11 w-11 rounded-2xl border-2 ${background.id === item.id ? 'border-blue-600' : 'border-white'}`}
+                      key={item.id}
+                      onPress={() => saveBackground(item.id)}
+                      style={{ backgroundColor: item.swatch }}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              {pinnedMessages.length ? (
+                <View className="mb-4 rounded-3xl bg-slate-50 p-4">
+                  <Text className="mb-2 font-bold text-slate-950">Pinned messages</Text>
+                  {pinnedMessages.slice(-8).map(message => (
+                    <Text className="mb-2 text-sm text-slate-600" key={getEntityId(message)} numberOfLines={2}>
+                      {getText(message) || 'Media message'}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+
+              <View className="mb-8 rounded-3xl bg-slate-50 p-4">
+                <Text className="mb-2 font-bold text-slate-950">Files and media</Text>
+                {sharedFiles.length ? sharedFiles.slice(-12).map((file, index) => (
+                  <Text className="mb-2 text-sm text-slate-600" key={`${file.fileUrl}-${index}`} numberOfLines={1}>
+                    {file.fileName || file.fileType || 'Attachment'}
+                  </Text>
+                )) : (
+                  <Text className="text-sm text-slate-500">No shared files yet.</Text>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={Boolean(infoMessage)} onRequestClose={() => setInfoMessage(null)}>
+        <View className="flex-1 justify-center bg-black/45 p-5">
+          <View className="rounded-[28px] bg-white p-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-slate-950">Message info</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setInfoMessage(null)}>
+                <X color="#0F172A" size={18} />
+              </Pressable>
+            </View>
+            {infoMessage ? (
+              <View className="gap-3">
+                <View className="rounded-2xl bg-slate-50 p-3">
+                  <Text className="text-xs font-bold uppercase text-slate-400">From</Text>
+                  <Text className="mt-1 font-semibold text-slate-950">{isOwnMessage(infoMessage, currentUserId, groupMode) ? 'You' : getSenderName(infoMessage, groupMode)}</Text>
+                </View>
+                <View className="rounded-2xl bg-slate-50 p-3">
+                  <Text className="text-xs font-bold uppercase text-slate-400">Time</Text>
+                  <Text className="mt-1 font-semibold text-slate-950">{formatMessageTime(infoMessage.createdAt)}</Text>
+                </View>
+                <View className="rounded-2xl bg-slate-50 p-3">
+                  <Text className="text-xs font-bold uppercase text-slate-400">Status</Text>
+                  <Text className="mt-1 font-semibold text-slate-950">
+                    {(infoMessage as Message).unsent ? 'Unsent' : (infoMessage as Message).read ? 'Seen' : groupMode ? 'Sent' : 'Delivered'}
+                  </Text>
+                </View>
+                {infoMessage.reactions?.length ? (
+                  <View className="rounded-2xl bg-slate-50 p-3">
+                    <Text className="text-xs font-bold uppercase text-slate-400">Reactions</Text>
+                    <Text className="mt-1 font-semibold text-slate-950">{infoMessage.reactions.map(reaction => reaction.emoji).join(' ')}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={Boolean(reactionViewerMessage)} onRequestClose={() => setReactionViewerMessage(null)}>
+        <View className="flex-1 justify-center bg-black/45 p-5">
+          <View className="max-h-[72%] rounded-[28px] bg-white p-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-slate-950">
+                {reactionViewerMessage?.reactions?.length || 0} reacted
+              </Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setReactionViewerMessage(null)}>
+                <X color="#0F172A" size={18} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {reactionViewerMessage?.reactions?.length ? reactionViewerMessage.reactions.map((reaction, index) => {
+                const reactor = typeof reaction.userId === 'object' ? reaction.userId : undefined;
+                const reactorId = getEntityId(reaction.userId);
+                const isMine = reactorId === currentUserId;
+                return (
+                  <View className="mb-2 flex-row items-center gap-3 rounded-2xl bg-slate-50 p-3" key={`${reaction.emoji}-${reactorId || index}`}>
+                    <View>
+                      <Avatar user={reactor} size={42} />
+                      <View className="absolute -bottom-1 -right-1 h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
+                        <Text className="text-sm">{reaction.emoji}</Text>
+                      </View>
+                    </View>
+                    <View className="min-w-0 flex-1">
+                      <Text className="font-semibold text-slate-950" numberOfLines={1}>
+                        {isMine ? 'You' : getDisplayName(reactor, 'Member')}
+                      </Text>
+                      <Text className="text-xs text-slate-500" numberOfLines={1}>
+                        Reacted with {reaction.emoji}
+                      </Text>
+                    </View>
+                    {isMine ? (
+                      <Pressable className="rounded-full bg-white px-3 py-2" onPress={() => reactionViewerMessage && handleRemoveMyReaction(reactionViewerMessage, reaction.emoji)}>
+                        <Text className="text-xs font-bold text-red-600">Remove</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              }) : (
+                <Text className="py-5 text-center text-sm text-slate-500">No reactions yet.</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

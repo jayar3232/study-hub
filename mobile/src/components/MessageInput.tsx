@@ -1,7 +1,6 @@
-import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { Camera, ImagePlus, Send, X } from 'lucide-react-native';
 import type { ImagePickerAsset } from 'expo-image-picker';
@@ -13,7 +12,9 @@ type MessageInputProps = {
   onAttach: (assets: ImagePickerAsset[]) => void;
   sending?: boolean;
   replyLabel?: string;
+  editingLabel?: string;
   onClearReply?: () => void;
+  onClearEdit?: () => void;
 };
 
 export default function MessageInput({
@@ -23,7 +24,9 @@ export default function MessageInput({
   onAttach,
   sending = false,
   replyLabel,
-  onClearReply
+  editingLabel,
+  onClearReply,
+  onClearEdit
 }: MessageInputProps) {
   const scale = useSharedValue(1);
   const sendStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -63,10 +66,24 @@ export default function MessageInput({
   };
 
   return (
-    <View className="border-t border-slate-200/80">
-      <BlurView intensity={82} style={StyleSheet.absoluteFill} tint="light" />
+    <View className="border-t border-slate-200/80 bg-white/95">
       <View className="px-3 pb-3 pt-2">
-        {replyLabel ? (
+        {editingLabel ? (
+          <View className="mb-2 flex-row items-center gap-2 rounded-2xl bg-amber-50 px-3 py-2">
+            <View className="h-8 w-1 rounded-full bg-amber-500" />
+            <View className="min-w-0 flex-1">
+              <Text className="text-[11px] font-semibold uppercase text-amber-700" numberOfLines={1}>
+                Editing message
+              </Text>
+              <Text className="mt-0.5 text-xs text-slate-600" numberOfLines={2}>
+                {editingLabel}
+              </Text>
+            </View>
+            <Pressable className="h-8 w-8 items-center justify-center rounded-full bg-white" onPress={onClearEdit}>
+              <X color="#475569" size={16} />
+            </Pressable>
+          </View>
+        ) : replyLabel ? (
           <View className="mb-2 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2">
             <View className="h-8 w-1 rounded-full bg-blue-600" />
             <Text className="flex-1 text-xs text-slate-600" numberOfLines={2}>

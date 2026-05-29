@@ -2,7 +2,7 @@
   "expo": {
     "name": "Syncrova Messenger",
     "slug": "syncrova-messenger-native",
-    "version": "0.1.0",
+    "version": "4.4.37",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.nemsu.studenthub.messenger.native",
+      "bundleIdentifier": "com.nemsu.studenthub.messenger",
       "infoPlist": {
         "NSCameraUsageDescription": "Syncrova uses the camera to send photo and video messages.",
         "NSMicrophoneUsageDescription": "Syncrova uses the microphone for media messages.",
@@ -22,7 +22,8 @@
       }
     },
     "android": {
-      "package": "com.nemsu.studenthub.messenger.native",
+      "package": "com.nemsu.studenthub.messenger",
+      "versionCode": 84,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
@@ -35,14 +36,18 @@
       ]
     },
     "plugins": [
+      [
+        "@livekit/react-native-expo-plugin",
+        {
+          "android": {
+            "audioType": "communication"
+          }
+        }
+      ],
+      "@config-plugins/react-native-webrtc",
       "expo-image-picker",
       "expo-camera",
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Syncrova uses the microphone for media messages."
-        }
-      ]
+      "expo-video"
     ],
     "extra": {
       "backendOrigin": "https://study-hub-app.onrender.com",

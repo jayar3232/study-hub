@@ -2,6 +2,7 @@ import 'react-native-gesture-handler';
 import './global.css';
 
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -10,7 +11,7 @@ import { AuthProvider } from './src/store/AuthContext';
 
 export default function App() {
   return (
-    <GestureHandlerRootView className="flex-1 bg-white">
+    <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <AuthProvider>
           <StatusBar style="dark" />
@@ -20,3 +21,10 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#FFFFFF'
+  }
+});

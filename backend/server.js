@@ -184,13 +184,12 @@ const redirectOutdatedReleaseApk = (req, res, next) => {
   const requested = requestedFile.toLowerCase();
   const current = currentFile.toLowerCase();
   const messengerLatestFile = 'syncrova-messenger-latest.apk';
-  const messengerCurrentFile = `syncrova-messenger-${String(releaseVersion || '').replace(/[^a-zA-Z0-9._-]/g, '-')}.apk`;
 
   if (requested.startsWith('syncrova-messenger-')) {
-    if (requested === messengerLatestFile || requested === messengerCurrentFile.toLowerCase()) return next();
+    if (requested === messengerLatestFile) return next();
 
     setApkNoCacheHeaders(res);
-    return res.redirect(302, `/releases/${messengerCurrentFile}`);
+    return res.redirect(302, `/releases/${messengerLatestFile}`);
   }
 
   if (requested === current || requested === 'syncrova-latest.apk') return next();

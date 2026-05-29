@@ -6,6 +6,7 @@ export type User = {
   name?: string;
   email?: string;
   avatar?: string;
+  profilePicture?: string;
   coverPhoto?: string;
   lastSeen?: string;
   bio?: string;
@@ -36,8 +37,12 @@ export type Message = {
   read?: boolean;
   readAt?: string;
   editedAt?: string;
+  pinned?: boolean;
   unsent?: boolean;
+  unsentAt?: string;
   system?: boolean;
+  systemType?: string;
+  systemData?: Record<string, unknown>;
   replyTo?: Message | EntityId | null;
   reactions?: Array<{ emoji: string; userId?: User | EntityId }>;
   attachments?: MessageAttachment[];
@@ -48,15 +53,111 @@ export type Message = {
   fileSize?: number;
 };
 
+export type ConversationSettings = {
+  backgroundId?: string;
+  nicknames?: Record<string, string>;
+};
+
 export type Conversation = {
   user: User;
   lastMessage?: string;
   lastTime?: string;
   unreadCount?: number;
-  conversation?: {
-    backgroundId?: string;
-    nicknames?: Record<string, string>;
-  };
+  conversation?: ConversationSettings;
+};
+
+export type ChatStreak = {
+  currentStreak: number;
+  longestStreak: number;
+  mutualDays: number;
+  todayActive: boolean;
+  lastMutualDay?: string | null;
+};
+
+export type Group = {
+  _id?: EntityId;
+  id?: EntityId;
+  name?: string;
+  description?: string;
+  subject?: string;
+  photo?: string;
+  backgroundId?: string;
+  creator?: User | EntityId;
+  coCreators?: Array<User | EntityId>;
+  members?: Array<User | EntityId>;
+  joinCode?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type GroupMessage = {
+  _id?: EntityId;
+  id?: EntityId;
+  groupId?: Group | EntityId;
+  userId?: User | EntityId;
+  text?: string;
+  createdAt?: string;
+  editedAt?: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  pinned?: boolean;
+  pinnedAt?: string;
+  system?: boolean;
+  systemType?: string;
+  systemData?: Record<string, unknown>;
+  replyTo?: GroupMessage | EntityId | null;
+  reactions?: Array<{ emoji: string; userId?: User | EntityId }>;
+  seenBy?: Array<{ userId?: User | EntityId; seenAt?: string }>;
+};
+
+export type UserNote = {
+  _id?: EntityId;
+  id?: EntityId;
+  userId?: User | EntityId;
+  text?: string;
+  reactions?: Array<{ emoji: string; userId?: User | EntityId }>;
+  views?: Array<{ userId?: User | EntityId; viewedAt?: string }>;
+  comments?: Array<{
+    _id?: EntityId;
+    id?: EntityId;
+    userId?: User | EntityId;
+    text?: string;
+    date?: string;
+    reactions?: Array<{ emoji: string; userId?: User | EntityId }>;
+  }>;
+  expiresAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type Story = {
+  _id?: EntityId;
+  id?: EntityId;
+  userId?: User | EntityId;
+  caption?: string;
+  fileUrl?: string;
+  fileType?: 'image' | 'video' | string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  mediaVariants?: Record<string, string | { fileUrl?: string; url?: string }>;
+  variants?: Record<string, string | { fileUrl?: string; url?: string }>;
+  reactions?: Array<{ emoji: string; userId?: User | EntityId }>;
+  viewers?: Array<{ userId?: User | EntityId; viewedAt?: string }>;
+  comments?: Array<{ userId?: User | EntityId; text?: string; createdAt?: string }>;
+  expiresAt?: string;
+  createdAt?: string;
+};
+
+export type StoryGroup = {
+  ownerId?: EntityId;
+  owner?: User;
+  stories?: Story[];
+  preview?: Story;
+  count?: number;
 };
 
 export type UploadedAttachment = {
@@ -70,6 +171,8 @@ export type UploadedAttachment = {
   variants?: Record<string, unknown>;
 };
 
+export type ThreadMode = 'direct' | 'group';
+
 export type RootStackParamList = {
   Login: undefined;
   ChatList: undefined;
@@ -78,6 +181,9 @@ export type RootStackParamList = {
     userName: string;
     avatar?: string;
     user?: User;
+    mode?: ThreadMode;
+    group?: Group;
+    conversation?: ConversationSettings;
   };
   Profile: undefined;
   Settings: undefined;
