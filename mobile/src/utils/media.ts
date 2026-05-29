@@ -21,7 +21,8 @@ export const resolveMediaVariantUrl = (asset?: MessageAttachment) => {
   return resolveMediaUrl(asset.fileUrl);
 };
 
-export const getMessageAttachments = (message: Message): MessageAttachment[] => {
+export const getMessageAttachments = (message?: Partial<Message> | null): MessageAttachment[] => {
+  if (!message) return [];
   const attachments = Array.isArray(message.attachments)
     ? message.attachments.filter(item => item?.fileUrl)
     : [];

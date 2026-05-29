@@ -983,17 +983,22 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const visibleMessages = useMemo(
+    () => messages.filter((message): message is ThreadMessage => Boolean(message && typeof message === 'object')),
+    [messages]
+  );
+
   const searchedMessageIds = useMemo(() => {
     const needle = messageSearch.trim().toLowerCase();
     if (!needle) return new Set<string>();
-    return new Set(messages
+    return new Set(visibleMessages
       .filter(message => getText(message).toLowerCase().includes(needle) || getSenderName(message, groupMode).toLowerCase().includes(needle))
       .map(message => getEntityId(message))
       .filter(Boolean));
-  }, [groupMode, messageSearch, messages]);
+  }, [groupMode, messageSearch, visibleMessages]);
 
-  const pinnedMessages = useMemo(() => messages.filter(message => message.pinned), [messages]);
-  const sharedFiles = useMemo(() => messages.flatMap(message => getMessageAttachments(message as Message)), [messages]);
+  const pinnedMessages = useMemo(() => visibleMessages.filter(message => message.pinned), [visibleMessages]);
+  const sharedFiles = useMemo(() => visibleMessages.flatMap(message => getMessageAttachments(message as Message)), [visibleMessages]);
   const forwardTargets = useMemo(() => {
     const needle = forwardQuery.trim().toLowerCase();
     const contacts = forwardContacts
@@ -1099,7 +1104,7 @@ export default function ChatRoomScreen() {
       ) : (
         <View className="flex-1" style={background.style}>
           <FlashList
-            data={messages}
+            data={visibleMessages}
             keyExtractor={(item, index) => getMessageKey(item as Message, index)}
             ListHeaderComponent={loadingOlder ? <ActivityIndicator className="my-3" color="#0A7CFF" /> : null}
             maintainVisibleContentPosition={{
