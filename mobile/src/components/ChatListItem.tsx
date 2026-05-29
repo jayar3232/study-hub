@@ -3,10 +3,11 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { BellOff, Pin, Star, Trash2 } from 'lucide-react-native';
-import Avatar from './Avatar';
+import Avatar, { AvatarStoryRing } from './Avatar';
 import type { Conversation } from '../types';
 import { formatConversationTime } from '../utils/date';
 import { getEntityId } from '../utils/ids';
+import { useTheme } from '../theme/ThemeContext';
 
 type ChatListItemProps = {
   item: Conversation;
@@ -17,9 +18,12 @@ type ChatListItemProps = {
   muted?: boolean;
   favorite?: boolean;
   online?: boolean;
+  statusLabel?: string;
+  typingLabel?: string;
+  storyRing?: AvatarStoryRing;
 };
 
-export default function ChatListItem({
+function ChatListItem({
   item,
   onPress,
   onDelete,
@@ -27,12 +31,33 @@ export default function ChatListItem({
   pinned = false,
   muted = false,
   favorite = false,
-  online = false
+  online = false,
+  statusLabel,
+  typingLabel,
+  storyRing = 'none'
 }: ChatListItemProps) {
   const user = item.user;
+  const { colors } = useTheme();
   const userId = getEntityId(user);
   const translateX = useSharedValue(0);
   const name = displayName || user.name || user.email || 'Syncrova user';
+  const subtitle = typingLabel || (online ? 'Active now' : item.lastMessage || statusLabel || 'Open chat');
+  const subtitleClassName = typingLabel
+    ? 'font-semibold text-blue-600'
+    : online && !item.lastMessage
+      ? 'font-semibold text-emerald-600'
+      : item.unreadCount
+        ? 'font-semibold text-slate-950'
+        : online
+          ? 'text-emerald-600'
+          : 'text-slate-500';
+  const subtitleColor = typingLabel
+    ? colors.primary
+    : online
+      ? colors.online
+      : item.unreadCount
+        ? colors.text
+        : colors.mutedText;
 
   const confirmDelete = () => {
     Alert.alert('Delete conversation?', user.name || 'This chat', [
@@ -56,39 +81,38 @@ export default function ChatListItem({
   }));
 
   return (
-    <View className="h-[72px] justify-center overflow-hidden bg-white">
+    <View className="h-[72px] justify-center overflow-hidden" style={{ backgroundColor: colors.background }}>
       <View className="absolute right-0 h-full w-24 items-center justify-center bg-red-500">
         <Trash2 color="white" size={22} />
       </View>
       <GestureDetector gesture={pan}>
         <Animated.View style={animatedStyle}>
           <Pressable
-            className="h-[72px] flex-row items-center gap-3 bg-white px-4"
+            className="h-[72px] flex-row items-center gap-3 px-4"
             onLongPress={confirmDelete}
             onPress={onPress}
+            style={{ backgroundColor: colors.background }}
           >
-            <View>
-              <Avatar user={user} size={52} sharedTag={`avatar-${userId}`} />
-              {online ? <View className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" /> : null}
-            </View>
+            <Avatar online={online} storyRing={storyRing} user={user} size={52} sharedTag={`avatar-${userId}`} />
             <View className="min-w-0 flex-1">
               <View className="flex-row items-center gap-2">
-                <Text className="flex-1 text-[15px] font-semibold text-slate-950" numberOfLines={1}>
+                <Text className="flex-1 text-[15px] font-semibold" numberOfLines={1} style={{ color: colors.text }}>
                   {name}
                 </Text>
                 {pinned ? <Pin color="#64748B" size={13} /> : null}
                 {favorite ? <Star color="#F59E0B" fill="#F59E0B" size={13} /> : null}
                 {muted ? <BellOff color="#94A3B8" size={13} /> : null}
-                <Text className="text-xs text-slate-400" numberOfLines={1}>
+                <Text className="text-xs" numberOfLines={1} style={{ color: colors.mutedText }}>
                   {formatConversationTime(item.lastTime)}
                 </Text>
               </View>
               <View className="mt-1 flex-row items-center gap-2">
                 <Text
-                  className={`flex-1 text-[13px] ${item.unreadCount ? 'font-semibold text-slate-950' : 'text-slate-500'}`}
+                  className={`flex-1 text-[13px] ${subtitleClassName}`}
                   numberOfLines={1}
+                  style={{ color: subtitleColor }}
                 >
-                  {item.lastMessage || 'Open chat'}
+                  {subtitle}
                 </Text>
                 {item.unreadCount ? (
                   <View className="min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5">
@@ -105,3 +129,21 @@ export default function ChatListItem({
     </View>
   );
 }
+
+export default React.memo(ChatListItem, (prev, next) => {
+  const prevId = getEntityId(prev.item.user);
+  const nextId = getEntityId(next.item.user);
+
+  return prevId === nextId
+    && prev.item.lastMessage === next.item.lastMessage
+    && prev.item.lastTime === next.item.lastTime
+    && prev.item.unreadCount === next.item.unreadCount
+    && prev.displayName === next.displayName
+    && prev.pinned === next.pinned
+    && prev.muted === next.muted
+    && prev.favorite === next.favorite
+    && prev.online === next.online
+    && prev.statusLabel === next.statusLabel
+    && prev.typingLabel === next.typingLabel
+    && prev.storyRing === next.storyRing;
+});

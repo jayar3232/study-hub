@@ -8,20 +8,23 @@ import LoginScreen from '../screens/LoginScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import { useAuth } from '../store/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import type { RootStackParamList } from '../types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function BootScreen() {
+  const { colors } = useTheme();
   return (
-    <View className="flex-1 items-center justify-center bg-white">
-      <ActivityIndicator color="#0A7CFF" size="large" />
+    <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.background }}>
+      <ActivityIndicator color={colors.primary} size="large" />
     </View>
   );
 }
 
 export default function AppNavigator() {
   const { loading, isAuthenticated } = useAuth();
+  const { colors } = useTheme();
 
   if (loading) return <BootScreen />;
 
@@ -31,7 +34,7 @@ export default function AppNavigator() {
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
-          contentStyle: { backgroundColor: '#FFFFFF' }
+          contentStyle: { backgroundColor: colors.background }
         }}
       >
         {isAuthenticated ? (

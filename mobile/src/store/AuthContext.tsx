@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import api, { setApiTokenGetter, setUnauthorizedHandler } from '../services/api';
 import { disconnectSocket, refreshSocketAuth, setSocketTokenGetter } from '../services/socket';
 import type { User } from '../types';
+import { usePresenceStore } from './presenceStore';
 
 const TOKEN_KEY = 'syncrova.nativeMessenger.token';
 
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await AsyncStorage.removeItem(TOKEN_KEY);
     disconnectSocket();
+    usePresenceStore.getState().resetPresence();
     setToken(null);
     setUser(null);
   }, []);

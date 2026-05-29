@@ -36,8 +36,10 @@ import {
   updateGroupBackground,
   uploadMessageAsset
 } from '../services/messages';
-import { getSocket } from '../services/socket';
+import { emitTypingStart, emitTypingStop, getSocket } from '../services/socket';
 import { useAuth } from '../store/AuthContext';
+import { usePresenceStore } from '../store/presenceStore';
+import { useTheme } from '../theme/ThemeContext';
 import type { ChatStreak, ConversationSettings, Group, GroupMessage, Message, RootStackParamList, User } from '../types';
 import {
   CallMode,
@@ -50,7 +52,7 @@ import {
   serializeCallUser
 } from '../services/calls';
 import { CHAT_BACKGROUNDS, CHAT_THEMES, QUICK_REACTIONS, getBackgroundById, getThemeById } from '../utils/chatCustomizations';
-import { formatConversationTime, formatMessageTime } from '../utils/date';
+import { formatActiveStatus, formatMessageTime } from '../utils/date';
 import { getEntityId, getMessageKey } from '../utils/ids';
 import { getMessageAttachments } from '../utils/media';
 import { ChatFlagState, hasChatFlag, loadChatFlags, loadChatThemes, saveChatFlags, saveChatTheme, toggleChatFlag } from '../utils/preferences';
@@ -87,11 +89,6 @@ const isOwnMessage = (message: ThreadMessage, currentUserId: string, groupMode: 
   getEntityId(getSender(message, groupMode)) === currentUserId
 );
 
-const formatPresenceLastSeen = (lastSeen?: string | null) => {
-  if (!lastSeen) return 'Offline';
-  return `Active ${formatConversationTime(lastSeen)}`;
-};
-
 const formatCallDuration = (startedAt?: number | null) => {
   if (!startedAt) return '';
   const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -112,6 +109,7 @@ export default function ChatRoomScreen() {
   const navigation = useNavigation<Navigation>();
   const route = useRoute<RouteProps>();
   const { user } = useAuth();
+  const { colors } = useTheme();
   const currentUserId = getEntityId(user);
   const { chatId, userName, avatar } = route.params;
   const groupMode = route.params.mode === 'group';
@@ -160,6 +158,7 @@ export default function ChatRoomScreen() {
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callClock, setCallClock] = useState(Date.now());
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingEmitAtRef = useRef(0);
   const activeCallRef = useRef<ActiveCallRef>({ callId: '', mode: 'audio', partnerId: '', state: 'idle' });
 
   const selectedTheme = getThemeById(themeId);
@@ -169,6 +168,8 @@ export default function ChatRoomScreen() {
   const backgroundId = groupMode ? group?.backgroundId : conversation?.backgroundId;
   const background = getBackgroundById(backgroundId);
   const activeChatId = chatId;
+  const presenceStatus = usePresenceStore(state => state.statuses[chatId]);
+  const storeRemoteTyping = usePresenceStore(state => Boolean(state.typingByChat[chatId]?.length));
 
   useEffect(() => {
     let mounted = true;
@@ -187,6 +188,13 @@ export default function ChatRoomScreen() {
     setRemoteOnline(false);
     setRemoteLastSeen(remoteUser.lastSeen || null);
   }, [chatId, remoteUser.lastSeen]);
+
+  useEffect(() => {
+    if (groupMode || !presenceStatus) return;
+    setRemoteOnline(presenceStatus.online);
+    if (presenceStatus.lastSeen) setRemoteLastSeen(presenceStatus.lastSeen);
+    setPresenceReady(true);
+  }, [groupMode, presenceStatus]);
 
   useEffect(() => {
     setNicknameDraft(conversation?.nicknames?.[chatId] || '');
@@ -690,19 +698,24 @@ export default function ChatRoomScreen() {
 
   const stopTyping = useCallback(async () => {
     if (!currentUserId || groupMode) return;
-    const socket = await getSocket();
-    socket.emit('stop-typing', { to: chatId, from: currentUserId });
+    lastTypingEmitAtRef.current = 0;
+    await emitTypingStop({ chatId, to: chatId, from: currentUserId });
   }, [chatId, currentUserId, groupMode]);
 
   const updateComposer = async (text: string) => {
     setComposer(text);
     if (!currentUserId || groupMode) return;
-    const socket = await getSocket();
-    socket.emit('typing', { to: chatId, from: currentUserId });
+
+    const now = Date.now();
+    if (now - lastTypingEmitAtRef.current > 3000) {
+      lastTypingEmitAtRef.current = now;
+      emitTypingStart({ chatId, to: chatId, from: currentUserId }).catch(() => {});
+    }
+
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
       stopTyping().catch(() => {});
-    }, 900);
+    }, 2000);
   };
 
   const submitText = async () => {
@@ -1015,17 +1028,21 @@ export default function ChatRoomScreen() {
   }, [currentUserId, forwardContacts, forwardGroups, forwardQuery]);
   const actionIsMine = actionMessage ? isOwnMessage(actionMessage, currentUserId, groupMode) : false;
   const canEditAction = Boolean(actionMessage && actionIsMine && !groupMode && getText(actionMessage) && !getMessageAttachments(actionMessage as Message).length && !(actionMessage as Message).unsent);
+  const effectiveRemoteTyping = remoteTyping || storeRemoteTyping;
+  const effectiveRemoteOnline = presenceStatus?.online ?? remoteOnline;
+  const effectiveRemoteLastSeen = presenceStatus?.lastSeen ?? remoteLastSeen;
   const presenceText = groupMode
     ? `${group?.members?.length || 0} members`
-    : remoteTyping
+    : effectiveRemoteTyping
       ? 'Typing...'
       : !socketConnected
         ? 'Connecting...'
         : !presenceReady
           ? 'Checking status...'
-          : remoteOnline
-            ? 'Active now'
-            : formatPresenceLastSeen(remoteLastSeen);
+          : formatActiveStatus({
+            online: effectiveRemoteOnline,
+            lastSeen: effectiveRemoteLastSeen
+          });
   const callDurationText = useMemo(() => formatCallDuration(callStartedAt), [callClock, callStartedAt]);
   const callStatusText = callState === 'incoming'
     ? `Incoming ${callMode === 'video' ? 'video' : 'audio'} call`
@@ -1038,48 +1055,56 @@ export default function ChatRoomScreen() {
           : callError;
 
   return (
-    <View className="flex-1 bg-slate-100 pt-12">
-      <View className="border-b border-slate-200 bg-white">
+    <View className="flex-1 pt-12" style={{ backgroundColor: colors.surface }}>
+      <View className="border-b" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
         <View className="h-16 flex-row items-center gap-3 px-3">
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => navigation.goBack()}>
-            <ArrowLeft color="#0F172A" size={22} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => navigation.goBack()} style={{ backgroundColor: colors.surface }}>
+            <ArrowLeft color={colors.text} size={22} />
           </Pressable>
-          <Avatar user={groupMode ? undefined : remoteUser} uri={groupMode ? group?.photo : avatar} name={displayName} size={42} sharedTag={`${groupMode ? 'group' : 'avatar'}-${chatId}`} />
+          <Avatar
+            name={displayName}
+            online={!groupMode && effectiveRemoteOnline}
+            sharedTag={`${groupMode ? 'group' : 'avatar'}-${chatId}`}
+            size={42}
+            uri={groupMode ? group?.photo : avatar}
+            user={groupMode ? undefined : remoteUser}
+          />
           <Pressable className="min-w-0 flex-1" onPress={() => setDetailsOpen(true)}>
-            <Text className="text-[16px] font-semibold text-slate-950" numberOfLines={1}>
+            <Text className="text-[16px] font-semibold" numberOfLines={1} style={{ color: colors.text }}>
               {displayName}
             </Text>
-            <Text className="text-xs text-slate-500" numberOfLines={1}>
+            <Text className={`text-xs ${!groupMode && effectiveRemoteOnline ? 'font-semibold' : ''}`} numberOfLines={1} style={{ color: !groupMode && effectiveRemoteOnline ? colors.online : colors.mutedText }}>
               {presenceText}
             </Text>
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => startCall('audio')}>
-            <Phone color="#0A7CFF" size={19} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => startCall('audio')} style={{ backgroundColor: colors.surface }}>
+            <Phone color={colors.primary} size={19} />
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => startCall('video')}>
-            <Video color="#0A7CFF" size={19} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => startCall('video')} style={{ backgroundColor: colors.surface }}>
+            <Video color={colors.primary} size={19} />
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => setSearchOpen(value => !value)}>
-            <Search color="#0F172A" size={19} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => setSearchOpen(value => !value)} style={{ backgroundColor: colors.surface }}>
+            <Search color={colors.text} size={19} />
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => setDetailsOpen(true)}>
-            <MoreVertical color="#0F172A" size={20} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => setDetailsOpen(true)} style={{ backgroundColor: colors.surface }}>
+            <MoreVertical color={colors.text} size={20} />
           </Pressable>
         </View>
         {searchOpen ? (
           <View className="px-3 pb-3">
-            <View className="h-11 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3">
-              <Search color="#64748B" size={17} />
+            <View className="h-11 flex-row items-center gap-2 rounded-2xl px-3" style={{ backgroundColor: colors.input }}>
+              <Search color={colors.mutedText} size={17} />
               <TextInput
-                className="flex-1 text-[15px] text-slate-950"
+                className="flex-1 text-[15px]"
                 onChangeText={setMessageSearch}
                 placeholder="Search in conversation"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={colors.mutedText}
+                style={{ color: colors.text }}
                 value={messageSearch}
               />
               {messageSearch ? (
                 <Pressable onPress={() => setMessageSearch('')}>
-                  <X color="#64748B" size={17} />
+                  <X color={colors.mutedText} size={17} />
                 </Pressable>
               ) : null}
             </View>
@@ -1132,7 +1157,7 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
-      {remoteTyping ? (
+      {effectiveRemoteTyping ? (
         <View className="px-3 pb-2" style={background.style}>
           <TypingIndicator />
         </View>

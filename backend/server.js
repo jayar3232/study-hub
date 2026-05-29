@@ -359,6 +359,18 @@ const broadcastOnlineUsers = () => {
   io.emit('online-users', getOnlineUserIds());
 };
 
+const broadcastUserStatusChange = (userId, status, lastSeen = null) => {
+  const normalizedUserId = normalizeId(userId);
+  if (!normalizedUserId) return;
+
+  io.emit('user-status-change', {
+    userId: normalizedUserId,
+    status,
+    online: status === 'online',
+    lastSeen
+  });
+};
+
 const addUserSocket = (userId, socketId) => {
   const id = normalizeId(userId);
   if (!id) return false;
@@ -382,6 +394,7 @@ const registerOnlineUser = (socket, userId) => {
 
   if (wasOffline) {
     socket.broadcast.emit('user-online', normalizedUserId);
+    broadcastUserStatusChange(normalizedUserId, 'online', null);
   }
 
   return true;
@@ -407,6 +420,24 @@ const removeUserSocket = (socket) => {
 
   onlineUsers.set(userId, sockets);
   return null;
+};
+
+const markSocketUserOffline = async (socket) => {
+  const disconnectedUserId = removeUserSocket(socket);
+
+  if (!disconnectedUserId) return null;
+
+  const lastSeen = new Date();
+  await User.findByIdAndUpdate(disconnectedUserId, { lastSeen }).catch(err => {
+    console.log('Last seen update failed:', err.message);
+  });
+
+  console.log(`User ${disconnectedUserId} went offline`);
+  socket.broadcast.emit('user-offline', { userId: disconnectedUserId, lastSeen });
+  broadcastUserStatusChange(disconnectedUserId, 'offline', lastSeen);
+  broadcastOnlineUsers();
+
+  return { userId: disconnectedUserId, lastSeen };
 };
 
 const BOW_DUEL_BOWS = [
@@ -886,6 +917,27 @@ io.on('connection', async (socket) => {
     }
   });
 
+  socket.on('user-offline', async (userId, callback) => {
+    const normalizedUserId = normalizeId(userId);
+    const socketUserId = normalizeId(socket.data?.userId);
+
+    if (normalizedUserId && socketUserId && normalizedUserId === socketUserId) {
+      const result = await markSocketUserOffline(socket);
+      if (typeof callback === 'function') {
+        callback({
+          ok: true,
+          lastSeen: result?.lastSeen || new Date(),
+          onlineUsers: getOnlineUserIds()
+        });
+      }
+      return;
+    }
+
+    if (typeof callback === 'function') {
+      callback({ ok: false, onlineUsers: getOnlineUserIds() });
+    }
+  });
+
   // Check online status
   socket.on('check-online', async (userId, callback) => {
     const normalizedUserId = normalizeId(userId);
@@ -901,26 +953,36 @@ io.on('connection', async (socket) => {
     if (callback) callback(getOnlineUserIds());
   });
 
-  // Typing event
-  socket.on('typing', ({ to, from }) => {
-    const toId = normalizeId(to);
-    const fromId = normalizeId(from);
+  const forwardTyping = (eventName, { to, from, chatId } = {}) => {
+    const toId = normalizeId(to || chatId);
+    const fromId = normalizeId(from || socket.data?.userId);
     const socketUserId = normalizeId(socket.data?.userId);
 
     if (toId && fromId && socketUserId && fromId === socketUserId) {
-      io.to(`user_${toId}`).emit('user-typing', { from: fromId });
+      io.to(`user_${toId}`).emit(eventName, {
+        chatId: fromId,
+        from: fromId,
+        userId: fromId
+      });
     }
+  };
+
+  // Typing event
+  socket.on('typing', payload => {
+    forwardTyping('user-typing', payload);
   });
 
   // Stop typing
-  socket.on('stop-typing', ({ to, from }) => {
-    const toId = normalizeId(to);
-    const fromId = normalizeId(from);
-    const socketUserId = normalizeId(socket.data?.userId);
+  socket.on('stop-typing', payload => {
+    forwardTyping('user-stop-typing', payload);
+  });
 
-    if (toId && fromId && socketUserId && fromId === socketUserId) {
-      io.to(`user_${toId}`).emit('user-stop-typing', { from: fromId });
-    }
+  socket.on('typing-start', payload => {
+    forwardTyping('user-typing', payload);
+  });
+
+  socket.on('typing-stop', payload => {
+    forwardTyping('user-stop-typing', payload);
   });
 
   const forwardDirectCallEvent = (eventName, rawPayload = {}) => {
@@ -1274,18 +1336,7 @@ io.on('connection', async (socket) => {
 
     leaveBowDuelMatch(socket, 'connection_lost');
 
-    const disconnectedUserId = removeUserSocket(socket);
-
-    if (disconnectedUserId) {
-      const lastSeen = new Date();
-      await User.findByIdAndUpdate(disconnectedUserId, { lastSeen }).catch(err => {
-        console.log('Last seen update failed:', err.message);
-      });
-      console.log(`User ${disconnectedUserId} went offline`);
-
-      socket.broadcast.emit('user-offline', { userId: disconnectedUserId, lastSeen });
-      broadcastOnlineUsers();
-    }
+    await markSocketUserOffline(socket);
 
     console.log('Client disconnected');
   });

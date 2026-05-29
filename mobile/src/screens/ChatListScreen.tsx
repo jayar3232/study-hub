@@ -31,8 +31,11 @@ import {
 } from '../services/messages';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../store/AuthContext';
+import { usePresenceStore } from '../store/presenceStore';
+import { useTheme } from '../theme/ThemeContext';
 import type { Conversation, Group, RootStackParamList, Story, StoryGroup, User, UserNote } from '../types';
 import { QUICK_REACTIONS } from '../utils/chatCustomizations';
+import { formatActiveStatus } from '../utils/date';
 import { getEntityId } from '../utils/ids';
 import { resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
 import { ChatFlagState, hasChatFlag, loadChatFlags, saveChatFlags, toggleChatFlag } from '../utils/preferences';
@@ -40,6 +43,17 @@ import { ChatFlagState, hasChatFlag, loadChatFlags, saveChatFlags, toggleChatFla
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'ChatList'>;
 type ListMode = 'direct' | 'groups';
 type ConversationFilter = 'all' | 'pinned' | 'unread' | 'favorites' | 'muted';
+type StoryBarItem = {
+  key: string;
+  kind: 'me' | 'story' | 'contact';
+  label: string;
+  user?: User;
+  storyGroup?: StoryGroup;
+  previewUri?: string;
+  previewType?: string;
+  storyRing: 'unviewed' | 'viewed' | 'none';
+  online: boolean;
+};
 
 const emptyFlags: ChatFlagState = {
   pinned: [],
@@ -51,6 +65,13 @@ const getUserName = (user?: User | null) => user?.name || user?.email || 'Syncro
 const getNoteOwner = (note?: UserNote | null) => (typeof note?.userId === 'object' ? note.userId : undefined);
 const getStoryOwner = (group?: StoryGroup | null) => group?.owner || {};
 const getStoryPreview = (group?: StoryGroup | null) => group?.stories?.[0] || group?.preview;
+const firstName = (name?: string) => (name || 'User').trim().split(/\s+/)[0] || 'User';
+const storyWasViewed = (group: StoryGroup, currentUserId: string) => {
+  if (!currentUserId) return false;
+  const stories = group.stories?.length ? group.stories : group.preview ? [group.preview] : [];
+  if (!stories.length) return false;
+  return stories.every(story => story.viewers?.some(view => getEntityId(view.userId) === currentUserId));
+};
 
 function StoryVideo({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, playerInstance => {
@@ -64,6 +85,7 @@ function StoryVideo({ uri }: { uri: string }) {
 export default function ChatListScreen() {
   const navigation = useNavigation<Navigation>();
   const { user } = useAuth();
+  const { colors, resolvedMode } = useTheme();
   const currentUserId = getEntityId(user);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -72,7 +94,9 @@ export default function ChatListScreen() {
   const [listMode, setListMode] = useState<ListMode>('direct');
   const [conversationFilter, setConversationFilter] = useState<ConversationFilter>('all');
   const [chatFlags, setChatFlags] = useState<ChatFlagState>(emptyFlags);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const onlineUserIds = usePresenceStore(state => state.onlineUserIds);
+  const presenceStatuses = usePresenceStore(state => state.statuses);
+  const typingByChat = usePresenceStore(state => state.typingByChat);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -154,6 +178,8 @@ export default function ChatListScreen() {
     }, [refresh])
   );
 
+  const onlineSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+
   useEffect(() => {
     let mounted = true;
     let cleanup: undefined | (() => void);
@@ -176,17 +202,6 @@ export default function ChatListScreen() {
           setStoryGroups(nextStories);
         }).catch(() => {});
       };
-      const announceOnline = () => {
-        if (!currentUserId) return;
-        socket.emit('user-online', currentUserId, (ids: string[] = []) => {
-          if (mounted) setOnlineUserIds(new Set(ids.map(String)));
-        });
-        socket.emit('get-online-users', (ids: string[] = []) => {
-          if (mounted) setOnlineUserIds(new Set(ids.map(String)));
-        });
-      };
-
-      socket.on('connect', announceOnline);
       socket.on('receiveMessage', reload);
       socket.on('message-updated', reload);
       socket.on('message-hidden', reload);
@@ -196,11 +211,9 @@ export default function ChatListScreen() {
       socket.on('user-note-deleted', reloadSocial);
       socket.on('story-updated', reloadSocial);
       socket.on('story-deleted', reloadSocial);
-      if (socket.connected) announceOnline();
-      else socket.connect();
+      if (!socket.connected) socket.connect();
 
       cleanup = () => {
-        socket.off('connect', announceOnline);
         socket.off('receiveMessage', reload);
         socket.off('message-updated', reload);
         socket.off('message-hidden', reload);
@@ -243,12 +256,15 @@ export default function ChatListScreen() {
     });
 
     return [...rows].sort((a, b) => {
+      const aOnline = onlineSet.has(getEntityId(a.user)) ? 1 : 0;
+      const bOnline = onlineSet.has(getEntityId(b.user)) ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
       const aPinned = hasChatFlag(chatFlags, 'pinned', getEntityId(a.user)) ? 1 : 0;
       const bPinned = hasChatFlag(chatFlags, 'pinned', getEntityId(b.user)) ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
       return new Date(b.lastTime || 0).getTime() - new Date(a.lastTime || 0).getTime();
     });
-  }, [chatFlags, conversationFilter, conversations, query]);
+  }, [chatFlags, conversationFilter, conversations, onlineSet, query]);
 
   const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -281,6 +297,71 @@ export default function ChatListScreen() {
       return needle ? name.toLowerCase().includes(needle) : true;
     });
   }, [contacts, conversations, query]);
+
+  const storyBarItems = useMemo<StoryBarItem[]>(() => {
+    const storyItems = storyGroups.map(group => {
+      const story = getStoryPreview(group);
+      const owner = getStoryOwner(group);
+      const ownerId = group.ownerId || getEntityId(owner);
+      const previewUri = story?.fileType === 'image'
+        ? resolveMediaVariantUrl({ fileUrl: story.fileUrl || '', fileType: 'image', variants: story.mediaVariants || story.variants })
+        : resolveMediaUrl(story?.fileUrl || '');
+      const viewed = storyWasViewed(group, currentUserId);
+
+      return {
+        key: `story-${ownerId}`,
+        kind: 'story' as const,
+        label: firstName(owner.name || owner.email || 'Story'),
+        online: onlineSet.has(ownerId),
+        previewType: story?.fileType,
+        previewUri,
+        storyGroup: group,
+        storyRing: viewed ? 'viewed' as const : 'unviewed' as const,
+        user: owner
+      };
+    }).filter(item => getEntityId(item.user));
+
+    const storyOwnerIds = new Set(storyItems.map(item => getEntityId(item.user)));
+    const contactMap = new Map<string, User>();
+
+    conversations.forEach(item => {
+      const id = getEntityId(item.user);
+      if (id && id !== currentUserId && !storyOwnerIds.has(id)) contactMap.set(id, item.user);
+    });
+    contacts.forEach(contact => {
+      const id = getEntityId(contact);
+      if (id && id !== currentUserId && !storyOwnerIds.has(id) && !contactMap.has(id)) contactMap.set(id, contact);
+    });
+
+    const contactItems = Array.from(contactMap.entries()).map(([id, contact]) => ({
+      key: `contact-${id}`,
+      kind: 'contact' as const,
+      label: firstName(contact.name || contact.email || 'User'),
+      online: onlineSet.has(id),
+      storyRing: 'none' as const,
+      user: contact
+    }));
+
+    const unviewedStories = storyItems.filter(item => item.storyRing === 'unviewed');
+    const viewedStories = storyItems.filter(item => item.storyRing === 'viewed');
+    const onlineContacts = contactItems.filter(item => item.online);
+    const recentContacts = contactItems.filter(item => !item.online);
+
+    return [
+      {
+        key: 'me',
+        kind: 'me' as const,
+        label: 'Your story',
+        online: true,
+        storyRing: myNote ? 'unviewed' as const : 'none' as const,
+        user: user || undefined
+      },
+      ...unviewedStories,
+      ...onlineContacts.slice(0, 16),
+      ...viewedStories,
+      ...recentContacts.slice(0, 12)
+    ];
+  }, [contacts, conversations, currentUserId, myNote, onlineSet, storyGroups, user]);
 
   const groupMemberResults = useMemo(() => {
     const selectedIds = new Set(selectedGroupMembers.map(member => getEntityId(member)));
@@ -441,47 +522,49 @@ export default function ChatListScreen() {
   ];
 
   return (
-    <View className="flex-1 bg-white pt-14">
+    <View className="flex-1 pt-14" style={{ backgroundColor: colors.background }}>
       <View className="px-4 pb-3">
         <View className="flex-row items-center justify-between">
           <View className="min-w-0 flex-1">
-            <Text className="text-3xl font-bold text-slate-950" numberOfLines={1}>
+            <Text className="text-3xl font-bold" numberOfLines={1} style={{ color: colors.text }}>
               Chats
             </Text>
-            <Text className="mt-0.5 text-sm text-slate-500" numberOfLines={1}>
+            <Text className="mt-0.5 text-sm" numberOfLines={1} style={{ color: colors.mutedText }}>
               {user?.name || user?.email || 'Syncrova'}
             </Text>
           </View>
           <View className="ml-3 flex-row gap-2">
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={() => navigation.navigate('Profile')}>
-              <UserCircle2 color="#0F172A" size={22} />
+            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => navigation.navigate('Profile')} style={{ backgroundColor: colors.surface }}>
+              <UserCircle2 color={colors.text} size={22} />
             </Pressable>
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={() => navigation.navigate('Settings')}>
-              <Settings color="#0F172A" size={22} />
+            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => navigation.navigate('Settings')} style={{ backgroundColor: colors.surface }}>
+              <Settings color={colors.text} size={22} />
             </Pressable>
           </View>
         </View>
 
-        <View className="mt-4 h-12 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3">
-          <Search color="#64748B" size={18} />
+        <View className="mt-4 h-12 flex-row items-center gap-2 rounded-2xl px-3" style={{ backgroundColor: colors.input }}>
+          <Search color={colors.mutedText} size={18} />
           <TextInput
-            className="flex-1 text-[15px] text-slate-950"
+            className="flex-1 text-[15px]"
             onChangeText={setQuery}
             placeholder="Search"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={colors.mutedText}
+            style={{ color: colors.text }}
             value={query}
           />
         </View>
 
-        <View className="mt-3 flex-row rounded-2xl bg-slate-100 p-1">
+        <View className="mt-3 flex-row rounded-2xl p-1" style={{ backgroundColor: colors.surface }}>
           {(['direct', 'groups'] as ListMode[]).map(mode => (
             <Pressable
-              className={`h-9 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${listMode === mode ? 'bg-white shadow-sm shadow-slate-200' : ''}`}
+              className={`h-9 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${listMode === mode && resolvedMode === 'light' ? 'shadow-sm shadow-slate-200' : ''}`}
               key={mode}
               onPress={() => setListMode(mode)}
+              style={{ backgroundColor: listMode === mode ? colors.elevated : 'transparent' }}
             >
-              {mode === 'direct' ? <MessageCircle color={listMode === mode ? '#0A7CFF' : '#64748B'} size={16} /> : <Users color={listMode === mode ? '#0A7CFF' : '#64748B'} size={16} />}
-              <Text className={`text-sm font-semibold ${listMode === mode ? 'text-slate-950' : 'text-slate-500'}`}>
+              {mode === 'direct' ? <MessageCircle color={listMode === mode ? colors.primary : colors.mutedText} size={16} /> : <Users color={listMode === mode ? colors.primary : colors.mutedText} size={16} />}
+              <Text className="text-sm font-semibold" style={{ color: listMode === mode ? colors.text : colors.mutedText }}>
                 {mode === 'direct' ? 'Messages' : 'Groups'}
               </Text>
             </Pressable>
@@ -489,63 +572,72 @@ export default function ChatListScreen() {
         </View>
       </View>
 
-      <ScrollView horizontal className="max-h-24 px-4" showsHorizontalScrollIndicator={false}>
-        <Pressable className="mr-3 w-20 items-center" onPress={() => setNoteComposerOpen(true)}>
-          <View className="h-14 w-14 items-center justify-center rounded-2xl bg-blue-600">
-            {myNote ? <Edit3 color="#FFFFFF" size={20} /> : <Plus color="#FFFFFF" size={22} />}
-          </View>
-          <Text className="mt-1 text-center text-[11px] font-semibold text-slate-700" numberOfLines={1}>
-            Your note
-          </Text>
-        </Pressable>
+      <View className="h-[104px]">
+        <FlashList
+          data={storyBarItems}
+          horizontal
+          keyExtractor={item => item.key}
+          renderItem={({ item }) => {
+            const openItem = () => {
+              if (item.kind === 'me') {
+                setNoteComposerOpen(true);
+                return;
+              }
+              if (item.kind === 'story' && item.storyGroup) {
+                openStory(item.storyGroup);
+                return;
+              }
+              if (item.user) openChat(item.user);
+            };
 
-        {storyGroups.map(group => {
-          const story = getStoryPreview(group);
-          const owner = getStoryOwner(group);
-          const uri = story?.fileType === 'image'
-            ? resolveMediaVariantUrl({ fileUrl: story.fileUrl || '', fileType: 'image', variants: story.mediaVariants || story.variants })
-            : resolveMediaUrl(story?.fileUrl || '');
-          return (
-            <Pressable className="mr-3 w-20 items-center" key={`story-${group.ownerId || getEntityId(owner)}`} onPress={() => openStory(group)}>
-              <View className="h-14 w-14 overflow-hidden rounded-2xl border-2 border-blue-500 bg-slate-200">
-                {uri && story?.fileType === 'image' ? <ExpoImage source={{ uri }} style={{ height: 56, width: 56 }} contentFit="cover" /> : <Avatar user={owner} size={56} />}
-              </View>
-              <Text className="mt-1 text-center text-[11px] font-semibold text-slate-700" numberOfLines={1}>
-                {owner.name || 'Story'}
-              </Text>
-            </Pressable>
-          );
-        })}
-
-        {activeNotes.filter(note => getEntityId(note.userId) !== currentUserId).slice(0, 20).map(note => {
-          const owner = getNoteOwner(note);
-          return (
-            <Pressable className="mr-3 w-20 items-center" key={`note-${getEntityId(note)}`} onPress={() => openNote(note)}>
-              <View>
-                <Avatar user={owner} size={56} sharedTag={`note-${getEntityId(note)}`} />
-                <View className="absolute -right-2 -top-1 max-w-[54px] rounded-2xl bg-white px-2 py-1 shadow-sm shadow-slate-200">
-                  <Text className="text-[10px] font-semibold text-slate-700" numberOfLines={2}>
-                    {note.text}
-                  </Text>
+            return (
+              <Pressable className="w-[76px] items-center" onPress={openItem}>
+                <View>
+                  {item.previewUri && item.previewType === 'image' ? (
+                    <View>
+                      <Avatar
+                        name={item.label}
+                        online={item.online}
+                        size={56}
+                        storyRing={item.storyRing}
+                        uri={item.previewUri}
+                      />
+                    </View>
+                  ) : (
+                    <Avatar
+                      online={item.kind === 'me' ? false : item.online}
+                      size={56}
+                      storyRing={item.storyRing}
+                      user={item.user}
+                    />
+                  )}
+                  {item.kind === 'me' ? (
+                    <View className="absolute bottom-0 right-0 h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-blue-600">
+                      {myNote ? <Edit3 color="#FFFFFF" size={12} /> : <Plus color="#FFFFFF" size={14} />}
+                    </View>
+                  ) : null}
                 </View>
-              </View>
-              <Text className="mt-1 text-center text-[11px] font-semibold text-slate-700" numberOfLines={1}>
-                {owner?.name || 'Note'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text className="mt-1 max-w-[72px] text-center text-[11px] font-semibold" numberOfLines={1} style={{ color: colors.text }}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          }}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+        />
+      </View>
 
       <View className="px-4 pb-2">
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {filters.map(filter => (
             <Pressable
-              className={`mr-2 h-9 justify-center rounded-full px-4 ${conversationFilter === filter.id ? 'bg-slate-950' : 'bg-slate-100'}`}
+              className="mr-2 h-9 justify-center rounded-full px-4"
               key={filter.id}
               onPress={() => setConversationFilter(filter.id)}
+              style={{ backgroundColor: conversationFilter === filter.id ? colors.text : colors.surface }}
             >
-              <Text className={`text-sm font-semibold ${conversationFilter === filter.id ? 'text-white' : 'text-slate-600'}`}>
+              <Text className="text-sm font-semibold" style={{ color: conversationFilter === filter.id ? colors.background : colors.mutedText }}>
                 {filter.label}
               </Text>
             </Pressable>
@@ -601,6 +693,12 @@ export default function ChatListScreen() {
           renderItem={({ item }) => {
             const chatId = getEntityId(item.user);
             const nickname = item.conversation?.nicknames?.[chatId];
+            const online = onlineSet.has(chatId);
+            const typingLabel = typingByChat[chatId]?.length ? 'Typing...' : undefined;
+            const storyGroup = storyGroups.find(group => (group.ownerId || getEntityId(getStoryOwner(group))) === chatId);
+            const storyRing = storyGroup
+              ? storyWasViewed(storyGroup, currentUserId) ? 'viewed' : 'unviewed'
+              : 'none';
             return (
               <ChatListItem
                 displayName={nickname}
@@ -609,8 +707,14 @@ export default function ChatListScreen() {
                 muted={hasChatFlag(chatFlags, 'muted', chatId)}
                 onDelete={() => removeConversation(item)}
                 onPress={() => openChat(item.user, item)}
-                online={onlineUserIds.has(chatId)}
+                online={online}
                 pinned={hasChatFlag(chatFlags, 'pinned', chatId)}
+                statusLabel={formatActiveStatus({
+                  online,
+                  lastSeen: presenceStatuses[chatId]?.lastSeen || item.user?.lastSeen || null
+                })}
+                storyRing={storyRing}
+                typingLabel={typingLabel}
               />
             );
           }}

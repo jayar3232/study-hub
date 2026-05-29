@@ -6,17 +6,34 @@ import { StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useOnlineStatus } from './src/hooks/useOnlineStatus';
 import AppNavigator from './src/navigation/AppNavigator';
-import { AuthProvider } from './src/store/AuthContext';
+import { AuthProvider, useAuth } from './src/store/AuthContext';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { getEntityId } from './src/utils/ids';
+
+function PresenceBootstrap() {
+  const { user } = useAuth();
+  useOnlineStatus(getEntityId(user));
+  return null;
+}
+
+function ThemedStatusBar() {
+  const { resolvedMode } = useTheme();
+  return <StatusBar style={resolvedMode === 'dark' ? 'light' : 'dark'} />;
+}
 
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <StatusBar style="dark" />
-          <AppNavigator />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <PresenceBootstrap />
+            <ThemedStatusBar />
+            <AppNavigator />
+          </AuthProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
