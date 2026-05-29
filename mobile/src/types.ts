@@ -53,6 +53,9 @@ export type Message = {
   mimeType?: string;
   fileSize?: number;
   durationMs?: number;
+  storagePath?: string;
+  storageProvider?: string;
+  mediaVariants?: Record<string, string | { fileUrl?: string; url?: string }>;
 };
 
 export type ConversationSettings = {

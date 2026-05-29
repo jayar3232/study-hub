@@ -33,6 +33,10 @@ export const getMessageAttachments = (message?: Partial<Message> | null): Messag
     fileType: message.fileType,
     fileName: message.fileName,
     mimeType: message.mimeType,
-    fileSize: message.fileSize
+    fileSize: message.fileSize,
+    durationMs: message.durationMs,
+    storagePath: message.storagePath,
+    storageProvider: message.storageProvider,
+    variants: message.mediaVariants
   }];
 };

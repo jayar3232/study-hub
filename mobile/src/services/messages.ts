@@ -99,19 +99,49 @@ export const unsendMessageForEveryone = async (messageId: string) => {
   return res.data;
 };
 
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', '3gp', 'webm', 'mkv']);
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif']);
+
+const getUriExtension = (uri?: string) => {
+  const cleanUri = String(uri || '').split('?')[0].split('#')[0];
+  const match = cleanUri.match(/\.([a-zA-Z0-9]+)$/);
+  return match?.[1]?.toLowerCase() || '';
+};
+
+const getAssetUploadMeta = (asset: ImagePickerAsset) => {
+  const rawName = String(asset.fileName || '').trim();
+  const rawMimeType = String(asset.mimeType || '').trim();
+  const mimeType = rawMimeType.toLowerCase();
+  const extensionFromName = rawName.split('.').pop()?.toLowerCase() || '';
+  const extensionFromUri = getUriExtension(asset.uri);
+  const extension = extensionFromName || extensionFromUri;
+  const isVideo = asset.type === 'video' || mimeType.startsWith('video/') || VIDEO_EXTENSIONS.has(extension);
+  const isImage = asset.type === 'image' || mimeType.startsWith('image/') || IMAGE_EXTENSIONS.has(extension);
+  const fileType = isVideo ? 'video' : isImage ? 'image' : 'file';
+  const fallbackExtension = isVideo ? 'mp4' : isImage ? 'jpg' : 'bin';
+  const fileName = rawName || `syncrova-${Date.now()}.${extension || fallbackExtension}`;
+  const uploadMimeType = rawMimeType || (isVideo ? 'video/mp4' : isImage ? 'image/jpeg' : 'application/octet-stream');
+
+  return { fileName, fileType, mimeType: uploadMimeType };
+};
+
 export const uploadMessageAsset = async (asset: ImagePickerAsset): Promise<UploadedAttachment> => {
-  const fileName = asset.fileName || `syncrova-${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`;
-  const mimeType = asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
+  const meta = getAssetUploadMeta(asset);
   const formData = new FormData();
 
   formData.append('file', {
     uri: asset.uri,
-    name: fileName,
-    type: mimeType
+    name: meta.fileName,
+    type: meta.mimeType
   } as unknown as Blob);
 
-  const res = await api.post<UploadedAttachment>('/messages/upload', formData);
-  return res.data;
+  const res = await api.post<UploadedAttachment>('/messages/upload', formData, { timeout: 120000 });
+  return {
+    ...res.data,
+    fileName: res.data.fileName || meta.fileName,
+    fileType: res.data.fileType || meta.fileType,
+    mimeType: res.data.mimeType || meta.mimeType
+  };
 };
 
 export const uploadLocalMessageAsset = async (asset: {
@@ -129,7 +159,7 @@ export const uploadLocalMessageAsset = async (asset: {
     type: asset.mimeType
   } as unknown as Blob);
 
-  const res = await api.post<UploadedAttachment>('/messages/upload', formData);
+  const res = await api.post<UploadedAttachment>('/messages/upload', formData, { timeout: 120000 });
   return {
     ...res.data,
     fileName: res.data.fileName || asset.fileName,

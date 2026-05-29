@@ -17,7 +17,7 @@ const router = express.Router();
 const messageUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
 fs.mkdirSync(messageUploadDir, { recursive: true });
 
-const MAX_MESSAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
+const MAX_MESSAGE_UPLOAD_SIZE = 80 * 1024 * 1024;
 const MAX_MESSAGE_ATTACHMENTS = 10;
 const BLOCKED_EXTENSIONS = new Set(['.bat', '.cmd', '.com', '.exe', '.msi', '.ps1', '.scr', '.sh']);
 const DEFAULT_MESSAGE_PAGE_LIMIT = 80;
@@ -104,7 +104,7 @@ const uploadSingleFile = (req, res, next) => {
     if (!err) return next();
 
     if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ msg: 'File is too large. Maximum size is 25MB.' });
+      return res.status(400).json({ msg: 'File is too large. Maximum size is 80MB.' });
     }
 
     return res.status(err.status || 400).json({ msg: err.message || 'Upload failed' });

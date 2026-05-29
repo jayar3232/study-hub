@@ -5,6 +5,7 @@ import Animated, { FadeInDown, runOnJS, useAnimatedStyle, useSharedValue, withSp
 import { FileText, Pin } from 'lucide-react-native';
 import ImageGridBubble from './ImageGridBubble';
 import VoiceMessageBubble from './VoiceMessageBubble';
+import { useTheme } from '../theme/ThemeContext';
 import type { GroupMessage, Message } from '../types';
 import { formatMessageTime } from '../utils/date';
 import { getEntityId } from '../utils/ids';
@@ -34,12 +35,15 @@ export default function ChatBubble({
   onReactionPress,
   groupMode = false,
   highlighted = false,
-  ownBubbleColor = '#2563EB',
-  otherBubbleColor = '#FFFFFF',
+  ownBubbleColor,
+  otherBubbleColor,
   onOpenMedia
 }: ChatBubbleProps) {
+  const { colors } = useTheme();
   const sender = (message as GroupMessage).userId !== undefined ? (message as GroupMessage).userId : (message as Message).from;
   const isMe = getEntityId(sender) === currentUserId;
+  const resolvedOwnBubbleColor = ownBubbleColor || colors.sentBubble;
+  const resolvedOtherBubbleColor = otherBubbleColor || colors.receivedBubble;
   const translateX = useSharedValue(0);
   const attachments = getMessageAttachments(message as Message);
   const mediaAttachments = attachments.filter(isMediaAttachment);
@@ -68,7 +72,11 @@ export default function ChatBubble({
   if (message.system) {
     return (
       <Animated.View entering={FadeInDown.duration(120)} className="items-center px-8 py-2">
-        <Text className="rounded-full bg-slate-200 px-3 py-1 text-center text-xs text-slate-600" numberOfLines={2}>
+        <Text
+          className="rounded-full px-3 py-1 text-center text-xs"
+          numberOfLines={2}
+          style={{ backgroundColor: colors.surface, color: colors.mutedText }}
+        >
           {message.text}
         </Text>
       </Animated.View>
@@ -83,28 +91,31 @@ export default function ChatBubble({
         style={animatedStyle}
       >
         {groupMode && !isMe ? (
-          <Text className="mb-0.5 ml-2 text-[11px] font-semibold text-slate-500" numberOfLines={1}>
+          <Text className="mb-0.5 ml-2 text-[11px] font-semibold" numberOfLines={1} style={{ color: colors.mutedText }}>
             {senderName}
           </Text>
         ) : null}
         <Pressable
           className={`max-w-[82%] rounded-[22px] px-3.5 py-2.5 ${!isMe ? 'shadow-sm shadow-slate-200' : ''} ${highlighted ? 'border-2 border-amber-300' : ''}`}
           onLongPress={openMenu}
-          style={{ backgroundColor: isMe ? ownBubbleColor : otherBubbleColor }}
+          style={{ backgroundColor: isMe ? resolvedOwnBubbleColor : resolvedOtherBubbleColor }}
         >
           {message.pinned ? (
             <View className={`mb-1 flex-row items-center gap-1 ${isMe ? 'self-end' : 'self-start'}`}>
-              <Pin color={isMe ? '#FFFFFF' : '#64748B'} size={11} />
-              <Text className={`text-[10px] font-semibold ${isMe ? 'text-white/80' : 'text-slate-500'}`}>Pinned</Text>
+              <Pin color={isMe ? '#FFFFFF' : colors.mutedText} size={11} />
+              <Text className="text-[10px] font-semibold" style={{ color: isMe ? 'rgba(255,255,255,0.8)' : colors.mutedText }}>Pinned</Text>
             </View>
           ) : null}
 
           {replyMessage ? (
-            <View className={`mb-2 rounded-2xl border-l-2 px-3 py-2 ${isMe ? 'border-white/70 bg-white/15' : 'border-blue-500 bg-slate-100'}`}>
-              <Text className={`text-xs font-semibold ${isMe ? 'text-white/80' : 'text-blue-600'}`} numberOfLines={1}>
+            <View
+              className={`mb-2 rounded-2xl border-l-2 px-3 py-2 ${isMe ? 'border-white/70 bg-white/15' : 'border-blue-500'}`}
+              style={!isMe ? { backgroundColor: colors.surface } : undefined}
+            >
+              <Text className="text-xs font-semibold" numberOfLines={1} style={{ color: isMe ? 'rgba(255,255,255,0.8)' : colors.primary }}>
                 Reply
               </Text>
-              <Text className={`mt-0.5 text-xs ${isMe ? 'text-white/80' : 'text-slate-600'}`} numberOfLines={2}>
+              <Text className="mt-0.5 text-xs" numberOfLines={2} style={{ color: isMe ? 'rgba(255,255,255,0.8)' : colors.mutedText }}>
                 {replyMessage.text || 'Media message'}
               </Text>
             </View>
@@ -131,15 +142,16 @@ export default function ChatBubble({
             return (
               <Pressable
                 key={`${attachment.fileUrl}-${index}`}
-                className={`mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2 ${isMe ? 'bg-white/15' : 'bg-slate-100'}`}
+                className={`mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2 ${isMe ? 'bg-white/15' : ''}`}
                 onPress={() => Linking.openURL(resolveMediaUrl(attachment.fileUrl)).catch(() => {})}
+                style={!isMe ? { backgroundColor: colors.surface } : undefined}
               >
-                <FileText color={isMe ? '#FFFFFF' : '#0A7CFF'} size={17} />
+                <FileText color={isMe ? '#FFFFFF' : colors.primary} size={17} />
                 <View className="min-w-0 flex-1">
-                  <Text className={`text-sm font-semibold ${isMe ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
+                  <Text className="text-sm font-semibold" numberOfLines={1} style={{ color: isMe ? '#FFFFFF' : colors.text }}>
                     {attachment.fileName || (type === 'video' ? 'Video' : 'Attachment')}
                   </Text>
-                  <Text className={`text-[11px] ${isMe ? 'text-white/70' : 'text-slate-500'}`} numberOfLines={1}>
+                  <Text className="text-[11px]" numberOfLines={1} style={{ color: isMe ? 'rgba(255,255,255,0.7)' : colors.mutedText }}>
                     Tap to open
                   </Text>
                 </View>
@@ -148,24 +160,25 @@ export default function ChatBubble({
           })}
 
           {(message as Message).unsent ? (
-            <Text className={`text-sm italic ${isMe ? 'text-white/75' : 'text-slate-500'}`} numberOfLines={3}>
+            <Text className="text-sm italic" numberOfLines={3} style={{ color: isMe ? 'rgba(255,255,255,0.75)' : colors.mutedText }}>
               Message unsent
             </Text>
           ) : message.text ? (
-            <Text className={`text-[15px] leading-5 ${isMe ? 'text-white' : 'text-slate-950'}`}>
+            <Text className="text-[15px] leading-5" style={{ color: isMe ? '#FFFFFF' : colors.text }}>
               {message.text}
             </Text>
           ) : null}
 
-          <Text className={`mt-1 text-[10px] ${isMe ? 'text-white/70' : 'text-slate-400'}`} numberOfLines={1}>
+          <Text className="mt-1 text-[10px]" numberOfLines={1} style={{ color: isMe ? 'rgba(255,255,255,0.7)' : colors.mutedText }}>
             {formatMessageTime(message.createdAt)}{message.editedAt ? ' · Edited' : ''}
           </Text>
         </Pressable>
 
         {message.reactions?.length ? (
           <Pressable
-            className={`-mt-2 rounded-full bg-white px-2 py-0.5 shadow-sm shadow-slate-200 ${isMe ? 'mr-2' : 'ml-2'}`}
+            className={`-mt-2 rounded-full px-2 py-0.5 shadow-sm shadow-slate-200 ${isMe ? 'mr-2' : 'ml-2'}`}
             onPress={() => onReactionPress?.(message)}
+            style={{ backgroundColor: colors.elevated }}
           >
             <Text className="text-xs" numberOfLines={1}>
               {message.reactions.map(reaction => reaction.emoji).join(' ')}

@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ArrowLeft, LogOut } from 'lucide-react-native';
 import Avatar from '../components/Avatar';
 import { useAuth } from '../store/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import type { RootStackParamList } from '../types';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
@@ -12,42 +13,43 @@ type Navigation = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
 export default function ProfileScreen() {
   const navigation = useNavigation<Navigation>();
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
 
   return (
-    <View className="flex-1 bg-white pt-12">
+    <View className="flex-1 pt-12" style={{ backgroundColor: colors.background }}>
       <View className="h-14 flex-row items-center px-3">
-        <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100" onPress={() => navigation.goBack()}>
-          <ArrowLeft color="#0F172A" size={22} />
+        <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => navigation.goBack()} style={{ backgroundColor: colors.surface }}>
+          <ArrowLeft color={colors.text} size={22} />
         </Pressable>
-        <Text className="ml-2 text-lg font-semibold text-slate-950">Profile</Text>
+        <Text className="ml-2 text-lg font-semibold" style={{ color: colors.text }}>Profile</Text>
       </View>
 
       <View className="items-center px-6 pt-8">
         <Avatar user={user} size={104} sharedTag="profile-avatar" />
-        <Text className="mt-5 text-2xl font-bold text-slate-950" numberOfLines={1}>
+        <Text className="mt-5 text-2xl font-bold" numberOfLines={1} style={{ color: colors.text }}>
           {user?.name || 'Syncrova user'}
         </Text>
-        <Text className="mt-1 text-sm text-slate-500" numberOfLines={1}>
+        <Text className="mt-1 text-sm" numberOfLines={1} style={{ color: colors.mutedText }}>
           {user?.email}
         </Text>
       </View>
 
       <View className="mt-10 px-5">
-        <View className="rounded-3xl bg-slate-50 p-4">
-          <Text className="text-xs font-semibold uppercase text-slate-400">Course</Text>
-          <Text className="mt-1 text-base text-slate-950" numberOfLines={2}>
+        <View className="rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
+          <Text className="text-xs font-semibold uppercase" style={{ color: colors.mutedText }}>Course</Text>
+          <Text className="mt-1 text-base" numberOfLines={2} style={{ color: colors.text }}>
             {user?.course || 'Not set'}
           </Text>
-          <View className="my-4 h-px bg-slate-200" />
-          <Text className="text-xs font-semibold uppercase text-slate-400">Campus</Text>
-          <Text className="mt-1 text-base text-slate-950" numberOfLines={2}>
+          <View className="my-4 h-px" style={{ backgroundColor: colors.border }} />
+          <Text className="text-xs font-semibold uppercase" style={{ color: colors.mutedText }}>Campus</Text>
+          <Text className="mt-1 text-base" numberOfLines={2} style={{ color: colors.text }}>
             {user?.campus || 'Not set'}
           </Text>
         </View>
 
-        <Pressable className="mt-5 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-red-50" onPress={logout}>
-          <LogOut color="#DC2626" size={18} />
-          <Text className="font-semibold text-red-600">Log out</Text>
+        <Pressable className="mt-5 h-14 flex-row items-center justify-center gap-2 rounded-2xl" onPress={logout} style={{ backgroundColor: colors.elevated }}>
+          <LogOut color={colors.danger} size={18} />
+          <Text className="font-semibold" style={{ color: colors.danger }}>Log out</Text>
         </Pressable>
       </View>
     </View>

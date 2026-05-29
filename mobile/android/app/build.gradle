@@ -92,8 +92,8 @@ android {
         applicationId 'com.nemsu.studenthub.messenger'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 87
-        versionName "4.4.40"
+        versionCode 88
+        versionName "4.4.41"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

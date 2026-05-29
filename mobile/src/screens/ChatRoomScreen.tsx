@@ -91,6 +91,18 @@ const getSenderName = (message: ThreadMessage, groupMode: boolean) => {
 
 const getDisplayName = (user?: User | null, fallback = 'Syncrova user') => user?.name || user?.email || fallback;
 
+const getRequestErrorMessage = (error: unknown, fallback: string) => {
+  const requestError = error as {
+    response?: { data?: { msg?: string; message?: string; error?: string } };
+    message?: string;
+  };
+  return requestError?.response?.data?.msg
+    || requestError?.response?.data?.message
+    || requestError?.response?.data?.error
+    || requestError?.message
+    || fallback;
+};
+
 const isOwnMessage = (message: ThreadMessage, currentUserId: string, groupMode: boolean) => (
   getEntityId(getSender(message, groupMode)) === currentUserId
 );
@@ -137,7 +149,6 @@ export default function ChatRoomScreen() {
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
   const [remoteTyping, setRemoteTyping] = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
   const [presenceReady, setPresenceReady] = useState(false);
   const [remoteOnline, setRemoteOnline] = useState(false);
   const [remoteLastSeen, setRemoteLastSeen] = useState<string | null>(remoteUser.lastSeen || null);
@@ -175,7 +186,6 @@ export default function ChatRoomScreen() {
   const background = getBackgroundById(backgroundId);
   const activeChatId = chatId;
   const mediaViewer = useMediaViewer();
-  const presenceConnected = usePresenceStore(state => state.connected);
   const presenceStatus = usePresenceStore(state => state.statuses[chatId]);
   const storeRemoteTyping = usePresenceStore(state => Boolean(state.typingByChat[chatId]?.length));
 
@@ -561,13 +571,11 @@ export default function ChatRoomScreen() {
       };
       const onConnect = () => {
         if (!mounted) return;
-        setSocketConnected(true);
         announceOnline();
         refreshDirectPresence();
       };
       const onDisconnect = () => {
         if (!mounted) return;
-        setSocketConnected(false);
         setPresenceReady(false);
       };
       const onUserOnline = (payload: string | { userId?: string }) => {
@@ -803,8 +811,8 @@ export default function ChatRoomScreen() {
       }
       setComposer('');
       setReplyingTo(null);
-    } catch {
-      Alert.alert('Upload failed', 'Could not send the selected media.');
+    } catch (error) {
+      Alert.alert('Upload failed', getRequestErrorMessage(error, 'Could not send the selected media.'));
     } finally {
       setSending(false);
     }
@@ -830,8 +838,8 @@ export default function ChatRoomScreen() {
       setMessages(prev => mergeMessage(prev as Message[], sent));
       setReplyingTo(null);
       await FileSystem.deleteAsync(recording.uri, { idempotent: true }).catch(() => {});
-    } catch {
-      Alert.alert('Voice failed', 'Could not send this voice message.');
+    } catch (error) {
+      Alert.alert('Voice failed', getRequestErrorMessage(error, 'Could not send this voice message.'));
     } finally {
       setSending(false);
     }
@@ -946,6 +954,7 @@ export default function ChatRoomScreen() {
           fileName: item.fileName,
           mimeType: item.mimeType,
           fileSize: item.fileSize,
+          durationMs: item.durationMs,
           storagePath: item.storagePath,
           storageProvider: item.storageProvider,
           variants: item.variants
@@ -953,8 +962,8 @@ export default function ChatRoomScreen() {
       });
       setForwardingMessage(null);
       Alert.alert('Forwarded', `Sent to ${getDisplayName(target)}.`);
-    } catch {
-      Alert.alert('Forward failed', 'Could not forward this message.');
+    } catch (error) {
+      Alert.alert('Forward failed', getRequestErrorMessage(error, 'Could not forward this message.'));
     } finally {
       setForwardingBusyId('');
     }
@@ -986,8 +995,8 @@ export default function ChatRoomScreen() {
       }
       setForwardingMessage(null);
       Alert.alert('Forwarded', `Sent to ${targetGroup.name || 'group chat'}.`);
-    } catch {
-      Alert.alert('Forward failed', 'Could not forward this message.');
+    } catch (error) {
+      Alert.alert('Forward failed', getRequestErrorMessage(error, 'Could not forward this message.'));
     } finally {
       setForwardingBusyId('');
     }
@@ -1074,21 +1083,15 @@ export default function ChatRoomScreen() {
   const canEditAction = Boolean(actionMessage && actionIsMine && !groupMode && getText(actionMessage) && !getMessageAttachments(actionMessage as Message).length && !(actionMessage as Message).unsent);
   const effectiveRemoteTyping = remoteTyping || storeRemoteTyping;
   const effectiveRemoteOnline = presenceStatus?.online ?? remoteOnline;
-  const effectiveRemoteLastSeen = presenceStatus?.lastSeen ?? remoteLastSeen;
-  const effectivePresenceReady = presenceReady || Boolean(presenceStatus);
-  const effectiveSocketConnected = socketConnected || presenceConnected || Boolean(presenceStatus);
+  const effectiveRemoteLastSeen = presenceStatus?.lastSeen ?? remoteLastSeen ?? remoteUser.lastSeen ?? null;
   const presenceText = groupMode
     ? `${group?.members?.length || 0} members`
     : effectiveRemoteTyping
       ? 'Typing...'
-      : !effectivePresenceReady && !effectiveSocketConnected
-        ? 'Connecting...'
-        : !effectivePresenceReady
-          ? 'Checking status...'
-          : formatActiveStatus({
-            online: effectiveRemoteOnline,
-            lastSeen: effectiveRemoteLastSeen
-          });
+      : formatActiveStatus({
+        online: effectiveRemoteOnline,
+        lastSeen: effectiveRemoteLastSeen
+      });
   const callDurationText = useMemo(() => formatCallDuration(callStartedAt), [callClock, callStartedAt]);
   const callStatusText = callState === 'incoming'
     ? `Incoming ${callMode === 'video' ? 'video' : 'audio'} call`
@@ -1159,12 +1162,12 @@ export default function ChatRoomScreen() {
       </View>
 
       {pinnedMessages.length > 0 && !searchOpen ? (
-        <Pressable className="h-11 flex-row items-center gap-2 border-b border-slate-200 bg-white px-4" onPress={() => setPinnedOpen(true)}>
-          <Pin color="#0A7CFF" size={16} />
-          <Text className="flex-1 text-sm font-semibold text-slate-700" numberOfLines={1}>
+        <Pressable className="h-11 flex-row items-center gap-2 border-b px-4" onPress={() => setPinnedOpen(true)} style={{ backgroundColor: colors.background, borderColor: colors.border }}>
+          <Pin color={colors.primary} size={16} />
+          <Text className="flex-1 text-sm font-semibold" numberOfLines={1} style={{ color: colors.text }}>
             {pinnedMessages.length} pinned {pinnedMessages.length === 1 ? 'message' : 'messages'}
           </Text>
-          <Text className="text-xs font-semibold text-blue-600">View</Text>
+          <Text className="text-xs font-semibold" style={{ color: colors.primary }}>View</Text>
         </Pressable>
       ) : null}
 
@@ -1172,14 +1175,14 @@ export default function ChatRoomScreen() {
 
       {loading ? (
         <View className="flex-1 items-center justify-center" style={background.style}>
-          <ActivityIndicator color="#0A7CFF" />
+          <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
         <View className="flex-1" style={background.style}>
           <FlashList
             data={visibleMessages}
             keyExtractor={(item, index) => getMessageKey(item as Message, index)}
-            ListHeaderComponent={loadingOlder ? <ActivityIndicator className="my-3" color="#0A7CFF" /> : null}
+            ListHeaderComponent={loadingOlder ? <ActivityIndicator className="my-3" color={colors.primary} /> : null}
             maintainVisibleContentPosition={{
               autoscrollToBottomThreshold: 0.2,
               startRenderingFromBottom: true
@@ -1199,6 +1202,7 @@ export default function ChatRoomScreen() {
                   setEditingMessage(null);
                   setReplyingTo(message);
                 }}
+                otherBubbleColor={colors.receivedBubble}
                 ownBubbleColor={selectedTheme.ownBubble}
               />
             )}
@@ -1260,58 +1264,58 @@ export default function ChatRoomScreen() {
 
       <Modal animationType="fade" transparent visible={Boolean(actionMessage)} onRequestClose={() => setActionMessage(null)}>
         <Pressable className="flex-1 justify-end bg-black/35" onPress={() => setActionMessage(null)}>
-          <Pressable className="rounded-t-[28px] bg-white p-4" onPress={event => event.stopPropagation()}>
+          <Pressable className="rounded-t-[28px] p-4" onPress={event => event.stopPropagation()} style={{ backgroundColor: colors.background }}>
             <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-slate-950">Message</Text>
-              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setActionMessage(null)}>
-                <X color="#0F172A" size={18} />
+              <Text className="text-lg font-bold" style={{ color: colors.text }}>Message</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full" onPress={() => setActionMessage(null)} style={{ backgroundColor: colors.surface }}>
+                <X color={colors.text} size={18} />
               </Pressable>
             </View>
-            <View className="mb-4 flex-row justify-between rounded-3xl bg-slate-100 p-2">
+            <View className="mb-4 flex-row justify-between rounded-3xl p-2" style={{ backgroundColor: colors.surface }}>
               {QUICK_REACTIONS.map(emoji => (
-                <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-white" key={emoji} onPress={() => handleReaction(emoji)}>
+                <Pressable className="h-11 w-11 items-center justify-center rounded-full" key={emoji} onPress={() => handleReaction(emoji)} style={{ backgroundColor: colors.elevated }}>
                   <Text className="text-2xl">{emoji}</Text>
                 </Pressable>
               ))}
             </View>
             <View className="gap-2">
-              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => {
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => {
                 if (actionMessage) setReplyingTo(actionMessage);
                 setEditingMessage(null);
                 setActionMessage(null);
-              }}>
-                <MoreVertical color="#0A7CFF" size={18} />
-                <Text className="font-semibold text-slate-950">Reply</Text>
+              }} style={{ backgroundColor: colors.surface }}>
+                <MoreVertical color={colors.primary} size={18} />
+                <Text className="font-semibold" style={{ color: colors.text }}>Reply</Text>
               </Pressable>
               {canEditAction ? (
-                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => actionMessage && startEdit(actionMessage)}>
-                  <Edit3 color="#0A7CFF" size={18} />
-                  <Text className="font-semibold text-slate-950">Edit</Text>
+                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => actionMessage && startEdit(actionMessage)} style={{ backgroundColor: colors.surface }}>
+                  <Edit3 color={colors.primary} size={18} />
+                  <Text className="font-semibold" style={{ color: colors.text }}>Edit</Text>
                 </Pressable>
               ) : null}
-              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => actionMessage && handlePin(actionMessage)}>
-                <Pin color="#0A7CFF" size={18} />
-                <Text className="font-semibold text-slate-950">{actionMessage?.pinned ? 'Unpin' : 'Pin'}</Text>
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => actionMessage && handlePin(actionMessage)} style={{ backgroundColor: colors.surface }}>
+                <Pin color={colors.primary} size={18} />
+                <Text className="font-semibold" style={{ color: colors.text }}>{actionMessage?.pinned ? 'Unpin' : 'Pin'}</Text>
               </Pressable>
-              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => openForwardSheet(actionMessage)}>
-                <Send color="#0A7CFF" size={18} />
-                <Text className="font-semibold text-slate-950">Forward</Text>
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => openForwardSheet(actionMessage)} style={{ backgroundColor: colors.surface }}>
+                <Send color={colors.primary} size={18} />
+                <Text className="font-semibold" style={{ color: colors.text }}>Forward</Text>
               </Pressable>
               {actionMessage?.reactions?.length ? (
-                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => {
+                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => {
                   setReactionViewerMessage(actionMessage);
                   setActionMessage(null);
-                }}>
-                  <Star color="#0A7CFF" size={18} />
-                  <Text className="font-semibold text-slate-950">View reactions</Text>
+                }} style={{ backgroundColor: colors.surface }}>
+                  <Star color={colors.primary} size={18} />
+                  <Text className="font-semibold" style={{ color: colors.text }}>View reactions</Text>
                 </Pressable>
               ) : null}
-              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-slate-50 px-4" onPress={() => {
+              <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => {
                 setInfoMessage(actionMessage);
                 setActionMessage(null);
-              }}>
-                <Info color="#0A7CFF" size={18} />
-                <Text className="font-semibold text-slate-950">Info</Text>
+              }} style={{ backgroundColor: colors.surface }}>
+                <Info color={colors.primary} size={18} />
+                <Text className="font-semibold" style={{ color: colors.text }}>Info</Text>
               </Pressable>
               <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl bg-red-50 px-4" onPress={() => actionMessage && handleHide(actionMessage)}>
                 <Trash2 color="#DC2626" size={18} />
@@ -1330,31 +1334,32 @@ export default function ChatRoomScreen() {
 
       <Modal animationType="slide" transparent visible={pinnedOpen} onRequestClose={() => setPinnedOpen(false)}>
         <View className="flex-1 justify-end bg-black/35">
-          <View className="max-h-[72%] rounded-t-[28px] bg-white p-4">
+          <View className="max-h-[72%] rounded-t-[28px] p-4" style={{ backgroundColor: colors.background }}>
             <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-slate-950">Pinned messages</Text>
-              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setPinnedOpen(false)}>
-                <X color="#0F172A" size={18} />
+              <Text className="text-lg font-bold" style={{ color: colors.text }}>Pinned messages</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full" onPress={() => setPinnedOpen(false)} style={{ backgroundColor: colors.surface }}>
+                <X color={colors.text} size={18} />
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {pinnedMessages.slice().reverse().map(message => (
                 <Pressable
-                  className="mb-2 rounded-2xl bg-slate-50 p-3"
+                  className="mb-2 rounded-2xl p-3"
                   key={getEntityId(message)}
                   onPress={() => {
                     setPinnedOpen(false);
                     setMessageSearch(getText(message));
                     setSearchOpen(true);
                   }}
+                  style={{ backgroundColor: colors.surface }}
                 >
                   <View className="mb-1 flex-row items-center gap-2">
-                    <Pin color="#0A7CFF" size={14} />
-                    <Text className="text-xs font-bold text-slate-500" numberOfLines={1}>
+                    <Pin color={colors.primary} size={14} />
+                    <Text className="text-xs font-bold" numberOfLines={1} style={{ color: colors.mutedText }}>
                       {isOwnMessage(message, currentUserId, groupMode) ? 'You' : getSenderName(message, groupMode)} · {formatMessageTime(message.createdAt)}
                     </Text>
                   </View>
-                  <Text className="text-sm font-semibold text-slate-950" numberOfLines={3}>
+                  <Text className="text-sm font-semibold" numberOfLines={3} style={{ color: colors.text }}>
                     {getText(message) || 'Media message'}
                   </Text>
                 </Pressable>
@@ -1366,25 +1371,26 @@ export default function ChatRoomScreen() {
 
       <Modal animationType="slide" transparent visible={Boolean(forwardingMessage)} onRequestClose={() => setForwardingMessage(null)}>
         <View className="flex-1 justify-end bg-black/35">
-          <View className="max-h-[82%] rounded-t-[28px] bg-white p-4">
+          <View className="max-h-[82%] rounded-t-[28px] p-4" style={{ backgroundColor: colors.background }}>
             <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-slate-950">Forward message</Text>
-              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setForwardingMessage(null)}>
-                <X color="#0F172A" size={18} />
+              <Text className="text-lg font-bold" style={{ color: colors.text }}>Forward message</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full" onPress={() => setForwardingMessage(null)} style={{ backgroundColor: colors.surface }}>
+                <X color={colors.text} size={18} />
               </Pressable>
             </View>
-            <View className="mb-3 rounded-2xl bg-slate-50 p-3">
-              <Text className="text-sm font-semibold text-slate-700" numberOfLines={3}>
+            <View className="mb-3 rounded-2xl p-3" style={{ backgroundColor: colors.surface }}>
+              <Text className="text-sm font-semibold" numberOfLines={3} style={{ color: colors.text }}>
                 {getText(forwardingMessage) || `${getMessageAttachments(forwardingMessage as Message).length || 1} media/file attachment`}
               </Text>
             </View>
-            <View className="mb-3 h-11 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3">
-              <Search color="#64748B" size={17} />
+            <View className="mb-3 h-11 flex-row items-center gap-2 rounded-2xl px-3" style={{ backgroundColor: colors.input }}>
+              <Search color={colors.mutedText} size={17} />
               <TextInput
-                className="flex-1 text-[15px] text-slate-950"
+                className="flex-1 text-[15px]"
                 onChangeText={setForwardQuery}
                 placeholder="Search people or groups"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={colors.mutedText}
+                style={{ color: colors.text }}
                 value={forwardQuery}
               />
             </View>
@@ -1395,28 +1401,28 @@ export default function ChatRoomScreen() {
                   <Pressable className="h-14 flex-row items-center gap-3 rounded-2xl px-2" key={`forward-user-${targetId}`} onPress={() => forwardToDirect(contact)}>
                     <Avatar user={contact} size={40} />
                     <View className="min-w-0 flex-1">
-                      <Text className="font-semibold text-slate-950" numberOfLines={1}>{getDisplayName(contact)}</Text>
-                      <Text className="text-xs text-slate-500" numberOfLines={1}>Direct message</Text>
+                      <Text className="font-semibold" numberOfLines={1} style={{ color: colors.text }}>{getDisplayName(contact)}</Text>
+                      <Text className="text-xs" numberOfLines={1} style={{ color: colors.mutedText }}>Direct message</Text>
                     </View>
-                    {forwardingBusyId === targetId ? <ActivityIndicator color="#0A7CFF" /> : <Send color="#0A7CFF" size={18} />}
+                    {forwardingBusyId === targetId ? <ActivityIndicator color={colors.primary} /> : <Send color={colors.primary} size={18} />}
                   </Pressable>
                 );
               })}
               {forwardTargets.groups.length ? (
-                <Text className="mb-1 mt-3 px-2 text-xs font-bold uppercase text-slate-400">Groups</Text>
+                <Text className="mb-1 mt-3 px-2 text-xs font-bold uppercase" style={{ color: colors.mutedText }}>Groups</Text>
               ) : null}
               {forwardTargets.groups.map(targetGroup => {
                 const targetId = getEntityId(targetGroup);
                 return (
                   <Pressable className="h-14 flex-row items-center gap-3 rounded-2xl px-2" key={`forward-group-${targetId}`} onPress={() => forwardToGroup(targetGroup)}>
-                    <View className="h-10 w-10 items-center justify-center rounded-2xl bg-blue-100">
-                      <Users color="#0A7CFF" size={19} />
+                    <View className="h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: colors.surface }}>
+                      <Users color={colors.primary} size={19} />
                     </View>
                     <View className="min-w-0 flex-1">
-                      <Text className="font-semibold text-slate-950" numberOfLines={1}>{targetGroup.name || 'Group chat'}</Text>
-                      <Text className="text-xs text-slate-500" numberOfLines={1}>Group message</Text>
+                      <Text className="font-semibold" numberOfLines={1} style={{ color: colors.text }}>{targetGroup.name || 'Group chat'}</Text>
+                      <Text className="text-xs" numberOfLines={1} style={{ color: colors.mutedText }}>Group message</Text>
                     </View>
-                    {forwardingBusyId === targetId ? <ActivityIndicator color="#0A7CFF" /> : <Send color="#0A7CFF" size={18} />}
+                    {forwardingBusyId === targetId ? <ActivityIndicator color={colors.primary} /> : <Send color={colors.primary} size={18} />}
                   </Pressable>
                 );
               })}
@@ -1427,79 +1433,85 @@ export default function ChatRoomScreen() {
 
       <Modal animationType="slide" transparent visible={detailsOpen} onRequestClose={() => setDetailsOpen(false)}>
         <View className="flex-1 justify-end bg-black/35">
-          <View className="max-h-[88%] rounded-t-[28px] bg-white">
+          <View className="max-h-[88%] rounded-t-[28px]" style={{ backgroundColor: colors.background }}>
             <View className="flex-row items-center justify-between px-4 py-3">
-              <Text className="text-lg font-bold text-slate-950">Details</Text>
-              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setDetailsOpen(false)}>
-                <X color="#0F172A" size={18} />
+              <Text className="text-lg font-bold" style={{ color: colors.text }}>Details</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full" onPress={() => setDetailsOpen(false)} style={{ backgroundColor: colors.surface }}>
+                <X color={colors.text} size={18} />
               </Pressable>
             </View>
             <ScrollView className="px-4" showsVerticalScrollIndicator={false}>
               <View className="items-center pb-4">
                 <Avatar user={groupMode ? undefined : remoteUser} uri={groupMode ? group?.photo : avatar} name={displayName} size={88} />
-                <Text className="mt-3 text-xl font-black text-slate-950" numberOfLines={1}>{displayName}</Text>
-                <Text className="mt-1 text-sm text-slate-500" numberOfLines={1}>
+                <Text className="mt-3 text-xl font-black" numberOfLines={1} style={{ color: colors.text }}>{displayName}</Text>
+                <Text className="mt-1 text-sm" numberOfLines={1} style={{ color: colors.mutedText }}>
                   {groupMode ? `${group?.members?.length || 0} members` : chatStreak ? `${chatStreak.currentStreak} day streak` : 'Direct conversation'}
                 </Text>
               </View>
 
               <View className="mb-4 flex-row gap-2">
-                <Pressable className="flex-1 items-center rounded-2xl bg-slate-50 p-3" onPress={() => setFlag('pinned')}>
-                  <Pin color={hasChatFlag(chatFlags, 'pinned', activeChatId) ? '#0A7CFF' : '#64748B'} size={19} />
-                  <Text className="mt-1 text-xs font-bold text-slate-700">Pin</Text>
+                <Pressable className="flex-1 items-center rounded-2xl p-3" onPress={() => setFlag('pinned')} style={{ backgroundColor: colors.surface }}>
+                  <Pin color={hasChatFlag(chatFlags, 'pinned', activeChatId) ? colors.primary : colors.mutedText} size={19} />
+                  <Text className="mt-1 text-xs font-bold" style={{ color: colors.text }}>Pin</Text>
                 </Pressable>
-                <Pressable className="flex-1 items-center rounded-2xl bg-slate-50 p-3" onPress={() => setFlag('favorites')}>
+                <Pressable className="flex-1 items-center rounded-2xl p-3" onPress={() => setFlag('favorites')} style={{ backgroundColor: colors.surface }}>
                   <Star color="#F59E0B" fill={hasChatFlag(chatFlags, 'favorites', activeChatId) ? '#F59E0B' : 'transparent'} size={19} />
-                  <Text className="mt-1 text-xs font-bold text-slate-700">Star</Text>
+                  <Text className="mt-1 text-xs font-bold" style={{ color: colors.text }}>Star</Text>
                 </Pressable>
-                <Pressable className="flex-1 items-center rounded-2xl bg-slate-50 p-3" onPress={() => setFlag('muted')}>
-                  <BellOff color={hasChatFlag(chatFlags, 'muted', activeChatId) ? '#DC2626' : '#64748B'} size={19} />
-                  <Text className="mt-1 text-xs font-bold text-slate-700">Mute</Text>
+                <Pressable className="flex-1 items-center rounded-2xl p-3" onPress={() => setFlag('muted')} style={{ backgroundColor: colors.surface }}>
+                  <BellOff color={hasChatFlag(chatFlags, 'muted', activeChatId) ? colors.danger : colors.mutedText} size={19} />
+                  <Text className="mt-1 text-xs font-bold" style={{ color: colors.text }}>Mute</Text>
                 </Pressable>
               </View>
 
               {!groupMode ? (
-                <View className="mb-4 rounded-3xl bg-slate-50 p-4">
+                <View className="mb-4 rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
                   <View className="mb-3 flex-row items-center gap-2">
-                    <UserRound color="#0A7CFF" size={18} />
-                    <Text className="font-bold text-slate-950">Nickname</Text>
+                    <UserRound color={colors.primary} size={18} />
+                    <Text className="font-bold" style={{ color: colors.text }}>Nickname</Text>
                   </View>
                   <View className="flex-row items-center gap-2">
                     <TextInput
-                      className="h-11 flex-1 rounded-2xl bg-white px-3 text-[15px] text-slate-950"
+                      className="h-11 flex-1 rounded-2xl px-3 text-[15px]"
                       onChangeText={setNicknameDraft}
                       placeholder={userName}
-                      placeholderTextColor="#94A3B8"
+                      placeholderTextColor={colors.mutedText}
+                      style={{ backgroundColor: colors.input, color: colors.text }}
                       value={nicknameDraft}
                     />
-                    <Pressable className="h-11 w-11 items-center justify-center rounded-2xl bg-blue-600" onPress={saveNickname}>
+                    <Pressable className="h-11 w-11 items-center justify-center rounded-2xl" onPress={saveNickname} style={{ backgroundColor: colors.primary }}>
                       <Check color="#FFFFFF" size={18} />
                     </Pressable>
                   </View>
                 </View>
               ) : null}
 
-              <View className="mb-4 rounded-3xl bg-slate-50 p-4">
+              <View className="mb-4 rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
                 <View className="mb-3 flex-row items-center gap-2">
-                  <Palette color="#0A7CFF" size={18} />
-                  <Text className="font-bold text-slate-950">Theme</Text>
+                  <Palette color={colors.primary} size={18} />
+                  <Text className="font-bold" style={{ color: colors.text }}>Theme</Text>
                 </View>
                 <View className="flex-row flex-wrap gap-2">
                   {CHAT_THEMES.map(theme => (
                     <Pressable
-                      className={`h-10 min-w-20 flex-row items-center gap-2 rounded-2xl px-3 ${themeId === theme.id ? 'bg-white ring-2 ring-blue-500' : 'bg-white'}`}
+                      className="h-10 min-w-20 flex-row items-center gap-2 rounded-2xl px-3"
                       key={theme.id}
                       onPress={() => saveTheme(theme.id)}
+                      style={{
+                        backgroundColor: colors.elevated,
+                        borderColor: themeId === theme.id ? colors.primary : 'transparent',
+                        borderWidth: themeId === theme.id ? 2 : 0
+                      }}
                     >
                       <View className="h-4 w-4 rounded-full" style={{ backgroundColor: theme.ownBubble }} />
-                      <Text className="text-xs font-bold text-slate-700">{theme.label}</Text>
+                      <Text className="text-xs font-bold" style={{ color: colors.text }}>{theme.label}</Text>
                     </Pressable>
                   ))}
                 </View>
               </View>
 
-              <View className="mb-4 rounded-3xl bg-slate-50 p-4">
-                <Text className="mb-3 font-bold text-slate-950">Background</Text>
+              <View className="mb-4 rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
+                <Text className="mb-3 font-bold" style={{ color: colors.text }}>Background</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {CHAT_BACKGROUNDS.map(item => (
                     <Pressable
@@ -1513,24 +1525,24 @@ export default function ChatRoomScreen() {
               </View>
 
               {pinnedMessages.length ? (
-                <View className="mb-4 rounded-3xl bg-slate-50 p-4">
-                  <Text className="mb-2 font-bold text-slate-950">Pinned messages</Text>
+                <View className="mb-4 rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
+                  <Text className="mb-2 font-bold" style={{ color: colors.text }}>Pinned messages</Text>
                   {pinnedMessages.slice(-8).map(message => (
-                    <Text className="mb-2 text-sm text-slate-600" key={getEntityId(message)} numberOfLines={2}>
+                    <Text className="mb-2 text-sm" key={getEntityId(message)} numberOfLines={2} style={{ color: colors.mutedText }}>
                       {getText(message) || 'Media message'}
                     </Text>
                   ))}
                 </View>
               ) : null}
 
-              <View className="mb-8 rounded-3xl bg-slate-50 p-4">
-                <Text className="mb-2 font-bold text-slate-950">Files and media</Text>
+              <View className="mb-8 rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
+                <Text className="mb-2 font-bold" style={{ color: colors.text }}>Files and media</Text>
                 {sharedFiles.length ? sharedFiles.slice(-12).map((file, index) => (
-                  <Text className="mb-2 text-sm text-slate-600" key={`${file.fileUrl}-${index}`} numberOfLines={1}>
+                  <Text className="mb-2 text-sm" key={`${file.fileUrl}-${index}`} numberOfLines={1} style={{ color: colors.mutedText }}>
                     {file.fileName || file.fileType || 'Attachment'}
                   </Text>
                 )) : (
-                  <Text className="text-sm text-slate-500">No shared files yet.</Text>
+                  <Text className="text-sm" style={{ color: colors.mutedText }}>No shared files yet.</Text>
                 )}
               </View>
             </ScrollView>
@@ -1540,33 +1552,33 @@ export default function ChatRoomScreen() {
 
       <Modal animationType="fade" transparent visible={Boolean(infoMessage)} onRequestClose={() => setInfoMessage(null)}>
         <View className="flex-1 justify-center bg-black/45 p-5">
-          <View className="rounded-[28px] bg-white p-4">
+          <View className="rounded-[28px] p-4" style={{ backgroundColor: colors.background }}>
             <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-slate-950">Message info</Text>
-              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setInfoMessage(null)}>
-                <X color="#0F172A" size={18} />
+              <Text className="text-lg font-bold" style={{ color: colors.text }}>Message info</Text>
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full" onPress={() => setInfoMessage(null)} style={{ backgroundColor: colors.surface }}>
+                <X color={colors.text} size={18} />
               </Pressable>
             </View>
             {infoMessage ? (
               <View className="gap-3">
-                <View className="rounded-2xl bg-slate-50 p-3">
-                  <Text className="text-xs font-bold uppercase text-slate-400">From</Text>
-                  <Text className="mt-1 font-semibold text-slate-950">{isOwnMessage(infoMessage, currentUserId, groupMode) ? 'You' : getSenderName(infoMessage, groupMode)}</Text>
+                <View className="rounded-2xl p-3" style={{ backgroundColor: colors.surface }}>
+                  <Text className="text-xs font-bold uppercase" style={{ color: colors.mutedText }}>From</Text>
+                  <Text className="mt-1 font-semibold" style={{ color: colors.text }}>{isOwnMessage(infoMessage, currentUserId, groupMode) ? 'You' : getSenderName(infoMessage, groupMode)}</Text>
                 </View>
-                <View className="rounded-2xl bg-slate-50 p-3">
-                  <Text className="text-xs font-bold uppercase text-slate-400">Time</Text>
-                  <Text className="mt-1 font-semibold text-slate-950">{formatMessageTime(infoMessage.createdAt)}</Text>
+                <View className="rounded-2xl p-3" style={{ backgroundColor: colors.surface }}>
+                  <Text className="text-xs font-bold uppercase" style={{ color: colors.mutedText }}>Time</Text>
+                  <Text className="mt-1 font-semibold" style={{ color: colors.text }}>{formatMessageTime(infoMessage.createdAt)}</Text>
                 </View>
-                <View className="rounded-2xl bg-slate-50 p-3">
-                  <Text className="text-xs font-bold uppercase text-slate-400">Status</Text>
-                  <Text className="mt-1 font-semibold text-slate-950">
+                <View className="rounded-2xl p-3" style={{ backgroundColor: colors.surface }}>
+                  <Text className="text-xs font-bold uppercase" style={{ color: colors.mutedText }}>Status</Text>
+                  <Text className="mt-1 font-semibold" style={{ color: colors.text }}>
                     {(infoMessage as Message).unsent ? 'Unsent' : (infoMessage as Message).read ? 'Seen' : groupMode ? 'Sent' : 'Delivered'}
                   </Text>
                 </View>
                 {infoMessage.reactions?.length ? (
-                  <View className="rounded-2xl bg-slate-50 p-3">
-                    <Text className="text-xs font-bold uppercase text-slate-400">Reactions</Text>
-                    <Text className="mt-1 font-semibold text-slate-950">{infoMessage.reactions.map(reaction => reaction.emoji).join(' ')}</Text>
+                  <View className="rounded-2xl p-3" style={{ backgroundColor: colors.surface }}>
+                    <Text className="text-xs font-bold uppercase" style={{ color: colors.mutedText }}>Reactions</Text>
+                    <Text className="mt-1 font-semibold" style={{ color: colors.text }}>{infoMessage.reactions.map(reaction => reaction.emoji).join(' ')}</Text>
                   </View>
                 ) : null}
               </View>
@@ -1577,13 +1589,13 @@ export default function ChatRoomScreen() {
 
       <Modal animationType="fade" transparent visible={Boolean(reactionViewerMessage)} onRequestClose={() => setReactionViewerMessage(null)}>
         <View className="flex-1 justify-center bg-black/45 p-5">
-          <View className="max-h-[72%] rounded-[28px] bg-white p-4">
+          <View className="max-h-[72%] rounded-[28px] p-4" style={{ backgroundColor: colors.background }}>
             <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-slate-950">
+              <Text className="text-lg font-bold" style={{ color: colors.text }}>
                 {reactionViewerMessage?.reactions?.length || 0} reacted
               </Text>
-              <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-slate-100" onPress={() => setReactionViewerMessage(null)}>
-                <X color="#0F172A" size={18} />
+              <Pressable className="h-9 w-9 items-center justify-center rounded-full" onPress={() => setReactionViewerMessage(null)} style={{ backgroundColor: colors.surface }}>
+                <X color={colors.text} size={18} />
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -1592,30 +1604,30 @@ export default function ChatRoomScreen() {
                 const reactorId = getEntityId(reaction.userId);
                 const isMine = reactorId === currentUserId;
                 return (
-                  <View className="mb-2 flex-row items-center gap-3 rounded-2xl bg-slate-50 p-3" key={`${reaction.emoji}-${reactorId || index}`}>
+                  <View className="mb-2 flex-row items-center gap-3 rounded-2xl p-3" key={`${reaction.emoji}-${reactorId || index}`} style={{ backgroundColor: colors.surface }}>
                     <View>
                       <Avatar user={reactor} size={42} />
-                      <View className="absolute -bottom-1 -right-1 h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
+                      <View className="absolute -bottom-1 -right-1 h-6 w-6 items-center justify-center rounded-full shadow-sm shadow-slate-200" style={{ backgroundColor: colors.elevated }}>
                         <Text className="text-sm">{reaction.emoji}</Text>
                       </View>
                     </View>
                     <View className="min-w-0 flex-1">
-                      <Text className="font-semibold text-slate-950" numberOfLines={1}>
+                      <Text className="font-semibold" numberOfLines={1} style={{ color: colors.text }}>
                         {isMine ? 'You' : getDisplayName(reactor, 'Member')}
                       </Text>
-                      <Text className="text-xs text-slate-500" numberOfLines={1}>
+                      <Text className="text-xs" numberOfLines={1} style={{ color: colors.mutedText }}>
                         Reacted with {reaction.emoji}
                       </Text>
                     </View>
                     {isMine ? (
-                      <Pressable className="rounded-full bg-white px-3 py-2" onPress={() => reactionViewerMessage && handleRemoveMyReaction(reactionViewerMessage, reaction.emoji)}>
-                        <Text className="text-xs font-bold text-red-600">Remove</Text>
+                      <Pressable className="rounded-full px-3 py-2" onPress={() => reactionViewerMessage && handleRemoveMyReaction(reactionViewerMessage, reaction.emoji)} style={{ backgroundColor: colors.elevated }}>
+                        <Text className="text-xs font-bold" style={{ color: colors.danger }}>Remove</Text>
                       </Pressable>
                     ) : null}
                   </View>
                 );
               }) : (
-                <Text className="py-5 text-center text-sm text-slate-500">No reactions yet.</Text>
+                <Text className="py-5 text-center text-sm" style={{ color: colors.mutedText }}>No reactions yet.</Text>
               )}
             </ScrollView>
           </View>

@@ -5,6 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { Camera, ImagePlus, Mic, Send, X } from 'lucide-react-native';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import VoiceRecorder from './VoiceRecorder';
+import { useTheme } from '../theme/ThemeContext';
 import type { VoiceRecordingResult } from '../utils/mediaHelpers';
 
 type MessageInputProps = {
@@ -32,6 +33,7 @@ export default function MessageInput({
   onClearReply,
   onClearEdit
 }: MessageInputProps) {
+  const { colors } = useTheme();
   const [recordingVoice, setRecordingVoice] = useState(false);
   const scale = useSharedValue(1);
   const sendStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -47,7 +49,7 @@ export default function MessageInput({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
-      quality: 0.86,
+      quality: 0.72,
       videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium
     });
 
@@ -63,7 +65,7 @@ export default function MessageInput({
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 0.86,
+      quality: 0.72,
       videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium
     });
 
@@ -71,31 +73,31 @@ export default function MessageInput({
   };
 
   return (
-    <View className="border-t border-slate-200/80 bg-white/95">
+    <View className="border-t" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
       <View className="px-3 pb-3 pt-2">
         {editingLabel ? (
-          <View className="mb-2 flex-row items-center gap-2 rounded-2xl bg-amber-50 px-3 py-2">
+          <View className="mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2" style={{ backgroundColor: colors.surface }}>
             <View className="h-8 w-1 rounded-full bg-amber-500" />
             <View className="min-w-0 flex-1">
               <Text className="text-[11px] font-semibold uppercase text-amber-700" numberOfLines={1}>
                 Editing message
               </Text>
-              <Text className="mt-0.5 text-xs text-slate-600" numberOfLines={2}>
+              <Text className="mt-0.5 text-xs" numberOfLines={2} style={{ color: colors.mutedText }}>
                 {editingLabel}
               </Text>
             </View>
-            <Pressable className="h-8 w-8 items-center justify-center rounded-full bg-white" onPress={onClearEdit}>
-              <X color="#475569" size={16} />
+            <Pressable className="h-8 w-8 items-center justify-center rounded-full" onPress={onClearEdit} style={{ backgroundColor: colors.elevated }}>
+              <X color={colors.mutedText} size={16} />
             </Pressable>
           </View>
         ) : replyLabel ? (
-          <View className="mb-2 flex-row items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2">
-            <View className="h-8 w-1 rounded-full bg-blue-600" />
-            <Text className="flex-1 text-xs text-slate-600" numberOfLines={2}>
+          <View className="mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2" style={{ backgroundColor: colors.surface }}>
+            <View className="h-8 w-1 rounded-full" style={{ backgroundColor: colors.primary }} />
+            <Text className="flex-1 text-xs" numberOfLines={2} style={{ color: colors.mutedText }}>
               {replyLabel}
             </Text>
-            <Pressable className="h-8 w-8 items-center justify-center rounded-full bg-white" onPress={onClearReply}>
-              <X color="#475569" size={16} />
+            <Pressable className="h-8 w-8 items-center justify-center rounded-full" onPress={onClearReply} style={{ backgroundColor: colors.elevated }}>
+              <X color={colors.mutedText} size={16} />
             </Pressable>
           </View>
         ) : null}
@@ -110,29 +112,30 @@ export default function MessageInput({
           />
         ) : (
         <View className="flex-row items-end gap-2">
-          <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={pickLibrary}>
-            <ImagePlus color="#0A7CFF" size={22} />
+          <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={pickLibrary} style={{ backgroundColor: colors.surface }}>
+            <ImagePlus color={colors.primary} size={22} />
           </Pressable>
-          <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={openCamera}>
-            <Camera color="#0A7CFF" size={22} />
+          <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={openCamera} style={{ backgroundColor: colors.surface }}>
+            <Camera color={colors.primary} size={22} />
           </Pressable>
           <TextInput
-            className="max-h-32 min-h-11 flex-1 rounded-3xl bg-slate-100 px-4 py-3 text-[15px] text-slate-950"
+            className="max-h-32 min-h-11 flex-1 rounded-3xl px-4 py-3 text-[15px]"
             multiline
             numberOfLines={1}
             onChangeText={onChangeText}
             placeholder="Message"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={colors.mutedText}
+            style={{ backgroundColor: colors.input, color: colors.text }}
             value={value}
           />
           {!value.trim() && onVoiceSend ? (
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full bg-slate-100" onPress={() => setRecordingVoice(true)}>
-              <Mic color="#0A7CFF" size={21} />
+            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => setRecordingVoice(true)} style={{ backgroundColor: colors.surface }}>
+              <Mic color={colors.primary} size={21} />
             </Pressable>
           ) : null}
           <Animated.View style={sendStyle}>
             <Pressable
-              className={`h-11 w-11 items-center justify-center rounded-full ${canSend ? 'bg-blue-600' : 'bg-slate-300'}`}
+              className="h-11 w-11 items-center justify-center rounded-full"
               disabled={!canSend}
               onPress={onSend}
               onPressIn={() => {
@@ -141,6 +144,7 @@ export default function MessageInput({
               onPressOut={() => {
                 scale.value = withSpring(1, { damping: 14, stiffness: 280 });
               }}
+              style={{ backgroundColor: canSend ? colors.primary : colors.border }}
             >
               {sending ? <ActivityIndicator color="white" size="small" /> : <Send color="white" size={19} />}
             </Pressable>
