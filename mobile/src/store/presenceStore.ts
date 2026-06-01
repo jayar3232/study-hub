@@ -19,7 +19,7 @@ type PresenceState = {
   resetPresence: () => void;
 };
 
-const normalizeId = (value?: unknown) => String((value as { _id?: string; id?: string })?._id || (value as { id?: string })?.id || value || '');
+const normalizeId = (value?: unknown) => String((value as { _id?: string; id?: string; userId?: string })?._id || (value as { id?: string; userId?: string })?.id || (value as { userId?: string })?.userId || value || '');
 
 export const usePresenceStore = create<PresenceState>((set) => ({
   connected: false,

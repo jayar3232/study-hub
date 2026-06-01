@@ -3,10 +3,11 @@ import { Linking, Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { FileText, Pin } from 'lucide-react-native';
+import Avatar from './Avatar';
 import ImageGridBubble from './ImageGridBubble';
 import VoiceMessageBubble from './VoiceMessageBubble';
 import { useTheme } from '../theme/ThemeContext';
-import type { GroupMessage, Message } from '../types';
+import type { GroupMessage, Message, User } from '../types';
 import { formatMessageTime } from '../utils/date';
 import { getEntityId } from '../utils/ids';
 import { getMessageAttachments, resolveMediaUrl } from '../utils/media';
@@ -25,6 +26,8 @@ type ChatBubbleProps = {
   ownBubbleColor?: string;
   otherBubbleColor?: string;
   onOpenMedia?: (message: ThreadMessage, index: number) => void;
+  deliveryLabel?: string;
+  fallbackSender?: User | null;
 };
 
 export default function ChatBubble({
@@ -37,11 +40,14 @@ export default function ChatBubble({
   highlighted = false,
   ownBubbleColor,
   otherBubbleColor,
-  onOpenMedia
+  onOpenMedia,
+  deliveryLabel,
+  fallbackSender
 }: ChatBubbleProps) {
   const { colors } = useTheme();
   const sender = (message as GroupMessage).userId !== undefined ? (message as GroupMessage).userId : (message as Message).from;
   const isMe = getEntityId(sender) === currentUserId;
+  const senderUser = typeof sender === 'object' ? sender : fallbackSender;
   const resolvedOwnBubbleColor = ownBubbleColor || colors.sentBubble;
   const resolvedOtherBubbleColor = otherBubbleColor || colors.receivedBubble;
   const translateX = useSharedValue(0);
@@ -50,7 +56,12 @@ export default function ChatBubble({
   const audioAttachments = attachments.filter(isAudioAttachment);
   const fileAttachments = attachments.filter(attachment => !isMediaAttachment(attachment) && !isAudioAttachment(attachment));
   const replyMessage = typeof message.replyTo === 'object' ? message.replyTo : null;
-  const senderName = typeof sender === 'object' ? sender?.name || sender?.email || 'Member' : 'Member';
+  const senderName = typeof sender === 'object'
+    ? sender?.name || sender?.email || 'Member'
+    : fallbackSender?.name || fallbackSender?.email || 'Member';
+  const clientStatus = (message as Message).clientStatus || (message as GroupMessage).clientStatus;
+  const failed = clientStatus === 'failed';
+  const pending = clientStatus === 'queued' || clientStatus === 'sending' || clientStatus === 'uploading';
 
   const pan = Gesture.Pan()
     .activeOffsetX([-12, 12])
@@ -87,25 +98,42 @@ export default function ChatBubble({
     <GestureDetector gesture={pan}>
       <Animated.View
         entering={FadeInDown.duration(120)}
-        className={`px-3 py-1 ${isMe ? 'items-end' : 'items-start'}`}
+        className="px-3 py-1"
         style={animatedStyle}
       >
-        {groupMode && !isMe ? (
-          <Text className="mb-0.5 ml-2 text-[11px] font-semibold" numberOfLines={1} style={{ color: colors.mutedText }}>
-            {senderName}
-          </Text>
-        ) : null}
-        <Pressable
-          className={`max-w-[82%] rounded-[22px] px-3.5 py-2.5 ${!isMe ? 'shadow-sm shadow-slate-200' : ''} ${highlighted ? 'border-2 border-amber-300' : ''}`}
-          onLongPress={openMenu}
-          style={{ backgroundColor: isMe ? resolvedOwnBubbleColor : resolvedOtherBubbleColor }}
-        >
-          {message.pinned ? (
-            <View className={`mb-1 flex-row items-center gap-1 ${isMe ? 'self-end' : 'self-start'}`}>
-              <Pin color={isMe ? '#FFFFFF' : colors.mutedText} size={11} />
-              <Text className="text-[10px] font-semibold" style={{ color: isMe ? 'rgba(255,255,255,0.8)' : colors.mutedText }}>Pinned</Text>
+        <View className={`flex-row items-end ${isMe ? 'justify-end' : 'justify-start'}`}>
+          {!isMe ? (
+            <View className="mr-2 w-8 items-center">
+              <Avatar
+                name={senderUser?.name || senderUser?.email || senderName}
+                size={28}
+                uri={senderUser?.avatar || senderUser?.profilePicture}
+                user={senderUser || undefined}
+              />
             </View>
           ) : null}
+
+          <View className={isMe ? 'items-end' : 'items-start'} style={{ maxWidth: isMe ? '82%' : '76%' }}>
+            {groupMode && !isMe ? (
+              <Text className="mb-0.5 ml-2 text-[11px] font-semibold" numberOfLines={1} style={{ color: colors.mutedText }}>
+                {senderName}
+              </Text>
+            ) : null}
+            <Pressable
+              className={`rounded-[22px] px-3.5 py-2.5 ${!isMe ? 'shadow-sm shadow-slate-200' : ''} ${highlighted ? 'border-2 border-amber-300' : ''}`}
+              onLongPress={openMenu}
+              style={[
+                { backgroundColor: isMe ? resolvedOwnBubbleColor : resolvedOtherBubbleColor },
+                pending ? { opacity: 0.78 } : null,
+                failed ? { borderColor: colors.danger, borderWidth: 1 } : null
+              ]}
+            >
+              {message.pinned ? (
+                <View className={`mb-1 flex-row items-center gap-1 ${isMe ? 'self-end' : 'self-start'}`}>
+                  <Pin color={isMe ? '#FFFFFF' : colors.mutedText} size={11} />
+                  <Text className="text-[10px] font-semibold" style={{ color: isMe ? 'rgba(255,255,255,0.8)' : colors.mutedText }}>Pinned</Text>
+                </View>
+              ) : null}
 
           {replyMessage ? (
             <View
@@ -170,21 +198,23 @@ export default function ChatBubble({
           ) : null}
 
           <Text className="mt-1 text-[10px]" numberOfLines={1} style={{ color: isMe ? 'rgba(255,255,255,0.7)' : colors.mutedText }}>
-            {formatMessageTime(message.createdAt)}{message.editedAt ? ' · Edited' : ''}
+            {formatMessageTime(message.createdAt)}{deliveryLabel ? ` · ${deliveryLabel}` : ''}{message.editedAt ? ' · Edited' : ''}
           </Text>
-        </Pressable>
+            </Pressable>
 
-        {message.reactions?.length ? (
-          <Pressable
-            className={`-mt-2 rounded-full px-2 py-0.5 shadow-sm shadow-slate-200 ${isMe ? 'mr-2' : 'ml-2'}`}
-            onPress={() => onReactionPress?.(message)}
-            style={{ backgroundColor: colors.elevated }}
-          >
-            <Text className="text-xs" numberOfLines={1}>
-              {message.reactions.map(reaction => reaction.emoji).join(' ')}
-            </Text>
-          </Pressable>
-        ) : null}
+            {message.reactions?.length ? (
+              <Pressable
+                className={`-mt-2 rounded-full px-2 py-0.5 shadow-sm shadow-slate-200 ${isMe ? 'mr-2' : 'ml-2'}`}
+                onPress={() => onReactionPress?.(message)}
+                style={{ backgroundColor: colors.elevated }}
+              >
+                <Text className="text-xs" numberOfLines={1}>
+                  {message.reactions.map(reaction => reaction.emoji).join(' ')}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
       </Animated.View>
     </GestureDetector>
   );

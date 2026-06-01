@@ -1,4 +1,5 @@
-import React from 'react';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Play } from 'lucide-react-native';
@@ -20,7 +21,27 @@ type TileProps = {
 };
 
 function Tile({ attachment, index, width, height, extraCount = 0, onOpen }: TileProps) {
-  const uri = attachment.fileType === 'video' ? getThumbnailUrl(attachment) : getMediaUrl(attachment);
+  const mediaUri = getMediaUrl(attachment);
+  const serverThumbnailUri = attachment.fileType === 'video' ? getThumbnailUrl(attachment) : '';
+  const [generatedThumbnailUri, setGeneratedThumbnailUri] = useState('');
+  const uri = attachment.fileType === 'video'
+    ? generatedThumbnailUri || serverThumbnailUri
+    : mediaUri;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (attachment.fileType !== 'video' || serverThumbnailUri || !mediaUri) return undefined;
+
+    VideoThumbnails.getThumbnailAsync(mediaUri, { time: 1000 })
+      .then(result => {
+        if (!cancelled) setGeneratedThumbnailUri(result.uri);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.fileType, mediaUri, serverThumbnailUri]);
 
   return (
     <Pressable
@@ -28,13 +49,17 @@ function Tile({ attachment, index, width, height, extraCount = 0, onOpen }: Tile
       onPress={() => onOpen(index)}
       style={{ height, width }}
     >
-      <ExpoImage
-        cachePolicy="memory-disk"
-        contentFit="cover"
-        source={{ uri }}
-        style={{ height, width }}
-        transition={120}
-      />
+      {uri ? (
+        <ExpoImage
+          cachePolicy="memory-disk"
+          contentFit="cover"
+          source={{ uri }}
+          style={{ height, width }}
+          transition={120}
+        />
+      ) : (
+        <View className="h-full w-full bg-slate-800" />
+      )}
       {attachment.fileType === 'video' ? (
         <View className="absolute inset-0 items-center justify-center bg-black/10">
           <View className="h-9 w-9 items-center justify-center rounded-full bg-black/45">
@@ -55,12 +80,23 @@ export default function ImageGridBubble({ attachments, onOpen }: ImageGridBubble
   const visible = attachments.slice(0, 4);
   const extraCount = Math.max(0, attachments.length - 4);
   const gap = 2;
-  const size = 224;
+  const size = 250;
+  const singleDimensions = useMemo(() => {
+    const first = attachments[0];
+    const sourceWidth = Number(first?.width || 0);
+    const sourceHeight = Number(first?.height || 0);
+    const ratio = sourceWidth > 0 && sourceHeight > 0 ? sourceWidth / sourceHeight : 1;
+    const width = 250;
+    return {
+      height: Math.min(300, Math.max(168, width / ratio)),
+      width
+    };
+  }, [attachments]);
 
   if (attachments.length === 1) {
     return (
       <View className="mb-1 overflow-hidden rounded-[14px]">
-        <Tile attachment={attachments[0]} height={224} index={0} onOpen={onOpen} width={224} />
+        <Tile attachment={attachments[0]} height={singleDimensions.height} index={0} onOpen={onOpen} width={singleDimensions.width} />
       </View>
     );
   }

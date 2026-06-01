@@ -1,4 +1,5 @@
 export type EntityId = string;
+export type ClientSendStatus = 'queued' | 'sending' | 'uploading' | 'failed';
 
 export type User = {
   _id?: EntityId;
@@ -22,6 +23,10 @@ export type MessageAttachment = {
   mimeType?: string;
   fileSize?: number;
   durationMs?: number;
+  width?: number;
+  height?: number;
+  thumbnailUrl?: string;
+  localUri?: string;
   storagePath?: string;
   storageProvider?: string;
   variants?: Record<string, string | { fileUrl?: string; url?: string }>;
@@ -31,6 +36,8 @@ export type Message = {
   _id?: EntityId;
   id?: EntityId;
   clientId?: string;
+  clientStatus?: ClientSendStatus;
+  clientError?: string;
   from?: User | EntityId;
   to?: User | EntityId;
   text?: string;
@@ -98,6 +105,9 @@ export type Group = {
 export type GroupMessage = {
   _id?: EntityId;
   id?: EntityId;
+  clientId?: string;
+  clientStatus?: ClientSendStatus;
+  clientError?: string;
   groupId?: Group | EntityId;
   userId?: User | EntityId;
   text?: string;
@@ -182,6 +192,7 @@ export type ThreadMode = 'direct' | 'group';
 
 export type RootStackParamList = {
   Login: undefined;
+  SyncrovaMain: undefined;
   ChatList: undefined;
   ChatRoom: {
     chatId: string;

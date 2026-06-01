@@ -14,5 +14,6 @@
         "**/build": true,
         "**/.gradle": true,
         "**/.expo": true
-    }
+    },
+    "java.compile.nullAnalysis.mode": "automatic"
 }

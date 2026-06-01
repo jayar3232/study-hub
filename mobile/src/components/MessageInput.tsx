@@ -19,6 +19,11 @@ type MessageInputProps = {
   editingLabel?: string;
   onClearReply?: () => void;
   onClearEdit?: () => void;
+  containerBackgroundColor?: string;
+  inputBackgroundColor?: string;
+  buttonBackgroundColor?: string;
+  borderColor?: string;
+  iconColor?: string;
 };
 
 export default function MessageInput({
@@ -31,9 +36,15 @@ export default function MessageInput({
   replyLabel,
   editingLabel,
   onClearReply,
-  onClearEdit
+  onClearEdit,
+  containerBackgroundColor,
+  inputBackgroundColor,
+  buttonBackgroundColor,
+  borderColor,
+  iconColor
 }: MessageInputProps) {
   const { colors } = useTheme();
+  const actionIconColor = iconColor || colors.primary;
   const [recordingVoice, setRecordingVoice] = useState(false);
   const scale = useSharedValue(1);
   const sendStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -48,7 +59,7 @@ export default function MessageInput({
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsMultipleSelection: true,
+      allowsMultipleSelection: false,
       quality: 0.72,
       videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium
     });
@@ -73,7 +84,7 @@ export default function MessageInput({
   };
 
   return (
-    <View className="border-t" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
+    <View className="border-t" style={{ backgroundColor: containerBackgroundColor || colors.background, borderColor: borderColor || colors.border }}>
       <View className="px-3 pb-3 pt-2">
         {editingLabel ? (
           <View className="mb-2 flex-row items-center gap-2 rounded-2xl px-3 py-2" style={{ backgroundColor: colors.surface }}>
@@ -112,11 +123,11 @@ export default function MessageInput({
           />
         ) : (
         <View className="flex-row items-end gap-2">
-          <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={pickLibrary} style={{ backgroundColor: colors.surface }}>
-            <ImagePlus color={colors.primary} size={22} />
+          <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={pickLibrary} style={{ backgroundColor: buttonBackgroundColor || colors.surface }}>
+            <ImagePlus color={actionIconColor} size={22} />
           </Pressable>
-          <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={openCamera} style={{ backgroundColor: colors.surface }}>
-            <Camera color={colors.primary} size={22} />
+          <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={openCamera} style={{ backgroundColor: buttonBackgroundColor || colors.surface }}>
+            <Camera color={actionIconColor} size={22} />
           </Pressable>
           <TextInput
             className="max-h-32 min-h-11 flex-1 rounded-3xl px-4 py-3 text-[15px]"
@@ -125,12 +136,12 @@ export default function MessageInput({
             onChangeText={onChangeText}
             placeholder="Message"
             placeholderTextColor={colors.mutedText}
-            style={{ backgroundColor: colors.input, color: colors.text }}
+            style={{ backgroundColor: inputBackgroundColor || colors.input, color: colors.text }}
             value={value}
           />
           {!value.trim() && onVoiceSend ? (
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => setRecordingVoice(true)} style={{ backgroundColor: colors.surface }}>
-              <Mic color={colors.primary} size={21} />
+            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => setRecordingVoice(true)} style={{ backgroundColor: buttonBackgroundColor || colors.surface }}>
+              <Mic color={actionIconColor} size={21} />
             </Pressable>
           ) : null}
           <Animated.View style={sendStyle}>

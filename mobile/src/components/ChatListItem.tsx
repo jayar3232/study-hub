@@ -18,9 +18,24 @@ type ChatListItemProps = {
   muted?: boolean;
   favorite?: boolean;
   online?: boolean;
+  presenceLabel?: string;
   statusLabel?: string;
   typingLabel?: string;
   storyRing?: AvatarStoryRing;
+};
+
+const getPresencePillLabel = (label?: string) => {
+  if (!label || label === 'Offline') return '';
+  if (label === 'Active now' || label === 'Active just now') return 'Now';
+  return label
+    .replace(/^Active\s+/i, '')
+    .replace(/\s+at\s+.+$/i, '')
+    .replace(/^yesterday$/i, '1d ago');
+};
+
+const getPresencePillText = (label: string, online: boolean) => {
+  if (!online) return label;
+  return label === 'Now' ? 'Active now' : label;
 };
 
 function ChatListItem({
@@ -32,6 +47,7 @@ function ChatListItem({
   muted = false,
   favorite = false,
   online = false,
+  presenceLabel,
   statusLabel,
   typingLabel,
   storyRing = 'none'
@@ -41,23 +57,21 @@ function ChatListItem({
   const userId = getEntityId(user);
   const translateX = useSharedValue(0);
   const name = displayName || user.name || user.email || 'Syncrova user';
-  const subtitle = typingLabel || (online ? 'Active now' : item.lastMessage || statusLabel || 'Open chat');
+  const activityLabel = presenceLabel || (online ? 'Active now' : statusLabel);
+  const presencePillLabel = getPresencePillLabel(activityLabel);
+  const presencePillText = getPresencePillText(presencePillLabel, online);
+  const subtitle = typingLabel || item.lastMessage || activityLabel || 'Open chat';
+  const showActivityLabel = Boolean(!typingLabel && !presencePillLabel && activityLabel && activityLabel !== subtitle && activityLabel !== 'Offline');
   const subtitleClassName = typingLabel
     ? 'font-semibold text-blue-600'
-    : online && !item.lastMessage
-      ? 'font-semibold text-emerald-600'
-      : item.unreadCount
-        ? 'font-semibold text-slate-950'
-        : online
-          ? 'text-emerald-600'
-          : 'text-slate-500';
+    : item.unreadCount
+      ? 'font-semibold text-slate-950'
+      : 'text-slate-500';
   const subtitleColor = typingLabel
     ? colors.primary
-    : online
-      ? colors.online
-      : item.unreadCount
-        ? colors.text
-        : colors.mutedText;
+    : item.unreadCount
+      ? colors.text
+      : colors.mutedText;
 
   const confirmDelete = () => {
     Alert.alert('Delete conversation?', user.name || 'This chat', [
@@ -81,19 +95,41 @@ function ChatListItem({
   }));
 
   return (
-    <View className="h-[72px] justify-center overflow-hidden" style={{ backgroundColor: colors.background }}>
+    <View className="h-[76px] justify-center overflow-hidden" style={{ backgroundColor: colors.background }}>
       <View className="absolute right-0 h-full w-24 items-center justify-center bg-red-500">
         <Trash2 color="white" size={22} />
       </View>
       <GestureDetector gesture={pan}>
         <Animated.View style={animatedStyle}>
           <Pressable
-            className="h-[72px] flex-row items-center gap-3 px-4"
+            className="h-[76px] flex-row items-center gap-3 px-4"
             onLongPress={confirmDelete}
             onPress={onPress}
             style={{ backgroundColor: colors.background }}
           >
-            <Avatar online={online} storyRing={storyRing} user={user} size={52} sharedTag={`avatar-${userId}`} />
+            <View className="relative">
+              <Avatar online={online} storyRing={storyRing} user={user} size={52} sharedTag={`avatar-${userId}`} />
+              {presencePillLabel ? (
+                <View
+                  className="absolute -bottom-2 self-center flex-row items-center justify-center rounded-full border px-1.5 py-0.5"
+                  style={{
+                    alignSelf: 'center',
+                    backgroundColor: online ? '#ECFDF5' : colors.background,
+                    borderColor: online ? '#A7F3D0' : colors.border,
+                    left: -6,
+                    right: -6
+                  }}
+                >
+                  <Text
+                    className="text-center text-[10px] font-black"
+                    numberOfLines={1}
+                    style={{ color: online ? colors.online : colors.mutedText }}
+                  >
+                    {presencePillText}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <View className="min-w-0 flex-1">
               <View className="flex-row items-center gap-2">
                 <Text className="flex-1 text-[15px] font-semibold" numberOfLines={1} style={{ color: colors.text }}>
@@ -114,6 +150,15 @@ function ChatListItem({
                 >
                   {subtitle}
                 </Text>
+                {showActivityLabel ? (
+                  <Text
+                    className="max-w-[104px] text-[11px] font-semibold"
+                    numberOfLines={1}
+                    style={{ color: online ? colors.online : colors.mutedText }}
+                  >
+                    {activityLabel}
+                  </Text>
+                ) : null}
                 {item.unreadCount ? (
                   <View className="min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5">
                     <Text className="text-[11px] font-semibold text-white" numberOfLines={1}>
@@ -143,6 +188,7 @@ export default React.memo(ChatListItem, (prev, next) => {
     && prev.muted === next.muted
     && prev.favorite === next.favorite
     && prev.online === next.online
+    && prev.presenceLabel === next.presenceLabel
     && prev.statusLabel === next.statusLabel
     && prev.typingLabel === next.typingLabel
     && prev.storyRing === next.storyRing;

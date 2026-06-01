@@ -1,5 +1,7 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
-import api from './api';
+import * as FileSystem from 'expo-file-system/legacy';
+import { API_BASE_URL } from '../config';
+import api, { getApiToken } from './api';
 import type {
   ChatStreak,
   Conversation,
@@ -108,6 +110,12 @@ const getUriExtension = (uri?: string) => {
   return match?.[1]?.toLowerCase() || '';
 };
 
+const sanitizeUploadFileName = (name: string) => name
+  .trim()
+  .replace(/[^\w.\-()+ ]/g, '-')
+  .replace(/\s+/g, '-')
+  .slice(0, 140) || `syncrova-${Date.now()}.bin`;
+
 const getAssetUploadMeta = (asset: ImagePickerAsset) => {
   const rawName = String(asset.fileName || '').trim();
   const rawMimeType = String(asset.mimeType || '').trim();
@@ -125,22 +133,131 @@ const getAssetUploadMeta = (asset: ImagePickerAsset) => {
   return { fileName, fileType, mimeType: uploadMimeType };
 };
 
+type MultipartUploadInput = {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+  fieldName: string;
+  endpoint: string;
+  parameters?: Record<string, string>;
+};
+
+const UPLOAD_RETRY_DELAYS_MS = [650, 1400];
+
+const sleep = (ms: number) => new Promise(resolve => {
+  setTimeout(resolve, ms);
+});
+
+const isRetryableUploadError = (error: unknown) => {
+  const uploadError = error as { response?: { status?: number }; message?: string };
+  const status = uploadError?.response?.status;
+  if (!status) return true;
+  if (status === 408 || status === 429) return true;
+  return status >= 500;
+};
+
+const parseUploadResponse = <T,>(result: FileSystem.FileSystemUploadResult): T => {
+  let data: unknown = {};
+  try {
+    data = result.body ? JSON.parse(result.body) : {};
+  } catch {
+    data = { msg: result.body || 'Upload failed' };
+  }
+
+  if (result.status < 200 || result.status >= 300) {
+    const message = (data as { msg?: string; message?: string; error?: string })?.msg
+      || (data as { message?: string })?.message
+      || (data as { error?: string })?.error
+      || `Upload failed with status ${result.status}`;
+    const error = new Error(message) as Error & { response?: { status: number; data: unknown } };
+    error.response = { status: result.status, data };
+    throw error;
+  }
+
+  return data as T;
+};
+
+const withUploadFileName = async (uri: string, fileName: string) => {
+  const safeName = sanitizeUploadFileName(fileName);
+  const sourceExtension = getUriExtension(uri);
+  const namedExtension = safeName.split('.').pop()?.toLowerCase() || '';
+  const hasUsableName = uri.startsWith('file://') && namedExtension && sourceExtension === namedExtension;
+
+  if (hasUsableName) {
+    return { uri, cleanup: async () => {} };
+  }
+
+  const cacheRoot = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!cacheRoot) return { uri, cleanup: async () => {} };
+
+  const target = `${cacheRoot}syncrova-upload-${Date.now()}-${safeName}`;
+  try {
+    await FileSystem.copyAsync({ from: uri, to: target });
+    return {
+      uri: target,
+      cleanup: async () => {
+        await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => {});
+      }
+    };
+  } catch {
+    return { uri, cleanup: async () => {} };
+  }
+};
+
+const uploadMultipartFile = async <T,>({
+  uri,
+  fileName,
+  mimeType,
+  fieldName,
+  endpoint,
+  parameters
+}: MultipartUploadInput): Promise<T> => {
+  const prepared = await withUploadFileName(uri, fileName);
+  const token = await getApiToken();
+
+  try {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= UPLOAD_RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        const result = await FileSystem.uploadAsync(`${API_BASE_URL}${endpoint}`, prepared.uri, {
+          fieldName,
+          headers: token ? { 'x-auth-token': token } : undefined,
+          httpMethod: 'POST',
+          mimeType,
+          parameters,
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART
+        });
+
+        return parseUploadResponse<T>(result);
+      } catch (error) {
+        lastError = error;
+        const delay = UPLOAD_RETRY_DELAYS_MS[attempt];
+        if (!delay || !isRetryableUploadError(error)) throw error;
+        await sleep(delay);
+      }
+    }
+
+    throw lastError;
+  } finally {
+    await prepared.cleanup();
+  }
+};
+
 export const uploadMessageAsset = async (asset: ImagePickerAsset): Promise<UploadedAttachment> => {
   const meta = getAssetUploadMeta(asset);
-  const formData = new FormData();
+  const data = await uploadMultipartFile<UploadedAttachment>({
+    endpoint: '/messages/upload',
+    fieldName: 'file',
+    fileName: meta.fileName,
+    mimeType: meta.mimeType,
+    uri: asset.uri
+  });
 
-  formData.append('file', {
-    uri: asset.uri,
-    name: meta.fileName,
-    type: meta.mimeType
-  } as unknown as Blob);
-
-  const res = await api.post<UploadedAttachment>('/messages/upload', formData, { timeout: 120000 });
   return {
-    ...res.data,
-    fileName: res.data.fileName || meta.fileName,
-    fileType: res.data.fileType || meta.fileType,
-    mimeType: res.data.mimeType || meta.mimeType
+    ...data,
+    fileName: data.fileName || meta.fileName,
+    fileType: data.fileType || meta.fileType,
+    mimeType: data.mimeType || meta.mimeType
   };
 };
 
@@ -151,20 +268,19 @@ export const uploadLocalMessageAsset = async (asset: {
   fileType: string;
   durationMs?: number;
 }): Promise<UploadedAttachment> => {
-  const formData = new FormData();
+  const data = await uploadMultipartFile<UploadedAttachment>({
+    endpoint: '/messages/upload',
+    fieldName: 'file',
+    fileName: asset.fileName,
+    mimeType: asset.mimeType,
+    uri: asset.uri
+  });
 
-  formData.append('file', {
-    uri: asset.uri,
-    name: asset.fileName,
-    type: asset.mimeType
-  } as unknown as Blob);
-
-  const res = await api.post<UploadedAttachment>('/messages/upload', formData, { timeout: 120000 });
   return {
-    ...res.data,
-    fileName: res.data.fileName || asset.fileName,
-    fileType: asset.fileType || res.data.fileType,
-    mimeType: res.data.mimeType || asset.mimeType,
+    ...data,
+    fileName: data.fileName || asset.fileName,
+    fileType: asset.fileType || data.fileType,
+    mimeType: data.mimeType || asset.mimeType,
     durationMs: asset.durationMs || 0
   };
 };
@@ -183,17 +299,17 @@ export const createStory = async ({
     throw new Error('My Day supports photos and videos only');
   }
 
-  const formData = new FormData();
-  formData.append('media', {
-    uri: asset.uri,
-    name: meta.fileName,
-    type: meta.mimeType
-  } as unknown as Blob);
-  formData.append('privacy', privacy);
-  if (caption.trim()) formData.append('caption', caption.trim());
-
-  const res = await api.post<Story>('/stories', formData, { timeout: 120000 });
-  return res.data;
+  return uploadMultipartFile<Story>({
+    endpoint: '/stories',
+    fieldName: 'media',
+    fileName: meta.fileName,
+    mimeType: meta.mimeType,
+    parameters: {
+      privacy,
+      ...(caption.trim() ? { caption: caption.trim() } : {})
+    },
+    uri: asset.uri
+  });
 };
 
 export const sendMessage = async (payload: {

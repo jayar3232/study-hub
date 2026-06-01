@@ -12,10 +12,15 @@ type TypingPayload = {
   from?: string;
 };
 
+type PresencePayload = string | {
+  userId: string;
+  token?: string;
+};
+
 let socket: Socket | null = null;
 let tokenGetter: () => Promise<string | null> = async () => null;
 
-const normalizeId = (value?: unknown) => String((value as { _id?: string; id?: string })?._id || (value as { id?: string })?.id || value || '');
+const normalizeId = (value?: unknown) => String((value as { _id?: string; id?: string; userId?: string })?._id || (value as { id?: string; userId?: string })?.id || (value as { userId?: string })?.userId || value || '');
 
 export const normalizeOnlineUsersPayload = (payload?: OnlineUsersPayload | unknown): string[] => {
   if (Array.isArray(payload)) return payload.map(normalizeId).filter(Boolean);
@@ -34,6 +39,11 @@ export const setSocketTokenGetter = (getter: () => Promise<string | null>) => {
 };
 
 const getAuthToken = async () => (await tokenGetter()) || '';
+
+const buildPresencePayload = async (userId: string): Promise<PresencePayload> => {
+  const token = await getAuthToken();
+  return token ? { userId, token } : userId;
+};
 
 const applyFreshAuth = async (targetSocket: Socket) => {
   targetSocket.auth = { token: await getAuthToken() };
@@ -84,6 +94,7 @@ export const emitUserOnline = async (userId: string) => {
   const activeSocket = await connectSocket();
   const id = normalizeId(userId);
   if (!id) return [];
+  const payload = await buildPresencePayload(id);
 
   return new Promise<string[]>(resolve => {
     let settled = false;
@@ -93,7 +104,7 @@ export const emitUserOnline = async (userId: string) => {
       resolve(normalizeOnlineUsersPayload(payload));
     };
 
-    activeSocket.emit('user-online', id, done);
+    activeSocket.emit('user-online', payload, done);
     setTimeout(() => done(), 5000);
   });
 };
@@ -102,6 +113,7 @@ export const emitUserOffline = async (userId: string) => {
   const activeSocket = await getSocket();
   const id = normalizeId(userId);
   if (!id || !activeSocket.connected) return null;
+  const payload = await buildPresencePayload(id);
 
   return new Promise<{ lastSeen?: string | null } | null>(resolve => {
     let settled = false;
@@ -111,7 +123,7 @@ export const emitUserOffline = async (userId: string) => {
       resolve(payload || null);
     };
 
-    activeSocket.emit('user-offline', id, done);
+    activeSocket.emit('user-offline', payload, done);
     setTimeout(() => done(), 3000);
   });
 };

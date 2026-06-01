@@ -12,6 +12,8 @@ export const setUnauthorizedHandler = (handler: (() => void) | null) => {
   unauthorizedHandler = handler;
 };
 
+export const getApiToken = () => tokenGetter();
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 25000

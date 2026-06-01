@@ -1,12 +1,12 @@
 import { Image as ExpoImage } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
-import { BellOff, Check, MessageCircle, Plus, Search, Settings, Star, Trash2, UserCircle2, Users, X } from 'lucide-react-native';
+import { BellOff, Check, MessageCircle, Plus, Search, Star, Trash2, Users, X } from 'lucide-react-native';
 import Avatar from '../components/Avatar';
 import ChatListItem from '../components/ChatListItem';
 import ContactsList from '../components/ContactsList';
@@ -37,6 +37,7 @@ import { usePresenceStore } from '../store/presenceStore';
 import { useTheme } from '../theme/ThemeContext';
 import type { Conversation, Group, RootStackParamList, Story, StoryGroup, User, UserNote } from '../types';
 import { QUICK_REACTIONS } from '../utils/chatCustomizations';
+import { readJsonCache, writeJsonCache } from '../utils/cache';
 import { formatActiveStatus } from '../utils/date';
 import { getEntityId } from '../utils/ids';
 import { resolveMediaUrl, resolveMediaVariantUrl } from '../utils/media';
@@ -56,12 +57,25 @@ type StoryBarItem = {
   storyRing: 'unviewed' | 'viewed' | 'none';
   online: boolean;
 };
+type ChatListSnapshot = {
+  conversations: Conversation[];
+  groups: Group[];
+  contacts: User[];
+  myNote: UserNote | null;
+  activeNotes: UserNote[];
+  storyGroups: StoryGroup[];
+};
+type RefreshOptions = {
+  showSpinner?: boolean;
+};
 
 const emptyFlags: ChatFlagState = {
   pinned: [],
   muted: [],
   favorites: []
 };
+const CHAT_LIST_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const getChatListCacheKey = (userId: string) => `syncrova:messenger:chat-list:${userId}`;
 
 const getUserName = (user?: User | null) => user?.name || user?.email || 'Syncrova user';
 const getNoteOwner = (note?: UserNote | null) => (typeof note?.userId === 'object' ? note.userId : undefined);
@@ -103,6 +117,22 @@ function StoryVideo({ uri }: { uri: string }) {
   );
 }
 
+function ChatListSkeleton({ colors }: { colors: ReturnType<typeof useTheme>['colors'] }) {
+  return (
+    <View className="px-4 pt-2">
+      {[0, 1, 2, 3, 4, 5].map(index => (
+        <View className="h-[72px] flex-row items-center gap-3" key={index}>
+          <View className="h-[52px] w-[52px] rounded-full" style={{ backgroundColor: colors.surface }} />
+          <View className="min-w-0 flex-1">
+            <View className="mb-2 h-4 w-40 rounded-full" style={{ backgroundColor: colors.surface }} />
+            <View className="h-3 w-56 rounded-full" style={{ backgroundColor: colors.surface }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function ChatListScreen() {
   const navigation = useNavigation<Navigation>();
   const { user } = useAuth();
@@ -139,10 +169,67 @@ export default function ChatListScreen() {
   const [groupMemberQuery, setGroupMemberQuery] = useState('');
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<User[]>([]);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const networkLoadedRef = useRef(false);
+
+  const applyChatListSnapshot = useCallback((snapshot: ChatListSnapshot) => {
+    setConversations(snapshot.conversations);
+    setContacts(snapshot.contacts);
+    setGroups(snapshot.groups);
+    setMyNote(snapshot.myNote);
+    setNoteDraft(snapshot.myNote?.text || '');
+    setActiveNotes(snapshot.activeNotes);
+    setStoryGroups(snapshot.storyGroups);
+  }, []);
+
+  const prefetchChatListMedia = useCallback((snapshot: ChatListSnapshot) => {
+    const urls = new Set<string>();
+    const addUrl = (url?: string | null) => {
+      if (url) urls.add(url);
+    };
+    const addUser = (row?: User | null) => {
+      addUrl(resolveMediaUrl(row?.avatar || row?.profilePicture || ''));
+    };
+
+    snapshot.conversations.slice(0, 18).forEach(row => addUser(row.user));
+    snapshot.contacts.slice(0, 12).forEach(addUser);
+    snapshot.groups.slice(0, 10).forEach(group => addUrl(resolveMediaUrl(group.photo || '')));
+    snapshot.storyGroups.slice(0, 18).forEach(group => {
+      addUser(getStoryOwner(group));
+      const story = getStoryPreview(group);
+      if (!story?.fileUrl || story.fileType !== 'image') return;
+      addUrl(resolveMediaVariantUrl({
+        fileUrl: story.fileUrl,
+        fileType: 'image',
+        variants: story.mediaVariants || story.variants
+      }));
+    });
+
+    const nextUrls = Array.from(urls).slice(0, 32);
+    if (nextUrls.length) ExpoImage.prefetch(nextUrls, 'memory-disk').catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadChatFlags().then(setChatFlags).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) return undefined;
+    let cancelled = false;
+    networkLoadedRef.current = false;
+
+    readJsonCache<ChatListSnapshot>(getChatListCacheKey(currentUserId), CHAT_LIST_CACHE_TTL_MS)
+      .then(snapshot => {
+        if (!snapshot || cancelled || networkLoadedRef.current) return;
+        applyChatListSnapshot(snapshot);
+        prefetchChatListMedia(snapshot);
+        setLoading(false);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyChatListSnapshot, currentUserId, prefetchChatListMedia]);
 
   const openChat = useCallback((person: User, conversation?: Conversation) => {
     const chatId = getEntityId(person);
@@ -170,8 +257,8 @@ export default function ChatListScreen() {
     });
   }, [navigation]);
 
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
+  const refresh = useCallback(async ({ showSpinner = false }: RefreshOptions = {}) => {
+    if (showSpinner) setRefreshing(true);
     try {
       const [conversationRows, contactRows, groupRows, myNoteRow, activeNoteRows, storyRows] = await Promise.all([
         fetchConversations(),
@@ -181,26 +268,34 @@ export default function ChatListScreen() {
         fetchActiveNotes().catch(() => []),
         fetchStoryGroups().catch(() => [])
       ]);
-      setConversations(conversationRows);
-      setContacts(contactRows);
-      setGroups(groupRows);
-      setMyNote(myNoteRow);
-      setNoteDraft(myNoteRow?.text || '');
-      setActiveNotes(activeNoteRows);
-      setStoryGroups(storyRows);
+      const snapshot = {
+        conversations: conversationRows,
+        contacts: contactRows,
+        groups: groupRows,
+        myNote: myNoteRow,
+        activeNotes: activeNoteRows,
+        storyGroups: storyRows
+      };
+      networkLoadedRef.current = true;
+      applyChatListSnapshot(snapshot);
+      prefetchChatListMedia(snapshot);
+      if (currentUserId) writeJsonCache(getChatListCacheKey(currentUserId), snapshot).catch(() => {});
     } finally {
-      setRefreshing(false);
+      if (showSpinner) setRefreshing(false);
       setLoading(false);
     }
-  }, []);
+  }, [applyChatListSnapshot, currentUserId, prefetchChatListMedia]);
 
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      refresh({ showSpinner: false });
     }, [refresh])
   );
 
   const onlineSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+  const isUserActive = useCallback((userId?: string) => (
+    Boolean(userId && (onlineSet.has(userId) || presenceStatuses[userId]?.online))
+  ), [onlineSet, presenceStatuses]);
 
   useEffect(() => {
     let mounted = true;
@@ -209,7 +304,7 @@ export default function ChatListScreen() {
     const setup = async () => {
       const socket = await getSocket();
       const reload = () => {
-        if (mounted) refresh();
+        if (mounted) refresh({ showSpinner: false });
       };
       const reloadSocial = () => {
         if (!mounted) return;
@@ -278,15 +373,15 @@ export default function ChatListScreen() {
     });
 
     return [...rows].sort((a, b) => {
-      const aOnline = onlineSet.has(getEntityId(a.user)) ? 1 : 0;
-      const bOnline = onlineSet.has(getEntityId(b.user)) ? 1 : 0;
+      const aOnline = isUserActive(getEntityId(a.user)) ? 1 : 0;
+      const bOnline = isUserActive(getEntityId(b.user)) ? 1 : 0;
       if (aOnline !== bOnline) return bOnline - aOnline;
       const aPinned = hasChatFlag(chatFlags, 'pinned', getEntityId(a.user)) ? 1 : 0;
       const bPinned = hasChatFlag(chatFlags, 'pinned', getEntityId(b.user)) ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
       return new Date(b.lastTime || 0).getTime() - new Date(a.lastTime || 0).getTime();
     });
-  }, [chatFlags, conversationFilter, conversations, onlineSet, query]);
+  }, [chatFlags, conversationFilter, conversations, isUserActive, query]);
 
   const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -341,7 +436,7 @@ export default function ChatListScreen() {
         key: `story-${ownerId}`,
         kind: 'story' as const,
         label: firstName(owner.name || owner.email || 'Story'),
-        online: onlineSet.has(ownerId),
+        online: isUserActive(ownerId),
         previewType: story?.fileType,
         previewUri,
         storyGroup: group,
@@ -369,7 +464,7 @@ export default function ChatListScreen() {
       key: `contact-${id}`,
       kind: 'contact' as const,
       label: firstName(contact.name || contact.email || 'User'),
-      online: onlineSet.has(id),
+      online: isUserActive(id),
       storyRing: 'none' as const,
       user: contact
     }));
@@ -400,7 +495,7 @@ export default function ChatListScreen() {
       ...viewedStories,
       ...recentContacts.slice(0, 12)
     ];
-  }, [contacts, conversations, currentUserId, myStoryGroup, onlineSet, storyGroups, user]);
+  }, [contacts, conversations, currentUserId, isUserActive, myStoryGroup, storyGroups, user]);
 
   const groupMemberResults = useMemo(() => {
     const selectedIds = new Set(selectedGroupMembers.map(member => getEntityId(member)));
@@ -469,7 +564,7 @@ export default function ChatListScreen() {
       await deleteConversation(chatId);
     } catch {
       Alert.alert('Delete failed', 'Could not delete this conversation.');
-      refresh();
+      refresh({ showSpinner: false });
     }
   };
 
@@ -495,7 +590,7 @@ export default function ChatListScreen() {
       setMyNote(null);
       setNoteDraft('');
       setNoteComposerOpen(false);
-      refresh();
+      refresh({ showSpinner: false });
     } catch {
       Alert.alert('Delete failed', 'Could not delete your note.');
     }
@@ -553,7 +648,7 @@ export default function ChatListScreen() {
     if (!storyId) return;
     try {
       await reactToStory(storyId, emoji);
-      refresh();
+      refresh({ showSpinner: false });
     } catch {
       Alert.alert('Reaction failed', 'Could not react to this story.');
     }
@@ -567,7 +662,7 @@ export default function ChatListScreen() {
       await replyToStory(storyId, text);
       setStoryReplyText('');
       setActiveStoryGroup(null);
-      refresh();
+      refresh({ showSpinner: false });
     } catch {
       Alert.alert('Reply failed', 'Could not reply to this story.');
     }
@@ -612,21 +707,21 @@ export default function ChatListScreen() {
     <View className="flex-1 pt-14" style={{ backgroundColor: colors.background }}>
       <View className="px-4 pb-3">
         <View className="flex-row items-center justify-between">
-          <View className="min-w-0 flex-1">
-            <Text className="text-3xl font-bold" numberOfLines={1} style={{ color: colors.text }}>
-              Chats
-            </Text>
-            <Text className="mt-0.5 text-sm" numberOfLines={1} style={{ color: colors.mutedText }}>
-              {user?.name || user?.email || 'Syncrova'}
-            </Text>
-          </View>
-          <View className="ml-3 flex-row gap-2">
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => navigation.navigate('Profile')} style={{ backgroundColor: colors.surface }}>
-              <UserCircle2 color={colors.text} size={22} />
-            </Pressable>
-            <Pressable className="h-11 w-11 items-center justify-center rounded-full" onPress={() => navigation.navigate('Settings')} style={{ backgroundColor: colors.surface }}>
-              <Settings color={colors.text} size={22} />
-            </Pressable>
+          <View className="min-w-0 flex-1 flex-row items-center gap-3">
+            <ExpoImage
+              cachePolicy="memory-disk"
+              contentFit="contain"
+              source={require('../../assets/syncrova-app-logo.png')}
+              style={{ height: 46, width: 46 }}
+            />
+            <View className="min-w-0 flex-1">
+              <Text className="text-[23px] font-bold" numberOfLines={1} style={{ color: colors.text }}>
+                Syncrova Messenger
+              </Text>
+              <Text className="mt-0.5 text-sm" numberOfLines={1} style={{ color: colors.mutedText }}>
+                {user?.name || user?.email || 'Syncrova'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -757,12 +852,14 @@ export default function ChatListScreen() {
           data={filteredGroups}
           keyExtractor={(item, index) => getEntityId(item) || `group-${index}`}
           ListEmptyComponent={
-            <EmptyState
-              title={loading ? 'Loading groups' : 'No group chats'}
-              body={loading ? undefined : 'Create a group chat with classmates.'}
-            />
+            loading ? <ChatListSkeleton colors={colors} /> : (
+              <EmptyState
+                title="No group chats"
+                body="Create a group chat with classmates."
+              />
+            )
           }
-          onRefresh={refresh}
+          onRefresh={() => refresh({ showSpinner: true })}
           refreshing={refreshing}
           renderItem={({ item }) => {
             const chatId = getEntityId(item);
@@ -782,17 +879,19 @@ export default function ChatListScreen() {
           data={filteredConversations}
           keyExtractor={(item, index) => getEntityId(item.user) || `conversation-${index}`}
           ListEmptyComponent={
-            <EmptyState
-              title={loading ? 'Loading chats' : 'No conversations'}
-              body={loading ? undefined : 'Search for a contact to start a native Syncrova chat.'}
-            />
+            loading ? <ChatListSkeleton colors={colors} /> : (
+              <EmptyState
+                title="No conversations"
+                body="Search for a contact to start a native Syncrova chat."
+              />
+            )
           }
-          onRefresh={refresh}
+          onRefresh={() => refresh({ showSpinner: true })}
           refreshing={refreshing}
           renderItem={({ item }) => {
             const chatId = getEntityId(item.user);
             const nickname = item.conversation?.nicknames?.[chatId];
-            const online = onlineSet.has(chatId);
+            const online = isUserActive(chatId);
             const typingLabel = typingByChat[chatId]?.length ? 'Typing...' : undefined;
             const storyGroup = storyGroups.find(group => (group.ownerId || getEntityId(getStoryOwner(group))) === chatId);
             const storyRing = storyGroup
@@ -808,6 +907,10 @@ export default function ChatListScreen() {
                 onPress={() => openChat(item.user, item)}
                 online={online}
                 pinned={hasChatFlag(chatFlags, 'pinned', chatId)}
+                presenceLabel={formatActiveStatus({
+                  online,
+                  lastSeen: presenceStatuses[chatId]?.lastSeen || item.user?.lastSeen || null
+                })}
                 statusLabel={formatActiveStatus({
                   online,
                   lastSeen: presenceStatuses[chatId]?.lastSeen || item.user?.lastSeen || null

@@ -54,8 +54,10 @@ const getNativeBackFallbackPath = (pathname = '/') => {
 const INTRO_SPLASH_SESSION_KEY = 'syncrova-intro-splash-shown';
 const MESSENGER_SPLASH_SESSION_KEY = 'syncrova-messenger-intro-splash-shown';
 const MESSENGER_STANDALONE_STORAGE_KEY = 'syncrova:standalone-messenger';
+const MESSENGER_WEB_CONTINUE_STORAGE_KEY = 'syncrova:web-messenger-continue';
 const MESSENGER_APK_PATH = '/releases/syncrova-messenger-latest.apk';
 const SYNCROVA_LOGO_SRC = '/syncrova-app-logo.png';
+const SYNCROVA_MESSENGER_LOGO_SRC = '/syncrovaalogoformessenger.png';
 const DEFAULT_MESSENGER_DOWNLOAD_ORIGIN = 'https://study-hub-app.onrender.com';
 const REQUIRED_MESSENGER_VERSION_CODE = RELEASE_ANDROID_VERSION_CODE;
 
@@ -205,7 +207,7 @@ function MessengerLoadingFallback() {
   return (
     <div className="syncrova-messenger-loading skeleton-motion-zone" role="status" aria-label="Loading Syncrova Messenger">
       <div className="syncrova-messenger-loading-card">
-        <img src={SYNCROVA_LOGO_SRC} alt="" draggable={false} />
+        <img src={SYNCROVA_MESSENGER_LOGO_SRC} alt="" draggable={false} />
         <p>Syncrova Messenger</p>
         <span>Opening chats</span>
         <div className="syncrova-messenger-loading-bar" aria-hidden="true">
@@ -389,7 +391,7 @@ function MobileScrollPerformanceGovernor() {
   return null;
 }
 
-function MessengerHandoff() {
+function MessengerHandoff({ onContinueWeb }) {
   const location = useLocation();
   const nativeAndroid = isNativeAndroid();
   const [checking, setChecking] = useState(nativeAndroid);
@@ -477,13 +479,14 @@ function MessengerHandoff() {
           await openInstallLink({ update: true });
           return;
         }
-        setStatusText(nextInstalled ? 'Syncrova Messenger is installed. Opening it now...' : 'Syncrova Messenger is not installed yet.');
-        if (nextInstalled) await openMessenger({ silent: true });
+        setStatusText(nextInstalled
+          ? 'Native Messenger is installed. You can open it, or continue chatting here.'
+          : 'Native Messenger is optional. You can continue here or download it anytime.');
       } catch {
         if (!cancelled) {
           setMessengerStatus(null);
           setInstalled(false);
-          setStatusText('Install Syncrova Messenger to continue chatting.');
+          setStatusText('Native Messenger is optional. Continue in web chat or download it for Android.');
         }
       } finally {
         if (!cancelled) setChecking(false);
@@ -498,15 +501,20 @@ function MessengerHandoff() {
 
   return (
     <main className="messenger-handoff-page">
-      <section className="messenger-handoff-card" aria-label="Syncrova Messenger required">
+      <section className="messenger-handoff-card" aria-label="Choose Syncrova Messenger experience">
         <span className="messenger-handoff-icon">
           <MessageCircle size={30} />
         </span>
         <p className="messenger-handoff-kicker">Syncrova Messenger</p>
-        <h1>Chats now open in Messenger</h1>
+        <h1>Choose your chat experience</h1>
         <p className="messenger-handoff-copy">
-          Keep Syncrova Messenger updated for smoother chats. This tab opens Messenger only when the installed app matches the current Syncrova build.
+          You can keep chatting in the web app without installing anything, or download the native Android Messenger for smoother media and notifications.
         </p>
+        <div className="messenger-handoff-benefits" aria-label="Messenger options">
+          <span>Web chat stays available</span>
+          <span>Native app is optional</span>
+          <span>Same Syncrova account</span>
+        </div>
         {statusText && (
           <p className="messenger-handoff-status">
             {checking || opening ? <Loader2 size={15} className="skeleton-motion-zone animate-spin" /> : null}
@@ -516,29 +524,63 @@ function MessengerHandoff() {
         <div className="messenger-handoff-actions">
           <button
             type="button"
-            onClick={() => (messengerReady ? openMessenger() : openInstallLink({ update: messengerNeedsUpdate }))}
-            disabled={checking || opening}
+            onClick={onContinueWeb}
             className="messenger-handoff-primary"
           >
-            {checking || opening ? <Loader2 size={17} className="skeleton-motion-zone animate-spin" /> : messengerReady ? <ExternalLink size={17} /> : <Download size={17} />}
-            {messengerReady ? 'Open Messenger' : messengerNeedsUpdate ? 'Update Syncrova Messenger' : 'Install Syncrova Messenger'}
+            <MessageCircle size={17} />
+            Continue without native app
           </button>
           <button
             type="button"
-            onClick={() => openMessenger()}
+            onClick={() => openInstallLink({ update: messengerNeedsUpdate })}
             disabled={checking || opening}
             className="messenger-handoff-secondary"
           >
-            {messengerNeedsUpdate ? 'I already updated it' : 'I already installed it'}
+            {checking || opening ? <Loader2 size={17} className="skeleton-motion-zone animate-spin" /> : <Download size={17} />}
+            {messengerNeedsUpdate ? 'Update Syncrova native Messenger' : 'Download Syncrova native Messenger'}
           </button>
+          {messengerReady && (
+            <button
+              type="button"
+              onClick={() => openMessenger()}
+              disabled={checking || opening}
+              className="messenger-handoff-secondary"
+            >
+              <ExternalLink size={17} />
+              Open installed Messenger
+            </button>
+          )}
         </div>
       </section>
     </main>
   );
 }
 
+function MessengerEntry() {
+  const [continueWeb, setContinueWeb] = useState(() => {
+    try {
+      return window.localStorage?.getItem(MESSENGER_WEB_CONTINUE_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const continueInWeb = () => {
+    try {
+      window.localStorage?.setItem(MESSENGER_WEB_CONTINUE_STORAGE_KEY, 'true');
+    } catch {
+      // Local storage can be blocked; render the web chat for this session anyway.
+    }
+    setContinueWeb(true);
+  };
+
+  if (continueWeb) return <Messages />;
+  return <MessengerHandoff onContinueWeb={continueInWeb} />;
+}
+
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();
+
   if (loading) return <PageSkeleton variant="dashboard" rows={4} />;
   const protectedLayout = isAuthenticated ? <Layout /> : <Navigate to="/login" replace />;
   return (
@@ -554,7 +596,7 @@ function AppRoutes() {
           <Route path="/group/:id" element={<Navigate to="/marketplace" replace />} />
           <Route path="/group/:id/:section" element={<Navigate to="/marketplace" replace />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/messages" element={<MessengerHandoff />} />
+          <Route path="/messages" element={<MessengerEntry />} />
           <Route path="/reels" element={<Reels />} />
           <Route path="/friends" element={<Friends />} />
           <Route path="/arena" element={<OpsArena />} />
@@ -615,7 +657,7 @@ function AppIntroSplash({ standaloneMessenger = false }) {
       <div className="syncrova-intro-glow" />
       <div className="syncrova-intro-card">
         <div className="syncrova-intro-logo">
-          <img src={SYNCROVA_LOGO_SRC} alt="" draggable={false} />
+          <img src={standaloneMessenger ? SYNCROVA_MESSENGER_LOGO_SRC : SYNCROVA_LOGO_SRC} alt="" draggable={false} />
         </div>
         <p className="syncrova-intro-eyebrow">{standaloneMessenger ? 'Opening' : 'Welcome to'}</p>
         <h1>{standaloneMessenger ? 'Messenger' : 'Syncrova'}</h1>

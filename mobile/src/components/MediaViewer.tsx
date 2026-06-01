@@ -31,32 +31,158 @@ type ViewerItemProps = {
   onToggleChrome: () => void;
 };
 
-function VideoSlide({ item, width, height }: { item: MediaViewerItem; width: number; height: number }) {
-  const [started, setStarted] = useState(false);
-  const player = useVideoPlayer(item.url, nextPlayer => {
+const getFrameSize = (item: MediaViewerItem, width: number, height: number) => {
+  const maxWidth = Math.max(1, width - 24);
+  const maxHeight = Math.max(1, height * 0.72);
+  const sourceRatio = item.width && item.height ? item.width / item.height : item.type === 'video' ? 9 / 16 : 1;
+  const boundedByWidthHeight = maxWidth / sourceRatio;
+
+  if (boundedByWidthHeight <= maxHeight) {
+    return {
+      frameHeight: boundedByWidthHeight,
+      frameWidth: maxWidth
+    };
+  }
+
+  return {
+    frameHeight: maxHeight,
+    frameWidth: maxHeight * sourceRatio
+  };
+};
+
+function VideoSlide({
+  item,
+  width,
+  height,
+  onClose,
+  onToggleChrome
+}: {
+  item: MediaViewerItem;
+  width: number;
+  height: number;
+  onClose: () => void;
+  onToggleChrome: () => void;
+}) {
+  const [firstFrameReady, setFirstFrameReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const player = useVideoPlayer({ uri: item.url, useCaching: true }, nextPlayer => {
     nextPlayer.loop = false;
+    nextPlayer.bufferOptions = {
+      minBufferForPlayback: 0.25,
+      preferredForwardBufferDuration: 6,
+      waitsToMinimizeStalling: false
+    };
   });
 
+  useEffect(() => {
+    let mounted = true;
+    const startTimer = setTimeout(() => {
+      try {
+        player.play();
+      } catch {
+        if (mounted) setFailed(true);
+      }
+    }, 80);
+    const statusSubscription = player.addListener('statusChange', event => {
+      if (!mounted) return;
+      setFailed(event.status === 'error');
+      setLoading(event.status === 'loading' || event.status === 'idle');
+    });
+
+    return () => {
+      mounted = false;
+      clearTimeout(startTimer);
+      statusSubscription.remove();
+      player.pause();
+    };
+  }, [item.url, player]);
+
+  const pan = Gesture.Pan()
+    .activeOffsetY([-12, 12])
+    .onUpdate(event => {
+      translateY.value = event.translationY;
+      scale.value = Math.max(0.88, 1 - Math.abs(event.translationY) / height);
+    })
+    .onEnd(event => {
+      if (Math.abs(event.translationY) > height * 0.26) {
+        runOnJS(onClose)();
+        return;
+      }
+      translateY.value = withSpring(0, { damping: 35, stiffness: 420 });
+      scale.value = withSpring(1, { damping: 35, stiffness: 420 });
+    });
+  const tap = Gesture.Tap().maxDuration(220).onEnd(() => {
+    runOnJS(onToggleChrome)();
+  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }, { scale: scale.value }]
+  }));
+  const { frameHeight, frameWidth } = getFrameSize(item, width, height);
+
   return (
-    <View className="items-center justify-center" style={{ height, width }}>
-      <VideoView
-        contentFit="contain"
-        nativeControls={started}
-        player={player}
-        style={{ height, width }}
-      />
-      {!started ? (
-        <Pressable
-          className="absolute h-16 w-16 items-center justify-center rounded-full bg-black/45"
-          onPress={() => {
-            setStarted(true);
-            player.play();
+    <GestureDetector gesture={Gesture.Simultaneous(pan, tap)}>
+      <Animated.View className="items-center justify-center" style={[{ height, width }, animatedStyle]}>
+        <View
+          className="overflow-hidden bg-black"
+          style={{
+            borderRadius: 20,
+            elevation: 8,
+            height: frameHeight,
+            shadowColor: '#000000',
+            shadowOffset: { width: 0, height: 18 },
+            shadowOpacity: 0.24,
+            shadowRadius: 28,
+            width: frameWidth
           }}
         >
-          <Play color="#FFFFFF" fill="#FFFFFF" size={30} />
-        </Pressable>
-      ) : null}
-    </View>
+          {item.thumbnailUrl && !firstFrameReady ? (
+            <ExpoImage
+              blurRadius={2}
+              cachePolicy="memory-disk"
+              contentFit="cover"
+              source={{ uri: item.thumbnailUrl }}
+              style={{ height: frameHeight, position: 'absolute', width: frameWidth }}
+            />
+          ) : null}
+          <VideoView
+            contentFit="contain"
+            nativeControls
+            onFirstFrameRender={() => {
+              setFirstFrameReady(true);
+              setLoading(false);
+            }}
+            player={player}
+            surfaceType="surfaceView"
+            style={{ height: frameHeight, width: frameWidth }}
+            useExoShutter={false}
+          />
+          {loading && !firstFrameReady ? (
+            <View className="absolute inset-0 items-center justify-center bg-black/20">
+              <View className="items-center justify-center rounded-full bg-black/45 p-4">
+                <ActivityIndicator color="#FFFFFF" />
+              </View>
+            </View>
+          ) : null}
+          {failed ? (
+            <Pressable
+              className="absolute inset-0 items-center justify-center bg-black/55"
+              onPress={() => {
+                setFailed(false);
+                setLoading(true);
+                player.replay();
+                player.play();
+              }}
+            >
+              <Play color="#FFFFFF" fill="#FFFFFF" size={24} />
+              <Text className="mt-2 text-xs font-bold text-white">Tap to retry</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -135,53 +261,71 @@ function ViewerItem({ item, width, height, onClose, onToggleChrome }: ViewerItem
       { scale: scale.value }
     ]
   }));
+  const { frameHeight, frameWidth } = getFrameSize(item, width, height);
 
   useEffect(() => () => {
     if (loadingTimer.current) clearTimeout(loadingTimer.current);
   }, []);
 
   if (item.type === 'video') {
-    return <VideoSlide height={height} item={item} width={width} />;
+    return <VideoSlide height={height} item={item} onClose={onClose} onToggleChrome={onToggleChrome} width={width} />;
   }
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View className="items-center justify-center" style={[{ height, width }, imageStyle]}>
-        {item.thumbnailUrl ? (
+      <View className="items-center justify-center" style={{ height, width }}>
+        <Animated.View
+          className="overflow-hidden bg-black/15"
+          style={[
+            {
+              borderRadius: 20,
+              elevation: 8,
+              height: frameHeight,
+              shadowColor: '#000000',
+              shadowOffset: { width: 0, height: 18 },
+              shadowOpacity: 0.22,
+              shadowRadius: 28,
+              width: frameWidth
+            },
+            imageStyle
+          ]}
+        >
+          {item.thumbnailUrl ? (
+            <ExpoImage
+              blurRadius={8}
+              cachePolicy="memory-disk"
+              contentFit="cover"
+              source={{ uri: item.thumbnailUrl }}
+              style={{ height: frameHeight, position: 'absolute', width: frameWidth }}
+            />
+          ) : null}
           <ExpoImage
-            blurRadius={8}
             cachePolicy="memory-disk"
             contentFit="contain"
-            source={{ uri: item.thumbnailUrl }}
-            style={{ height, position: 'absolute', width }}
+            onError={() => {
+              setFailed(true);
+              setLoading(false);
+            }}
+            onLoadEnd={() => {
+              if (loadingTimer.current) clearTimeout(loadingTimer.current);
+              setLoading(false);
+            }}
+            onLoadStart={() => {
+              setFailed(false);
+              loadingTimer.current = setTimeout(() => setLoading(true), 1000);
+            }}
+            source={{ uri: item.url }}
+            style={{ height: frameHeight, width: frameWidth }}
+            transition={160}
           />
-        ) : null}
-        <ExpoImage
-          cachePolicy="memory-disk"
-          contentFit="contain"
-          onError={() => {
-            setFailed(true);
-            setLoading(false);
-          }}
-          onLoadEnd={() => {
-            if (loadingTimer.current) clearTimeout(loadingTimer.current);
-            setLoading(false);
-          }}
-          onLoadStart={() => {
-            setFailed(false);
-            loadingTimer.current = setTimeout(() => setLoading(true), 1000);
-          }}
-          source={{ uri: item.url }}
-          style={{ height, width }}
-          transition={160}
-        />
-        {loading ? <ActivityIndicator className="absolute" color="#FFFFFF" /> : null}
-        {failed ? (
-          <View className="absolute items-center rounded-2xl bg-black/60 px-4 py-3">
-            <Text className="font-semibold text-white">Could not load media</Text>
-          </View>
-        ) : null}
-      </Animated.View>
+          {loading ? <ActivityIndicator className="absolute self-center" color="#FFFFFF" style={{ top: frameHeight / 2 - 10 }} /> : null}
+          {failed ? (
+            <View className="absolute inset-0 items-center justify-center bg-black/55 px-4">
+              <Text className="font-semibold text-white">Could not load media</Text>
+            </View>
+          ) : null}
+        </Animated.View>
+      </View>
     </GestureDetector>
   );
 }
@@ -225,7 +369,7 @@ export default function MediaViewer({ visible, items, initialIndex = 0, onClose,
 
   return (
     <Modal animationType="none" onRequestClose={onClose} transparent visible={visible}>
-      <Animated.View className="flex-1 bg-black" style={containerStyle}>
+      <Animated.View className="flex-1" style={[{ backgroundColor: '#68708E' }, containerStyle]}>
         <FlatList
           data={items}
           getItemLayout={(_, itemIndex) => ({

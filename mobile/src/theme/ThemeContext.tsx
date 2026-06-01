@@ -13,6 +13,7 @@ export type MessengerThemeColors = {
   border: string;
   input: string;
   primary: string;
+  onPrimary: string;
   sentBubble: string;
   receivedBubble: string;
   online: string;
@@ -29,18 +30,19 @@ type ThemeContextValue = {
 const THEME_KEY = 'syncrova.nativeMessenger.themeMode';
 
 const lightColors: MessengerThemeColors = {
-  background: '#FFFFFF',
+  background: '#F0F2F5',
   surface: '#F0F2F5',
   elevated: '#FFFFFF',
-  text: '#050505',
+  text: '#1C1E21',
   mutedText: '#65676B',
   border: '#CED0D4',
   input: '#F0F2F5',
-  primary: '#0084FF',
-  sentBubble: '#0084FF',
+  primary: '#1877F2',
+  onPrimary: '#FFFFFF',
+  sentBubble: '#1877F2',
   receivedBubble: '#E4E6EB',
-  online: '#31A24C',
-  danger: '#DC2626'
+  online: '#42B72A',
+  danger: '#E41E3F'
 };
 
 const darkColors: MessengerThemeColors = {
@@ -51,11 +53,12 @@ const darkColors: MessengerThemeColors = {
   mutedText: '#B0B3B8',
   border: '#3A3B3C',
   input: '#3A3B3C',
-  primary: '#0084FF',
-  sentBubble: '#0084FF',
+  primary: '#1877F2',
+  onPrimary: '#FFFFFF',
+  sentBubble: '#1877F2',
   receivedBubble: '#3E4042',
-  online: '#31A24C',
-  danger: '#F87171'
+  online: '#42B72A',
+  danger: '#FF5A6F'
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);

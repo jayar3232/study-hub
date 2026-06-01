@@ -91,6 +91,18 @@ const CONVERSATION_ROW_HEIGHT = 90;
 const CONVERSATION_VIRTUAL_OVERSCAN = 6;
 const SYNCROVA_APP_LOGO_SRC = '/syncrova-app-logo.png';
 const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+const getPresencePayloadUserId = (payload) => getEntityId(payload?.userId || payload?._id || payload?.id || payload);
+const normalizeOnlineUserIds = (payload) => {
+  const ids = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.userIds)
+      ? payload.userIds
+      : Array.isArray(payload?.users)
+        ? payload.users
+        : [];
+
+  return [...new Set(ids.map(getPresencePayloadUserId).filter(Boolean))];
+};
 const getStableMessageKey = (message = {}, index = '') => {
   const id = getEntityId(message);
   if (id) return id;
@@ -2645,7 +2657,7 @@ export default function Messages() {
     const syncOnlineUsers = async () => {
       try {
         const res = await api.get('/presence/online');
-        setOnlineUsers(new Set((res.data?.users || []).map(String)));
+        setOnlineUsers(new Set(normalizeOnlineUserIds(res.data)));
         setPresenceReady(true);
       } catch (err) {
         console.error('Presence fallback failed', err);
@@ -2655,17 +2667,17 @@ export default function Messages() {
     const announceOnline = () => {
       setSocketConnected(true);
       socket.emit('user-online', currentUserId, (users = []) => {
-        setOnlineUsers(new Set(users.map(String)));
+        setOnlineUsers(new Set(normalizeOnlineUserIds(users)));
         setPresenceReady(true);
       });
       socket.emit('get-online-users', (users = []) => {
-        setOnlineUsers(new Set(users.map(String)));
+        setOnlineUsers(new Set(normalizeOnlineUserIds(users)));
         setPresenceReady(true);
       });
     };
 
     const onOnlineUsers = (users = []) => {
-      setOnlineUsers(new Set(users.map(String)));
+      setOnlineUsers(new Set(normalizeOnlineUserIds(users)));
       setPresenceReady(true);
     };
 
@@ -2675,8 +2687,8 @@ export default function Messages() {
       syncOnlineUsers();
     };
 
-    const onUserOnline = (userId) => {
-      const normalizedUserId = getEntityId(userId);
+    const onUserOnline = (payload) => {
+      const normalizedUserId = getPresencePayloadUserId(payload);
       if (!normalizedUserId) return;
       setOnlineUsers(prev => {
         const next = new Set(prev);
@@ -2686,7 +2698,7 @@ export default function Messages() {
     };
 
     const onUserOffline = (payload) => {
-      const userId = getEntityId(payload?.userId || payload);
+      const userId = getPresencePayloadUserId(payload);
       if (!userId) return;
       if (payload?.lastSeen) {
         setLastSeenByUser(prev => ({ ...prev, [userId]: payload.lastSeen }));
@@ -2697,6 +2709,16 @@ export default function Messages() {
         next.delete(userId);
         return next;
       });
+    };
+
+    const onUserStatusChange = (payload = {}) => {
+      const userId = getPresencePayloadUserId(payload);
+      if (!userId) return;
+      if (payload.online || payload.status === 'online') {
+        onUserOnline(userId);
+        return;
+      }
+      onUserOffline(payload);
     };
 
     const onTyping = ({ from }) => {
@@ -3006,6 +3028,7 @@ export default function Messages() {
     socket.on('online-users', onOnlineUsers);
     socket.on('user-online', onUserOnline);
     socket.on('user-offline', onUserOffline);
+    socket.on('user-status-change', onUserStatusChange);
     socket.on('user-typing', onTyping);
     socket.on('user-stop-typing', onStopTyping);
     socket.on('receiveMessage', onReceiveMessage);
@@ -3037,6 +3060,7 @@ export default function Messages() {
       socket.off('online-users', onOnlineUsers);
       socket.off('user-online', onUserOnline);
       socket.off('user-offline', onUserOffline);
+      socket.off('user-status-change', onUserStatusChange);
       socket.off('user-typing', onTyping);
       socket.off('user-stop-typing', onStopTyping);
       socket.off('receiveMessage', onReceiveMessage);
@@ -4063,7 +4087,7 @@ export default function Messages() {
     const isOnline = personId ? onlineUsers.has(personId) : false;
     if (isOnline) {
       return {
-        label: 'Now',
+        label: 'Active now',
         title: 'Active now',
         online: true
       };
@@ -4466,7 +4490,7 @@ export default function Messages() {
     : !presenceReady
       ? 'Checking status...'
       : selectedIsOnline
-        ? 'Online now'
+        ? 'Active now'
         : offlineText;
 
   const requestConversationCount = useMemo(() => {
@@ -5123,11 +5147,8 @@ export default function Messages() {
     <div className={`${compact ? 'min-h-0 flex-1 overflow-y-auto px-4 pb-6 lg:max-h-[calc(90svh-4.5rem)]' : ''}`}>
       <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
         <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
-          <span className="relative block">
+          <span className={`conversation-profile-target relative mx-auto block w-fit rounded-full ${selectedIsOnline ? 'is-online' : ''}`}>
             {renderAvatar(selectedUser, 'h-20 w-20', 32)}
-            <span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white dark:border-gray-950 ${
-              selectedIsOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
-            }`} />
           </span>
         </button>
         <h3 className="mt-3 truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>
@@ -5485,7 +5506,6 @@ export default function Messages() {
                       >
                         <span className="relative mx-auto block w-fit rounded-full ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-50 transition group-hover:ring-[#1877f2] dark:ring-offset-zinc-950">
                           {renderAvatar(person, 'h-12 w-12', 20)}
-                          <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-zinc-950" />
                         </span>
                         <span className="mt-1 block truncate text-[11px] font-black text-slate-700 dark:text-zinc-200">{person?.name || 'User'}</span>
                       </button>
@@ -5906,13 +5926,7 @@ export default function Messages() {
                         >
                           {presenceMeta.label}
                         </span>
-                      ) : (
-                        <span
-                          title={presenceMeta.title}
-                          aria-label={presenceMeta.title}
-                          className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-gray-300 dark:border-gray-900 dark:bg-gray-600"
-                        />
-                      )}
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -6024,9 +6038,6 @@ export default function Messages() {
                   title={selectedHasStory ? 'View My Day' : 'View profile'}
                 >
                   {renderAvatar(selectedUser, 'h-12 w-12', 22)}
-                  <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
-                    selectedIsOnline ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]' : 'bg-gray-300 dark:bg-gray-600'
-                  }`} />
                 </button>
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="min-w-0 flex-1 text-left" title="View profile">
                   <div className="flex min-w-0 items-center gap-2">
@@ -6747,11 +6758,8 @@ export default function Messages() {
             <aside className="messages-details-panel hidden w-[18.5rem] shrink-0 flex-col border-l border-slate-200/80 bg-white dark:border-gray-800 dark:bg-gray-950">
               <div className="border-b border-slate-200/80 p-5 text-center dark:border-gray-800">
                 <button type="button" onClick={() => setProfileUser(selectedUser)} className="mx-auto block" aria-label="View profile">
-                  <span className="relative block">
+                  <span className={`conversation-profile-target relative mx-auto block w-fit rounded-full ${selectedIsOnline ? 'is-online' : ''}`}>
                     {renderAvatar(selectedUser, 'h-20 w-20', 32)}
-                    <span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white dark:border-gray-950 ${
-                      selectedIsOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
-                    }`} />
                   </span>
                 </button>
                 <h3 className="mt-3 truncate text-lg font-black text-slate-950 dark:text-white">{selectedDisplayName}</h3>

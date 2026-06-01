@@ -1,12 +1,13 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ArrowLeft, Database, Gauge, LogOut, Moon, Smartphone, Sun } from 'lucide-react-native';
+import { ArrowLeft, Database, ExternalLink, Gauge, LogOut, Moon, Smartphone, Sun } from 'lucide-react-native';
 import { API_BASE_URL } from '../config';
 import { useAuth } from '../store/AuthContext';
 import { ThemeMode, useTheme } from '../theme/ThemeContext';
 import type { RootStackParamList } from '../types';
+import { openMainSyncrova } from '../utils/openSyncrova';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -19,6 +20,10 @@ export default function SettingsScreen() {
     { id: 'dark', label: 'Dark', icon: Moon },
     { id: 'system', label: 'System', icon: Smartphone }
   ];
+  const switchToSyncrova = async () => {
+    const opened = await openMainSyncrova();
+    if (!opened) Alert.alert('Syncrova', 'Could not open Syncrova on this device.');
+  };
 
   return (
     <View className="flex-1 pt-12" style={{ backgroundColor: colors.background }}>
@@ -80,6 +85,11 @@ export default function SettingsScreen() {
             </View>
           </View>
         </View>
+
+        <Pressable className="h-14 flex-row items-center justify-center gap-2 rounded-2xl" onPress={switchToSyncrova} style={{ backgroundColor: colors.primary }}>
+          <ExternalLink color="#FFFFFF" size={18} />
+          <Text className="font-semibold text-white">Switch to Syncrova</Text>
+        </Pressable>
 
         <Pressable className="mt-2 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-red-50" onPress={logout}>
           <LogOut color="#DC2626" size={18} />

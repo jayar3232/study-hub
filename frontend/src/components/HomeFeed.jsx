@@ -840,6 +840,7 @@ export default function HomeFeed({
   const loadMoreSentinelRef = useRef(null);
   const feedAutoLoadAtRef = useRef(0);
   const currentUserId = getEntityId(currentUser);
+  const canModeratePosts = Boolean(currentUser?.isDeveloper);
   const canPost = Boolean(composerText.trim() || mediaItems.length) && !posting;
   const filteredPosts = useMemo(
     () => posts.filter(post => !hiddenPostIds.has(getEntityId(post))),
@@ -2050,6 +2051,7 @@ export default function HomeFeed({
             const attachments = getPostAttachments(post);
             const myReaction = post.reactions?.find(reaction => getEntityId(reaction.userId) === currentUserId);
             const isOwner = getEntityId(author) === currentUserId;
+            const canRemovePost = isOwner || canModeratePosts;
             const shareCount = getShareCount(post);
             const commentCount = post.commentCount ?? post.comments?.length ?? 0;
             const allComments = post.comments || [];
@@ -2118,10 +2120,10 @@ export default function HomeFeed({
                           <Flag size={16} />
                           Report
                         </button>
-                        {isOwner && (
+                        {canRemovePost && (
                           <button type="button" onClick={() => deletePost(post)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/35">
                             <Trash2 size={16} />
-                            Delete
+                            {isOwner ? 'Delete' : 'Remove as developer'}
                           </button>
                         )}
                       </div>

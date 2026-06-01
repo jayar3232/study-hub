@@ -6,6 +6,7 @@ import type { User } from '../types';
 import { usePresenceStore } from './presenceStore';
 
 const TOKEN_KEY = 'syncrova.nativeMessenger.token';
+const USER_CACHE_KEY = 'syncrova.nativeMessenger.user';
 
 type AuthContextValue = {
   user: User | null;
@@ -13,6 +14,7 @@ type AuthContextValue = {
   loading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (payload: { name: string; email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -27,17 +29,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const getToken = useCallback(async () => token || AsyncStorage.getItem(TOKEN_KEY), [token]);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.multiRemove([TOKEN_KEY, USER_CACHE_KEY]);
     disconnectSocket();
     usePresenceStore.getState().resetPresence();
     setToken(null);
     setUser(null);
   }, []);
 
+  const cacheUser = useCallback(async (nextUser: User | null) => {
+    if (!nextUser) {
+      await AsyncStorage.removeItem(USER_CACHE_KEY);
+      return;
+    }
+    await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(nextUser));
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     const res = await api.get<User>('/users/profile');
-    setUser(res.data || null);
-  }, []);
+    const nextUser = res.data || null;
+    setUser(nextUser);
+    await cacheUser(nextUser);
+  }, [cacheUser]);
 
   useEffect(() => {
     setApiTokenGetter(getToken);
@@ -50,18 +62,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    const bootstrap = async () => {
+    const parseCachedUser = (raw: string | null) => {
+      if (!raw) return null;
       try {
-        const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
-        if (!storedToken) return;
-        setToken(storedToken);
-        const res = await api.get<User>('/users/profile');
-        if (!cancelled) setUser(res.data || null);
+        return JSON.parse(raw) as User;
       } catch {
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        return null;
+      }
+    };
+
+    const bootstrap = async () => {
+      let hadCachedUser = false;
+      try {
+        const [storedToken, cachedUserRaw] = await Promise.all([
+          AsyncStorage.getItem(TOKEN_KEY),
+          AsyncStorage.getItem(USER_CACHE_KEY)
+        ]);
+        if (!storedToken) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
+        const cachedUser = parseCachedUser(cachedUserRaw);
+        hadCachedUser = Boolean(cachedUser);
+        if (cancelled) return;
+        setToken(storedToken);
+        if (cachedUser) {
+          setUser(cachedUser);
+          setLoading(false);
+        }
+
+        const res = await api.get<User>('/users/profile');
         if (!cancelled) {
-          setToken(null);
-          setUser(null);
+          const nextUser = res.data || null;
+          setUser(nextUser);
+          await cacheUser(nextUser);
+        }
+      } catch {
+        if (!hadCachedUser) {
+          await AsyncStorage.multiRemove([TOKEN_KEY, USER_CACHE_KEY]);
+          if (!cancelled) {
+            setToken(null);
+            setUser(null);
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -76,10 +119,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.post<{ token: string; user: User }>('/auth/login', { email, password });
-    await AsyncStorage.setItem(TOKEN_KEY, res.data.token);
+    await AsyncStorage.multiSet([
+      [TOKEN_KEY, res.data.token],
+      [USER_CACHE_KEY, JSON.stringify(res.data.user)]
+    ]);
     setToken(res.data.token);
     setUser(res.data.user);
-    await refreshSocketAuth({ reconnect: true });
+    setLoading(false);
+    refreshSocketAuth({ reconnect: true }).catch(() => {});
+  }, []);
+
+  const register = useCallback(async ({ name, email, password }: { name: string; email: string; password: string }) => {
+    const res = await api.post<{ token: string; user: User }>('/auth/register', { name, email, password });
+    await AsyncStorage.multiSet([
+      [TOKEN_KEY, res.data.token],
+      [USER_CACHE_KEY, JSON.stringify(res.data.user)]
+    ]);
+    setToken(res.data.token);
+    setUser(res.data.user);
+    setLoading(false);
+    refreshSocketAuth({ reconnect: true }).catch(() => {});
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -88,9 +147,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     isAuthenticated: Boolean(user && token),
     login,
+    register,
     logout,
     refreshProfile
-  }), [loading, login, logout, refreshProfile, token, user]);
+  }), [loading, login, logout, refreshProfile, register, token, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

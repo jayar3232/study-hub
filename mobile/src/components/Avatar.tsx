@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import type { User } from '../types';
 import { resolveMediaUrl } from '../utils/media';
+import VerifiedBadge from './VerifiedBadge';
 
 export type AvatarStoryRing = 'unviewed' | 'viewed' | 'none';
 
@@ -14,18 +16,24 @@ type AvatarProps = {
   size?: number;
   sharedTag?: string;
   online?: boolean;
+  verified?: boolean;
   storyRing?: AvatarStoryRing;
 };
 
-export default function Avatar({ user, uri, name, size = 48, online = false, storyRing = 'none' }: AvatarProps) {
+export default function Avatar({ user, uri, name, size = 48, online = false, verified = false, storyRing = 'none' }: AvatarProps) {
   const displayName = name || user?.name || user?.email || 'User';
   const avatarUri = resolveMediaUrl(uri || user?.avatar || '');
+  const isDeveloper = Boolean(user?.isDeveloper);
+  const showVerified = verified || isDeveloper;
   const ringVisible = storyRing !== 'none';
-  const ringPadding = ringVisible ? 4 : 0;
-  const outerSize = size + ringPadding * 2;
+  const onlineRingVisible = online;
+  const onlineRingPadding = onlineRingVisible ? 3 : 0;
+  const storyRingPadding = ringVisible ? 4 : 0;
+  const avatarOffset = onlineRingPadding + storyRingPadding;
+  const storyRingSize = size + storyRingPadding * 2;
+  const outerSize = size + avatarOffset * 2;
   const strokeWidth = storyRing === 'viewed' ? 2 : 3;
-  const dotOuterSize = Math.max(12, Math.round(size * 0.24));
-  const dotInnerSize = Math.max(8, dotOuterSize - 4);
+  const hasOuterRing = onlineRingVisible || ringVisible;
   const initials = displayName
     .split(/\s+/)
     .map(part => part[0])
@@ -33,6 +41,21 @@ export default function Avatar({ user, uri, name, size = 48, online = false, sto
     .slice(0, 2)
     .join('')
     .toUpperCase();
+  const developerPulse = useSharedValue(0);
+
+  useEffect(() => {
+    if (!isDeveloper) return;
+    developerPulse.value = withRepeat(
+      withTiming(1, { duration: 1550, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+  }, [developerPulse, isDeveloper]);
+
+  const developerRingStyle = useAnimatedStyle(() => ({
+    opacity: 0.45 + developerPulse.value * 0.45,
+    transform: [{ scale: 1 + developerPulse.value * 0.08 }]
+  }));
 
   const avatar = avatarUri ? (
     <ExpoImage
@@ -55,41 +78,98 @@ export default function Avatar({ user, uri, name, size = 48, online = false, sto
 
   return (
     <View style={{ height: outerSize, width: outerSize }}>
+      {isDeveloper ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              borderColor: '#38BDF8',
+              borderRadius: outerSize / 2,
+              borderWidth: 2,
+              bottom: -2,
+              left: -2,
+              position: 'absolute',
+              right: -2,
+              shadowColor: '#38BDF8',
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.9,
+              shadowRadius: 10,
+              top: -2
+            },
+            developerRingStyle
+          ]}
+        />
+      ) : null}
+      {onlineRingVisible ? (
+        <View
+          pointerEvents="none"
+          style={{
+            backgroundColor: 'rgba(34, 197, 94, 0.12)',
+            borderColor: '#22C55E',
+            borderRadius: outerSize / 2,
+            borderWidth: 3,
+            bottom: 0,
+            left: 0,
+            position: 'absolute',
+            right: 0,
+            shadowColor: '#22C55E',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.22,
+            shadowRadius: 5,
+            top: 0
+          }}
+        />
+      ) : null}
       {ringVisible ? (
-        <Svg height={outerSize} style={{ position: 'absolute', left: 0, top: 0 }} width={outerSize}>
+        <Svg height={storyRingSize} style={{ position: 'absolute', left: onlineRingPadding, top: onlineRingPadding }} width={storyRingSize}>
           <Defs>
             <LinearGradient id="storyRingGradient" x1="0" x2="1" y1="0" y2="1">
-              <Stop offset="0" stopColor="#0A7CFF" />
-              <Stop offset="1" stopColor="#5AA7FF" />
+              <Stop offset="0" stopColor="#FF5E62" />
+              <Stop offset="1" stopColor="#FF6D3A" />
             </LinearGradient>
           </Defs>
           <Circle
-            cx={outerSize / 2}
-            cy={outerSize / 2}
+            cx={storyRingSize / 2}
+            cy={storyRingSize / 2}
             fill="transparent"
-            r={(outerSize - strokeWidth) / 2}
+            r={(storyRingSize - strokeWidth) / 2}
             stroke={storyRing === 'viewed' ? '#B0B3B8' : 'url(#storyRingGradient)'}
             strokeWidth={strokeWidth}
           />
         </Svg>
       ) : null}
-      <View style={{ left: ringPadding, position: 'absolute', top: ringPadding }}>
+      <View style={{ left: avatarOffset, position: 'absolute', top: avatarOffset }}>
         {avatar}
       </View>
-      {online ? (
+      {!online && showVerified ? (
         <View
-          className="absolute items-center justify-center rounded-full bg-white"
           style={{
-            bottom: ringVisible ? 1 : 0,
-            height: dotOuterSize,
-            right: ringVisible ? 1 : 0,
-            width: dotOuterSize
+            bottom: hasOuterRing ? 0 : -1,
+            position: 'absolute',
+            right: hasOuterRing ? 0 : -1
           }}
         >
-          <View
-            className="rounded-full bg-emerald-500"
-            style={{ height: dotInnerSize, width: dotInnerSize }}
-          />
+          <VerifiedBadge label={isDeveloper ? 'Verified Student Developer' : 'Verified Student'} size={size >= 72 ? 'md' : 'sm'} />
+        </View>
+      ) : null}
+      {isDeveloper && online ? (
+        <View
+          className="absolute items-center justify-center rounded-full"
+          style={{
+            backgroundColor: '#0F172A',
+            borderColor: '#BAE6FD',
+            borderWidth: 1.5,
+            bottom: hasOuterRing ? -2 : -3,
+            height: Math.max(17, Math.round(size * 0.32)),
+            left: hasOuterRing ? -2 : -3,
+            shadowColor: '#38BDF8',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.5,
+            shadowRadius: 5,
+            width: Math.max(17, Math.round(size * 0.32))
+          }}
+        >
+          <Text style={{ color: '#BAE6FD', fontSize: Math.max(8, size * 0.13), fontWeight: '900' }}>{'</>'}</Text>
         </View>
       ) : null}
     </View>

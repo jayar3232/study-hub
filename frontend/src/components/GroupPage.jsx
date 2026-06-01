@@ -1857,6 +1857,7 @@ export default function GroupPage() {
   const currentMember = groupMembers.find(member => normalizeId(member) === currentUserId);
   const groupCreatorId = normalizeId(group?.creator);
   const canModerate = currentMember?.role === 'creator' || currentMember?.role === 'co-creator' || groupCreatorId === currentUserId;
+  const canModeratePosts = canModerate || Boolean(user?.isDeveloper);
 
   useEffect(() => {
     if (canModerate) {
@@ -2574,7 +2575,7 @@ export default function GroupPage() {
                       key={post._id}
                       post={post}
                       currentUserId={currentUserId}
-                      canModerate={canModerate}
+                      canModerate={canModeratePosts}
                       onReact={handleReact}
                       onComment={handleComment}
                       onDelete={handleDeletePost}

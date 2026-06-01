@@ -61,8 +61,25 @@ export const useOnlineStatus = (currentUserId?: string | null) => {
     if (!userId) return undefined;
 
     let disposed = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     let cleanupSocketListeners: undefined | (() => void);
     const store = usePresenceStore.getState();
+
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+
+    const startHeartbeat = () => {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (!disposed && appStateRef.current === 'active') {
+          goOnline().catch(() => {});
+        }
+      }, 30000);
+    };
 
     const goOnline = async () => {
       if (disposed) return;
@@ -86,9 +103,11 @@ export const useOnlineStatus = (currentUserId?: string | null) => {
       const onConnect = () => {
         store.setConnected(true);
         goOnline().catch(() => {});
+        startHeartbeat();
       };
       const onDisconnect = () => {
         store.setConnected(false);
+        stopHeartbeat();
       };
       const onOnlineUsers = (payload: unknown) => {
         store.setOnlineUsers(normalizeOnlineUsersPayload(payload));
@@ -150,8 +169,14 @@ export const useOnlineStatus = (currentUserId?: string | null) => {
       const isActive = nextState === 'active';
       appStateRef.current = nextState;
 
-      if (!wasActive && isActive) goOnline().catch(() => {});
-      if (wasActive && !isActive) goOffline().catch(() => {});
+      if (!wasActive && isActive) {
+        goOnline().catch(() => {});
+        startHeartbeat();
+      }
+      if (wasActive && !isActive) {
+        stopHeartbeat();
+        goOffline().catch(() => {});
+      }
     });
 
     setup().catch(() => {
@@ -160,6 +185,7 @@ export const useOnlineStatus = (currentUserId?: string | null) => {
 
     return () => {
       subscription.remove();
+      stopHeartbeat();
       cleanupSocketListeners?.();
       goOffline().catch(() => {});
       disposed = true;

@@ -14,6 +14,8 @@ export type MediaViewerItem = {
   senderAvatar?: string;
   timestamp?: string;
   fileName?: string;
+  width?: number;
+  height?: number;
 };
 
 export type VoiceRecordingResult = {
@@ -46,7 +48,7 @@ export const getMediaUrl = (attachment: MessageAttachment) => (
 );
 
 export const getThumbnailUrl = (attachment: MessageAttachment) => {
-  if (attachment.fileType !== 'image') return resolveMediaUrl(attachment.fileUrl);
+  if (attachment.fileType !== 'image') return resolveMediaUrl(attachment.thumbnailUrl || '');
   const variants = attachment.variants || {};
   const thumb = variants.thumb;
   const url = typeof thumb === 'string' ? thumb : thumb?.fileUrl || thumb?.url;
@@ -81,7 +83,9 @@ export const buildMediaViewerItems = ({
       senderName: owner.name,
       senderAvatar: owner.avatar,
       timestamp: message.createdAt,
-      fileName: attachment.fileName
+      fileName: attachment.fileName,
+      width: attachment.width,
+      height: attachment.height
     }));
 };
 

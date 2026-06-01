@@ -5649,6 +5649,30 @@ html.syncrova-frame-unstable :where(
   color: #bfdbfe;
 }
 
+.messenger-handoff-benefits {
+  display: flex;
+  max-width: 25rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.messenger-handoff-benefits span {
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 9999px;
+  background: rgba(248, 250, 252, 0.9);
+  padding: 0.42rem 0.68rem;
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.dark .messenger-handoff-benefits span {
+  border-color: rgba(71, 85, 105, 0.85);
+  background: rgba(30, 41, 59, 0.72);
+  color: #cbd5e1;
+}
+
 .messenger-handoff-actions {
   display: grid;
   width: 100%;
@@ -12437,8 +12461,8 @@ html.syncrova-native-app .mobile-message-actions button {
 .conversation-profile-target.is-online .conversation-presence-badge {
   right: -0.28rem !important;
   bottom: -0.18rem !important;
-  max-width: 2.7rem !important;
-  padding: 2px 5px !important;
+  max-width: 4.9rem !important;
+  padding: 2px 6px !important;
   font-size: 0.55rem !important;
   line-height: 0.78rem !important;
 }

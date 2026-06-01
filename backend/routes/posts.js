@@ -7,6 +7,7 @@ const auth = require('../middleware/auth');
 const Post = require('../models/Post');
 const Group = require('../models/Group');
 const Friendship = require('../models/Friendship');
+const User = require('../models/User');
 const { createNotification, createNotifications } = require('../services/notifications');
 const { createGroupActivity } = require('../services/activity');
 const { getMentionedMemberIds } = require('../services/mentions');
@@ -165,6 +166,11 @@ const ensurePostMember = async (post, userId) => {
 const canManageGroup = (group, userId) => (
   group?.creator?.toString() === userId || group?.coCreators?.some(member => member.toString() === userId)
 );
+
+const canModeratePosts = async (userId) => {
+  const user = await User.findById(userId).select('isDeveloper').lean().catch(() => null);
+  return Boolean(user?.isDeveloper);
+};
 
 const getAcceptedFriendIds = async (userId) => {
   const rows = await Friendship.find({
@@ -645,21 +651,24 @@ router.delete('/:postId', auth, async (req, res) => {
     const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ msg: 'Post not found' });
 
+    const isDeveloper = await canModeratePosts(req.user);
+
     if (isTimelinePost(post)) {
-      if (normalizeId(post.userId) !== normalizeId(req.user)) {
+      const isPostCreator = normalizeId(post.userId) === normalizeId(req.user);
+      if (!isPostCreator && !isDeveloper) {
         return res.status(403).json({ msg: 'Not authorized' });
       }
       await post.deleteOne();
       return res.json({ msg: 'Post deleted' });
     }
 
-    const group = await ensurePostMember(post, req.user);
-    if (!group) return res.status(403).json({ msg: 'You are not a member of this group' });
+    const group = isDeveloper ? null : await ensurePostMember(post, req.user);
+    if (!isDeveloper && !group) return res.status(403).json({ msg: 'You are not a member of this group' });
 
     const isPostCreator = post.userId.toString() === req.user;
-    const isGroupCreator = group.creator.toString() === req.user;
-    const isCoCreator = group.coCreators?.some(c => c.toString() === req.user);
-    if (!isPostCreator && !isGroupCreator && !isCoCreator) {
+    const isGroupCreator = group?.creator?.toString() === req.user;
+    const isCoCreator = group?.coCreators?.some(c => c.toString() === req.user);
+    if (!isPostCreator && !isGroupCreator && !isCoCreator && !isDeveloper) {
       return res.status(403).json({ msg: 'Not authorized' });
     }
     await post.deleteOne();

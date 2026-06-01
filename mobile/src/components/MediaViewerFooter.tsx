@@ -2,7 +2,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
 import { Download, MessageCircle, MoreHorizontal, Share2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MediaViewerItem } from '../utils/mediaHelpers';
@@ -63,7 +63,7 @@ export default function MediaViewerFooter({ item, visible, total, index, onReply
   return (
     <View
       className="absolute bottom-0 left-0 right-0 z-20 items-center px-5 pt-5"
-      style={{ backgroundColor: 'rgba(0,0,0,0.68)', paddingBottom: insets.bottom + 14 }}
+      style={{ backgroundColor: 'transparent', paddingBottom: insets.bottom + 14 }}
     >
       {total > 1 ? (
         <View className="mb-4 flex-row items-center justify-center gap-1.5">
@@ -81,22 +81,19 @@ export default function MediaViewerFooter({ item, visible, total, index, onReply
         </View>
       ) : null}
       <View className="flex-row items-center justify-center gap-5">
-        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-white/15" onPress={onReply}>
-          <MessageCircle color="#FFFFFF" size={21} />
+        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-black/18" onPress={onReply}>
+          <MessageCircle color="#DDE5FF" size={21} />
         </Pressable>
-        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-white/15" onPress={share}>
-          <Share2 color="#FFFFFF" size={21} />
+        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-black/18" onPress={share}>
+          <Share2 color="#DDE5FF" size={21} />
         </Pressable>
-        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-white/15" onPress={save}>
-          {saving ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Download color="#FFFFFF" size={21} />}
+        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-black/18" onPress={save}>
+          {saving ? <ActivityIndicator color="#DDE5FF" size="small" /> : <Download color="#DDE5FF" size={21} />}
         </Pressable>
-        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-white/15" onPress={() => Alert.alert('More', 'More media options will be available here.')}>
-          <MoreHorizontal color="#FFFFFF" size={22} />
+        <Pressable className="h-12 w-12 items-center justify-center rounded-full bg-black/18" onPress={() => Alert.alert('More', 'More media options will be available here.')}>
+          <MoreHorizontal color="#DDE5FF" size={22} />
         </Pressable>
       </View>
-      <Text className="mt-3 text-xs text-white/55" numberOfLines={1}>
-        {item?.fileName || ''}
-      </Text>
     </View>
   );
 }

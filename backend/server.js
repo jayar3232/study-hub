@@ -220,6 +220,15 @@ app.use('/releases', express.static(path.join(__dirname, 'public', 'releases'), 
   }
 }));
 
+app.get('/api/ping', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    databaseReadyState: mongoose.connection.readyState
+  });
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/groups', require('./routes/groups'));
@@ -330,6 +339,36 @@ const userExists = async (userId, tokenIssuedAt = 0) => {
   const passwordChangedAtMs = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0;
   const issuedAtMs = Number(tokenIssuedAt || 0) * 1000;
   return !passwordChangedAtMs || (issuedAtMs && issuedAtMs + 1000 >= passwordChangedAtMs);
+};
+
+const getPresencePayloadUserId = (payload) => normalizeId(payload?.userId || payload?._id || payload?.id || payload);
+
+const getPresencePayloadToken = (payload) => (
+  payload && typeof payload === 'object'
+    ? String(payload.token || payload.authToken || '').trim()
+    : ''
+);
+
+const canUsePresenceUser = async (socket, requestedUserId, payload) => {
+  const normalizedUserId = normalizeId(requestedUserId);
+  if (!normalizedUserId) return false;
+
+  const socketUserId = normalizeId(socket.data?.userId);
+  if (socketUserId && socketUserId === normalizedUserId && await userExists(normalizedUserId)) {
+    return true;
+  }
+
+  const token = getPresencePayloadToken(payload);
+  if (!token || !process.env.JWT_SECRET) return false;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decodedUserId = normalizeId(decoded?.userId);
+    if (!decodedUserId || decodedUserId !== normalizedUserId) return false;
+    return userExists(decodedUserId, decoded.iat);
+  } catch {
+    return false;
+  }
 };
 
 const getOnlineUserIds = () => Array.from(onlineUsers.keys());
@@ -903,11 +942,10 @@ io.on('connection', async (socket) => {
   }
 
   // User online
-  socket.on('user-online', async (userId, callback) => {
-    const normalizedUserId = normalizeId(userId);
-    const socketUserId = normalizeId(socket.data?.userId);
+  socket.on('user-online', async (payload, callback) => {
+    const normalizedUserId = getPresencePayloadUserId(payload);
 
-    if (normalizedUserId && socketUserId && normalizedUserId === socketUserId && await userExists(normalizedUserId)) {
+    if (await canUsePresenceUser(socket, normalizedUserId, payload)) {
       registerOnlineUser(socket, normalizedUserId);
       console.log(`User ${normalizedUserId} is online`);
 
@@ -917,11 +955,12 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('user-offline', async (userId, callback) => {
-    const normalizedUserId = normalizeId(userId);
+  socket.on('user-offline', async (payload, callback) => {
+    const normalizedUserId = getPresencePayloadUserId(payload);
     const socketUserId = normalizeId(socket.data?.userId);
 
-    if (normalizedUserId && socketUserId && normalizedUserId === socketUserId) {
+    if (await canUsePresenceUser(socket, normalizedUserId, payload)) {
+      if (!socketUserId) socket.data.userId = normalizedUserId;
       const result = await markSocketUserOffline(socket);
       if (typeof callback === 'function') {
         callback({

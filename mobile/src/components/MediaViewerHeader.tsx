@@ -19,12 +19,12 @@ export default function MediaViewerHeader({ item, visible, onClose }: MediaViewe
   return (
     <View
       className="absolute left-0 right-0 top-0 z-20 flex-row items-center gap-3 px-4 pb-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.68)', paddingTop: insets.top + 10 }}
+      style={{ backgroundColor: 'transparent', paddingTop: insets.top + 10 }}
     >
-      <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-white/15" onPress={onClose}>
-        <X color="#FFFFFF" size={22} />
+      <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={onClose}>
+        <X color="#9DB2FF" size={25} />
       </Pressable>
-      <Avatar name={item?.senderName} size={36} uri={item?.senderAvatar} />
+      <Avatar name={item?.senderName} size={34} uri={item?.senderAvatar} />
       <View className="min-w-0 flex-1">
         <Text className="text-[15px] font-semibold text-white" numberOfLines={1}>
           {item?.senderName || 'Syncrova'}

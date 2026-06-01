@@ -1,7 +1,8 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Image as ExpoImage } from 'expo-image';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, ImageBackground, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
@@ -9,6 +10,7 @@ import { ArrowLeft, BellOff, Check, Edit3, Info, MoreVertical, Palette, Phone, P
 import AudioPlayerBanner from '../components/AudioPlayerBanner';
 import Avatar from '../components/Avatar';
 import ChatBubble from '../components/ChatBubble';
+import MediaEditorModal from '../components/MediaEditorModal';
 import MediaViewer from '../components/MediaViewer';
 import MessageInput from '../components/MessageInput';
 import NativeCallOverlay from '../components/NativeCallOverlay';
@@ -44,7 +46,7 @@ import { emitTypingStart, emitTypingStop, getSocket } from '../services/socket';
 import { useAuth } from '../store/AuthContext';
 import { usePresenceStore } from '../store/presenceStore';
 import { useTheme } from '../theme/ThemeContext';
-import type { ChatStreak, ConversationSettings, Group, GroupMessage, Message, RootStackParamList, User } from '../types';
+import type { ChatStreak, ClientSendStatus, ConversationSettings, Group, GroupMessage, Message, MessageAttachment, RootStackParamList, UploadedAttachment, User } from '../types';
 import {
   CallMode,
   CallSignalPayload,
@@ -56,11 +58,13 @@ import {
   serializeCallUser
 } from '../services/calls';
 import { CHAT_BACKGROUNDS, CHAT_THEMES, QUICK_REACTIONS, getBackgroundById, getThemeById } from '../utils/chatCustomizations';
+import { readJsonCache, writeJsonCache } from '../utils/cache';
 import { formatActiveStatus, formatMessageTime } from '../utils/date';
 import { getEntityId, getMessageKey } from '../utils/ids';
-import { getMessageAttachments } from '../utils/media';
-import { buildMediaViewerItems, VoiceRecordingResult } from '../utils/mediaHelpers';
+import { getMessageAttachments, resolveMediaUrl } from '../utils/media';
+import { buildMediaViewerItems, isAudioAttachment, isMediaAttachment, VoiceRecordingResult } from '../utils/mediaHelpers';
 import { ChatFlagState, hasChatFlag, loadChatFlags, loadChatThemes, saveChatFlags, saveChatTheme, toggleChatFlag } from '../utils/preferences';
+import { playIncomingCallSound, playReceivedSound, playSendSound, stopIncomingCallSound } from '../utils/soundEffects';
 import { useMediaViewer } from '../hooks/useMediaViewer';
 
 type RouteProps = NativeStackScreenProps<RootStackParamList, 'ChatRoom'>['route'];
@@ -72,12 +76,25 @@ type ActiveCallRef = {
   partnerId: string;
   state: CallState;
 };
+type ThreadSnapshot = {
+  messages: ThreadMessage[];
+  conversation?: ConversationSettings;
+  group?: Group;
+  chatStreak?: ChatStreak | null;
+  hasMore?: boolean;
+  nextCursor?: string;
+};
 
 const emptyFlags: ChatFlagState = {
   pinned: [],
   muted: [],
   favorites: []
 };
+const THREAD_CACHE_TTL_MS = 72 * 60 * 60 * 1000;
+const SEND_RETRY_DELAYS_MS = [900, 2200];
+const getThreadCacheKey = (userId: string, mode: 'direct' | 'group', chatId: string) => (
+  `syncrova:messenger:thread:${userId}:${mode}:${chatId}`
+);
 
 const getSender = (message: ThreadMessage, groupMode: boolean) => (
   groupMode && 'userId' in message ? message.userId : (message as Message).from
@@ -115,19 +132,70 @@ const formatCallDuration = (startedAt?: number | null) => {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 };
 
+const getThreadMessageIdentity = (message: ThreadMessage) => (
+  getEntityId(message) || (message as Message).clientId || (message as GroupMessage).clientId || ''
+);
+
+const isClientOnlyMessage = (message: ThreadMessage) => (
+  Boolean(((message as Message).clientId || (message as GroupMessage).clientId) && !getEntityId(message))
+);
+
+const mergeNetworkRowsWithLocal = <T extends ThreadMessage>(networkRows: T[], previousRows: ThreadMessage[]) => {
+  const localRows = previousRows.filter(isClientOnlyMessage);
+  if (!localRows.length) return networkRows;
+  const networkKeys = new Set(networkRows.map(getThreadMessageIdentity).filter(Boolean));
+  return [
+    ...networkRows,
+    ...localRows.filter(item => !networkKeys.has(getThreadMessageIdentity(item)))
+  ] as T[];
+};
+
 const mergeMessage = <T extends ThreadMessage>(rows: T[], next: T) => {
-  const nextId = getEntityId(next);
+  const nextId = getThreadMessageIdentity(next);
   if (!nextId) return rows;
-  return rows.some(item => getEntityId(item) === nextId)
-    ? rows.map(item => (getEntityId(item) === nextId ? next : item))
+  return rows.some(item => getThreadMessageIdentity(item) === nextId)
+    ? rows.map(item => (getThreadMessageIdentity(item) === nextId ? next : item))
     : [...rows, next];
+};
+
+const createClientId = (kind: string) => `local-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const sleep = (ms: number) => new Promise(resolve => {
+  setTimeout(resolve, ms);
+});
+
+const getLocalAssetType = (asset: ImagePickerAsset | VoiceRecordingResult) => {
+  const mimeType = String(asset.mimeType || '').toLowerCase();
+  if ('fileType' in asset && asset.fileType === 'audio') return 'audio';
+  if ('type' in asset && asset.type === 'video') return 'video';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.startsWith('image/')) return 'image';
+  return 'file';
+};
+
+const createLocalAttachment = (asset: ImagePickerAsset | VoiceRecordingResult): MessageAttachment => {
+  const fileType = getLocalAssetType(asset);
+  const fileName = asset.fileName || `syncrova-${Date.now()}.${fileType === 'video' ? 'mp4' : fileType === 'audio' ? 'webm' : 'jpg'}`;
+  const mimeType = asset.mimeType || (fileType === 'video' ? 'video/mp4' : fileType === 'audio' ? 'audio/webm' : 'image/jpeg');
+
+  return {
+    durationMs: 'durationMs' in asset ? asset.durationMs : undefined,
+    fileName,
+    fileType,
+    fileUrl: asset.uri,
+    height: 'height' in asset ? asset.height : undefined,
+    localUri: asset.uri,
+    mimeType,
+    width: 'width' in asset ? asset.width : undefined
+  };
 };
 
 export default function ChatRoomScreen() {
   const navigation = useNavigation<Navigation>();
   const route = useRoute<RouteProps>();
   const { user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, resolvedMode } = useTheme();
   const currentUserId = getEntityId(user);
   const { chatId, userName, avatar } = route.params;
   const groupMode = route.params.mode === 'group';
@@ -148,6 +216,8 @@ export default function ChatRoomScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
+  const [queuedSendCount, setQueuedSendCount] = useState(0);
+  const [mediaEditorAsset, setMediaEditorAsset] = useState<ImagePickerAsset | null>(null);
   const [remoteTyping, setRemoteTyping] = useState(false);
   const [presenceReady, setPresenceReady] = useState(false);
   const [remoteOnline, setRemoteOnline] = useState(false);
@@ -177,6 +247,9 @@ export default function ChatRoomScreen() {
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitAtRef = useRef(0);
   const activeCallRef = useRef<ActiveCallRef>({ callId: '', mode: 'audio', partnerId: '', state: 'idle' });
+  const hydratedCacheRef = useRef(false);
+  const networkLoadedRef = useRef(false);
+  const sendQueueRef = useRef(Promise.resolve());
 
   const selectedTheme = getThemeById(themeId);
   const displayName = groupMode
@@ -185,6 +258,30 @@ export default function ChatRoomScreen() {
   const backgroundId = groupMode ? group?.backgroundId : conversation?.backgroundId;
   const background = getBackgroundById(backgroundId);
   const activeChatId = chatId;
+  const threadCacheKey = currentUserId ? getThreadCacheKey(currentUserId, groupMode ? 'group' : 'direct', chatId) : '';
+  const hasImageBackground = Boolean(background.image);
+  const backgroundImage = background.image || CHAT_BACKGROUNDS.find(item => item.image)?.image;
+  const translucentPanel = hasImageBackground ? 'transparent' : colors.background;
+  const translucentChip = hasImageBackground
+    ? 'rgba(0, 0, 0, 0.10)'
+    : colors.surface;
+  const translucentInput = hasImageBackground
+    ? resolvedMode === 'dark' ? 'rgba(4, 6, 10, 0.78)' : 'rgba(255, 255, 255, 0.78)'
+    : colors.input;
+  const backgroundOverlay = hasImageBackground
+    ? resolvedMode === 'dark' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.04)'
+    : 'transparent';
+  const threadBackgroundStyle = hasImageBackground ? { backgroundColor: 'transparent' } : background.style;
+  const chromeIconColor = hasImageBackground ? '#FFFFFF' : colors.primary;
+  const chromeTextColor = hasImageBackground ? '#FFFFFF' : colors.text;
+  const chromeMutedColor = hasImageBackground ? 'rgba(255, 255, 255, 0.84)' : colors.mutedText;
+  const chromeTextShadow = hasImageBackground
+    ? {
+      textShadowColor: 'rgba(0, 0, 0, 0.92)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 3
+    }
+    : undefined;
   const mediaViewer = useMediaViewer();
   const presenceStatus = usePresenceStore(state => state.statuses[chatId]);
   const storeRemoteTyping = usePresenceStore(state => Boolean(state.typingByChat[chatId]?.length));
@@ -236,34 +333,91 @@ export default function ChatRoomScreen() {
   }, [forwardingMessage]);
 
   const loadInitial = useCallback(async () => {
-    setLoading(true);
     try {
       if (groupMode) {
         const rows = await fetchGroupMessages(chatId);
-        setMessages(rows);
+        const snapshot: ThreadSnapshot = {
+          group,
+          hasMore: false,
+          messages: rows,
+          nextCursor: undefined
+        };
+        networkLoadedRef.current = true;
+        setMessages(prev => mergeNetworkRowsWithLocal(rows, prev));
         setHasMore(false);
         setNextCursor(undefined);
+        if (threadCacheKey) writeJsonCache(threadCacheKey, snapshot).catch(() => {});
         await markGroupMessagesSeen(chatId, rows.map(item => getEntityId(item)).filter(Boolean)).catch(() => {});
         return;
       }
 
       const page = await fetchMessages(chatId);
-      setMessages(page.items);
-      setConversation(page.conversation || route.params.conversation);
+      const nextConversation = page.conversation || route.params.conversation;
+      const nextStreak = await fetchChatStreak(chatId).catch(() => null);
+      const snapshot: ThreadSnapshot = {
+        chatStreak: nextStreak,
+        conversation: nextConversation,
+        hasMore: page.hasMore,
+        messages: page.items,
+        nextCursor: page.nextCursor
+      };
+      networkLoadedRef.current = true;
+      setMessages(prev => mergeNetworkRowsWithLocal(page.items, prev));
+      setConversation(nextConversation);
       setHasMore(page.hasMore);
       setNextCursor(page.nextCursor);
-      await Promise.all([
-        markMessagesRead(chatId).catch(() => {}),
-        fetchChatStreak(chatId).then(setChatStreak).catch(() => {})
-      ]);
+      setChatStreak(nextStreak);
+      if (threadCacheKey) writeJsonCache(threadCacheKey, snapshot).catch(() => {});
+      await markMessagesRead(chatId).catch(() => {});
+    } catch (error) {
+      if (!hydratedCacheRef.current) {
+        Alert.alert('Conversation unavailable', getRequestErrorMessage(error, 'Could not load this conversation.'));
+      }
     } finally {
       setLoading(false);
     }
-  }, [chatId, groupMode, route.params.conversation]);
+  }, [chatId, group, groupMode, route.params.conversation, threadCacheKey]);
 
   useEffect(() => {
+    let cancelled = false;
+    hydratedCacheRef.current = false;
+    networkLoadedRef.current = false;
+    setLoading(true);
+
+    if (threadCacheKey) {
+      readJsonCache<ThreadSnapshot>(threadCacheKey, THREAD_CACHE_TTL_MS)
+        .then(snapshot => {
+          if (!snapshot || cancelled || networkLoadedRef.current) return;
+          hydratedCacheRef.current = true;
+          setMessages(snapshot.messages || []);
+          setConversation(snapshot.conversation || route.params.conversation);
+          if (snapshot.group) setGroup(snapshot.group);
+          setChatStreak(snapshot.chatStreak || null);
+          setHasMore(Boolean(snapshot.hasMore));
+          setNextCursor(snapshot.nextCursor);
+          setLoading(false);
+        })
+        .catch(() => {});
+    }
+
     loadInitial();
-  }, [loadInitial]);
+    return () => {
+      cancelled = true;
+    };
+  }, [loadInitial, route.params.conversation, threadCacheKey]);
+
+  useEffect(() => {
+    if (!threadCacheKey || !messages.length) return;
+    if (!hydratedCacheRef.current && !networkLoadedRef.current) return;
+    writeJsonCache(threadCacheKey, {
+      chatStreak,
+      conversation,
+      group,
+      hasMore,
+      messages,
+      nextCursor
+    } satisfies ThreadSnapshot).catch(() => {});
+  }, [chatStreak, conversation, group, hasMore, messages, nextCursor, threadCacheKey]);
 
   const loadOlder = useCallback(async () => {
     if (groupMode || !hasMore || loadingOlder || !nextCursor) return;
@@ -289,6 +443,7 @@ export default function ChatRoomScreen() {
   }, []);
 
   const resetCall = useCallback((message = '') => {
+    stopIncomingCallSound();
     activeCallRef.current = { callId: '', mode: 'audio', partnerId: '', state: 'idle' };
     setCallState('idle');
     setCallMode('audio');
@@ -497,6 +652,7 @@ export default function ChatRoomScreen() {
       const onReceiveMessage = (message: Message) => {
         if (!mounted || groupMode || !belongsToChat(message)) return;
         setMessages(prev => mergeMessage(prev as Message[], message));
+        if (getEntityId(message.from) !== currentUserId) playReceivedSound();
         if (getEntityId(message.from) === chatId) markMessagesRead(chatId).catch(() => {});
       };
       const onMessageUpdated = (message: Message) => {
@@ -528,6 +684,7 @@ export default function ChatRoomScreen() {
       const onReceiveGroupMessage = (message: GroupMessage) => {
         if (!mounted || !groupMode || getEntityId(message.groupId) !== chatId) return;
         setMessages(prev => mergeMessage(prev as GroupMessage[], message));
+        if (getEntityId(message.userId) !== currentUserId) playReceivedSound();
         markGroupMessagesSeen(chatId, [getEntityId(message)].filter(Boolean)).catch(() => {});
       };
       const onGroupMessageUpdated = (message: GroupMessage) => {
@@ -614,6 +771,7 @@ export default function ChatRoomScreen() {
         setLiveKitSession(null);
         setCallError('');
         setCallState('incoming');
+        playIncomingCallSound();
       };
       const onCallAnswer = (payload: CallSignalPayload) => {
         const active = activeCallRef.current;
@@ -734,88 +892,230 @@ export default function ChatRoomScreen() {
     }, 2000);
   };
 
+  const updateClientMessage = useCallback((clientId: string, patch: Partial<Message & GroupMessage>) => {
+    setMessages(prev => prev.map(item => (
+      ((item as Message).clientId || (item as GroupMessage).clientId) === clientId
+        ? { ...item, ...patch } as ThreadMessage
+        : item
+    )));
+  }, []);
+
+  const replaceClientMessage = useCallback((clientId: string, sent: ThreadMessage) => {
+    const resolved = {
+      ...sent,
+      clientId,
+      clientError: undefined,
+      clientStatus: undefined
+    } as ThreadMessage;
+
+    setMessages(prev => {
+      let replaced = false;
+      const nextRows = prev.map(item => {
+        if (((item as Message).clientId || (item as GroupMessage).clientId) !== clientId) return item;
+        replaced = true;
+        return resolved;
+      });
+      return replaced ? nextRows : mergeMessage(nextRows, resolved);
+    });
+  }, []);
+
+  const enqueueClientSend = useCallback((clientId: string, run: (setStatus: (status: ClientSendStatus) => void) => Promise<void>) => {
+    setQueuedSendCount(count => count + 1);
+    updateClientMessage(clientId, { clientError: undefined, clientStatus: 'queued' });
+
+    const execute = async () => {
+      let lastError: unknown;
+      const setStatus = (status: ClientSendStatus) => updateClientMessage(clientId, { clientError: undefined, clientStatus: status });
+
+      for (let attempt = 0; attempt <= SEND_RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+          await run(setStatus);
+          return;
+        } catch (error) {
+          lastError = error;
+          const delay = SEND_RETRY_DELAYS_MS[attempt];
+          if (!delay) break;
+          updateClientMessage(clientId, { clientError: 'Retrying...', clientStatus: 'queued' });
+          await sleep(delay);
+        }
+      }
+
+      updateClientMessage(clientId, {
+        clientError: getRequestErrorMessage(lastError, 'Could not send this message.'),
+        clientStatus: 'failed'
+      });
+    };
+
+    sendQueueRef.current = sendQueueRef.current
+      .catch(() => {})
+      .then(execute)
+      .finally(() => {
+        setQueuedSendCount(count => Math.max(0, count - 1));
+      });
+  }, [updateClientMessage]);
+
   const submitText = async () => {
     const text = composer.trim();
     if (!text || sending) return;
-    setSending(true);
-    setComposer('');
-    stopTyping().catch(() => {});
-    try {
-      if (editingMessage && !groupMode) {
+    if (editingMessage && !groupMode) {
+      setSending(true);
+      setComposer('');
+      stopTyping().catch(() => {});
+      try {
         const updated = await editMessage(getEntityId(editingMessage), text);
         setMessages(prev => prev.map(item => (getEntityId(item) === getEntityId(updated) ? updated : item)));
         setEditingMessage(null);
-        return;
+      } catch {
+        setComposer(text);
+        Alert.alert('Send failed', 'Could not edit this message.');
+      } finally {
+        setSending(false);
       }
+      return;
+    }
 
+    const clientId = createClientId('text');
+    const createdAt = new Date().toISOString();
+    const replyTarget = replyingTo;
+    const replyTo = replyTarget ? getEntityId(replyTarget) : undefined;
+    const optimistic = groupMode ? {
+      clientId,
+      clientStatus: 'queued' as ClientSendStatus,
+      createdAt,
+      groupId: group || chatId,
+      replyTo: replyTarget || replyTo || null,
+      text,
+      userId: user || currentUserId
+    } as GroupMessage : {
+      clientId,
+      clientStatus: 'queued' as ClientSendStatus,
+      createdAt,
+      from: user || currentUserId,
+      read: false,
+      replyTo: replyTarget || replyTo || null,
+      text,
+      to: chatId
+    } as Message;
+
+    setMessages(prev => mergeMessage(prev, optimistic));
+    playSendSound();
+    setComposer('');
+    setReplyingTo(null);
+    stopTyping().catch(() => {});
+
+    enqueueClientSend(clientId, async setStatus => {
+      setStatus('sending');
       if (groupMode) {
         const sent = await sendGroupMessage({
           groupId: chatId,
           text,
-          replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+          replyTo
         });
-        setMessages(prev => mergeMessage(prev as GroupMessage[], sent));
+        replaceClientMessage(clientId, sent);
         const socket = await getSocket();
         socket.emit('send-group-message', { groupId: chatId, message: sent });
-        setReplyingTo(null);
         return;
       }
 
       const sent = await sendMessage({
         to: chatId,
         text,
-        replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+        replyTo
       });
-      setMessages(prev => mergeMessage(prev as Message[], sent));
-      setReplyingTo(null);
-    } catch {
-      setComposer(text);
-      Alert.alert('Send failed', 'Could not send this message.');
-    } finally {
-      setSending(false);
-    }
+      replaceClientMessage(clientId, sent);
+    });
   };
 
   const attachAssets = async (assets: ImagePickerAsset[]) => {
     if (!assets.length || sending) return;
-    setSending(true);
     stopTyping().catch(() => {});
     const text = composer.trim();
-    try {
-      if (groupMode) {
-        for (const [index, asset] of assets.slice(0, 10).entries()) {
+    const replyTarget = replyingTo;
+    const replyTo = replyTarget ? getEntityId(replyTarget) : undefined;
+    const selectedAssets = assets.slice(0, 10);
+    setComposer('');
+    setReplyingTo(null);
+
+    if (groupMode) {
+      selectedAssets.forEach((asset, index) => {
+        const clientId = createClientId('media');
+        const localAttachment = createLocalAttachment(asset);
+        const optimistic = {
+          clientId,
+          clientStatus: 'queued' as ClientSendStatus,
+          createdAt: new Date().toISOString(),
+          fileName: localAttachment.fileName,
+          fileType: localAttachment.fileType,
+          fileUrl: localAttachment.fileUrl,
+          groupId: group || chatId,
+          mimeType: localAttachment.mimeType,
+          replyTo: replyTarget || replyTo || null,
+          text: index === 0 ? text : '',
+          userId: user || currentUserId
+        } as GroupMessage;
+
+        setMessages(prev => mergeMessage(prev, optimistic));
+        if (index === 0) playSendSound();
+        enqueueClientSend(clientId, async setStatus => {
+          setStatus('uploading');
           const upload = await uploadMessageAsset(asset);
+          setStatus('sending');
           const sent = await sendGroupMessage({
             groupId: chatId,
             text: index === 0 ? text : '',
             fileUrl: upload.fileUrl,
             fileType: upload.fileType,
-            replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+            replyTo
           });
-          setMessages(prev => mergeMessage(prev as GroupMessage[], sent));
+          replaceClientMessage(clientId, sent);
           const socket = await getSocket();
           socket.emit('send-group-message', { groupId: chatId, message: sent });
-        }
-      } else {
-        const uploads = [];
-        for (const asset of assets.slice(0, 10)) {
-          uploads.push(await uploadMessageAsset(asset));
-        }
-        const sent = await sendMessage({
-          to: chatId,
-          text,
-          replyTo: replyingTo ? getEntityId(replyingTo) : undefined,
-          attachments: uploads
         });
-        setMessages(prev => mergeMessage(prev as Message[], sent));
-      }
-      setComposer('');
-      setReplyingTo(null);
-    } catch (error) {
-      Alert.alert('Upload failed', getRequestErrorMessage(error, 'Could not send the selected media.'));
-    } finally {
-      setSending(false);
+      });
+      return;
     }
+
+    const clientId = createClientId('media');
+    const localAttachments = selectedAssets.map(createLocalAttachment);
+    const optimistic = {
+      attachments: localAttachments,
+      clientId,
+      clientStatus: 'queued' as ClientSendStatus,
+      createdAt: new Date().toISOString(),
+      from: user || currentUserId,
+      read: false,
+      replyTo: replyTarget || replyTo || null,
+      text,
+      to: chatId
+    } as Message;
+
+    setMessages(prev => mergeMessage(prev, optimistic));
+    playSendSound();
+    enqueueClientSend(clientId, async setStatus => {
+      setStatus('uploading');
+      const uploads: UploadedAttachment[] = [];
+      for (const asset of selectedAssets) {
+          uploads.push(await uploadMessageAsset(asset));
+      }
+      setStatus('sending');
+      const sent = await sendMessage({
+        to: chatId,
+        text,
+        replyTo,
+        attachments: uploads
+      });
+      replaceClientMessage(clientId, sent);
+    });
+  };
+
+  const openMediaEditor = (assets: ImagePickerAsset[]) => {
+    if (!assets.length || sending) return;
+    setMediaEditorAsset(assets[0]);
+  };
+
+  const sendEditedMedia = async (asset: ImagePickerAsset) => {
+    setMediaEditorAsset(null);
+    await attachAssets([asset]);
   };
 
   const sendVoiceMessage = async (recording: VoiceRecordingResult) => {
@@ -826,32 +1126,64 @@ export default function ChatRoomScreen() {
       return;
     }
 
-    setSending(true);
     stopTyping().catch(() => {});
-    try {
+    const clientId = createClientId('voice');
+    const replyTarget = replyingTo;
+    const replyTo = replyTarget ? getEntityId(replyTarget) : undefined;
+    const localAttachment = createLocalAttachment(recording);
+    const optimistic = {
+      attachments: [localAttachment],
+      clientId,
+      clientStatus: 'queued' as ClientSendStatus,
+      createdAt: new Date().toISOString(),
+      from: user || currentUserId,
+      read: false,
+      replyTo: replyTarget || replyTo || null,
+      to: chatId
+    } as Message;
+
+    setMessages(prev => mergeMessage(prev, optimistic));
+    playSendSound();
+    setReplyingTo(null);
+
+    enqueueClientSend(clientId, async setStatus => {
+      setStatus('uploading');
       const uploaded = await uploadLocalMessageAsset(recording);
+      setStatus('sending');
       const sent = await sendMessage({
         to: chatId,
         attachments: [uploaded],
-        replyTo: replyingTo ? getEntityId(replyingTo) : undefined
+        replyTo
       });
-      setMessages(prev => mergeMessage(prev as Message[], sent));
-      setReplyingTo(null);
+      replaceClientMessage(clientId, sent);
       await FileSystem.deleteAsync(recording.uri, { idempotent: true }).catch(() => {});
-    } catch (error) {
-      Alert.alert('Voice failed', getRequestErrorMessage(error, 'Could not send this voice message.'));
-    } finally {
-      setSending(false);
-    }
+    });
   };
 
   const openMediaViewer = (targetMessage: ThreadMessage, index: number) => {
     const sender = getSender(targetMessage, groupMode);
-    const items = buildMediaViewerItems({
-      message: targetMessage as Message,
+    const targetItems = buildMediaViewerItems({
+      message: {
+        ...(targetMessage as Message),
+        from: groupMode ? (targetMessage as GroupMessage).userId : (targetMessage as Message).from
+      },
       sender: typeof sender === 'object' ? sender as User : null
     });
-    mediaViewer.open(items, index);
+    const targetId = targetItems[index]?.id;
+    const allItems = messages
+      .filter(item => item && typeof item === 'object')
+      .flatMap(item => {
+        const itemSender = getSender(item, groupMode);
+        return buildMediaViewerItems({
+          message: {
+            ...(item as Message),
+            from: groupMode ? (item as GroupMessage).userId : (item as Message).from
+          },
+          sender: typeof itemSender === 'object' ? itemSender as User : null
+        });
+      });
+    const nextIndex = targetId ? allItems.findIndex(item => item.id === targetId) : -1;
+    mediaViewer.open(allItems.length ? allItems : targetItems, nextIndex >= 0 ? nextIndex : index);
   };
 
   const handleReaction = async (emoji: string) => {
@@ -931,6 +1263,87 @@ export default function ChatRoomScreen() {
     setForwardingMessage(message);
     setForwardQuery('');
     setActionMessage(null);
+  };
+
+  const retryFailedSend = (message: ThreadMessage | null) => {
+    const clientId = ((message as Message | null)?.clientId || (message as GroupMessage | null)?.clientId || '').trim();
+    if (!message || !clientId) return;
+    const text = getText(message);
+    const replyTo = getEntityId(message.replyTo);
+    const attachments = getMessageAttachments(message as Message);
+
+    setActionMessage(null);
+    enqueueClientSend(clientId, async setStatus => {
+      if (attachments.length) {
+        setStatus('uploading');
+        if (groupMode) {
+          const attachment = attachments[0];
+          const uploaded = await uploadMessageAsset({
+            fileName: attachment.fileName,
+            height: attachment.height,
+            mimeType: attachment.mimeType,
+            type: attachment.fileType === 'video' ? 'video' : 'image',
+            uri: attachment.localUri || attachment.fileUrl,
+            width: attachment.width
+          } as ImagePickerAsset);
+          setStatus('sending');
+          const sent = await sendGroupMessage({
+            fileType: uploaded.fileType,
+            fileUrl: uploaded.fileUrl,
+            groupId: chatId,
+            replyTo,
+            text
+          });
+          replaceClientMessage(clientId, sent);
+          const socket = await getSocket();
+          socket.emit('send-group-message', { groupId: chatId, message: sent });
+          return;
+        }
+
+        const uploads: UploadedAttachment[] = [];
+        for (const attachment of attachments) {
+          if (attachment.fileType === 'audio') {
+            uploads.push(await uploadLocalMessageAsset({
+              durationMs: attachment.durationMs,
+              fileName: attachment.fileName || `voice-${Date.now()}.webm`,
+              fileType: 'audio',
+              mimeType: attachment.mimeType || 'audio/webm',
+              uri: attachment.localUri || attachment.fileUrl
+            }));
+          } else {
+            uploads.push(await uploadMessageAsset({
+              fileName: attachment.fileName,
+              height: attachment.height,
+              mimeType: attachment.mimeType,
+              type: attachment.fileType === 'video' ? 'video' : 'image',
+              uri: attachment.localUri || attachment.fileUrl,
+              width: attachment.width
+            } as ImagePickerAsset));
+          }
+        }
+        setStatus('sending');
+        const sent = await sendMessage({
+          attachments: uploads,
+          replyTo,
+          text,
+          to: chatId
+        });
+        replaceClientMessage(clientId, sent);
+        return;
+      }
+
+      setStatus('sending');
+      if (groupMode) {
+        const sent = await sendGroupMessage({ groupId: chatId, replyTo, text });
+        replaceClientMessage(clientId, sent);
+        const socket = await getSocket();
+        socket.emit('send-group-message', { groupId: chatId, message: sent });
+        return;
+      }
+
+      const sent = await sendMessage({ replyTo, text, to: chatId });
+      replaceClientMessage(clientId, sent);
+    });
   };
 
   const forwardToDirect = async (target: User) => {
@@ -1065,6 +1478,20 @@ export default function ChatRoomScreen() {
 
   const pinnedMessages = useMemo(() => visibleMessages.filter(message => message.pinned), [visibleMessages]);
   const sharedFiles = useMemo(() => visibleMessages.flatMap(message => getMessageAttachments(message as Message)), [visibleMessages]);
+  const sharedMediaItems = useMemo(() => visibleMessages.flatMap(message => {
+    const sender = getSender(message, groupMode);
+    return buildMediaViewerItems({
+      message: {
+        ...(message as Message),
+        from: groupMode ? (message as GroupMessage).userId : (message as Message).from
+      },
+      sender: typeof sender === 'object' ? sender as User : null
+    });
+  }), [groupMode, visibleMessages]);
+  const sharedFileEntries = useMemo(
+    () => sharedFiles.filter(file => !isMediaAttachment(file)),
+    [sharedFiles]
+  );
   const forwardTargets = useMemo(() => {
     const needle = forwardQuery.trim().toLowerCase();
     const contacts = forwardContacts
@@ -1102,13 +1529,33 @@ export default function ChatRoomScreen() {
         : callState === 'connected'
           ? callDurationText || 'Connected'
           : callError;
+  const getDeliveryLabel = (message: ThreadMessage) => {
+    const clientStatus = (message as Message).clientStatus || (message as GroupMessage).clientStatus;
+    if (clientStatus === 'queued') return 'Queued';
+    if (clientStatus === 'uploading') return 'Uploading';
+    if (clientStatus === 'sending') return 'Sending';
+    if (clientStatus === 'failed') return 'Failed';
+    if (groupMode || !isOwnMessage(message, currentUserId, groupMode) || (message as Message).unsent) return undefined;
+    if ((message as Message).read) return 'Read';
+    return effectiveRemoteOnline ? 'Delivered' : 'Sent';
+  };
 
   return (
-    <View className="flex-1 pt-12" style={{ backgroundColor: colors.surface }}>
-      <View className="border-b" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
-        <View className="h-16 flex-row items-center gap-3 px-3">
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => navigation.goBack()} style={{ backgroundColor: colors.surface }}>
-            <ArrowLeft color={colors.text} size={22} />
+    <ImageBackground
+      imageStyle={{ opacity: hasImageBackground ? 1 : 0 }}
+      resizeMode="cover"
+      source={backgroundImage}
+      style={[{ backgroundColor: colors.surface, flex: 1, paddingTop: Platform.OS === 'android' ? 34 : 46 }, !hasImageBackground ? background.style : undefined]}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View className="flex-1" style={{ backgroundColor: backgroundOverlay }}>
+      <View className="border-b" style={{ backgroundColor: translucentPanel, borderColor: hasImageBackground ? 'transparent' : colors.border }}>
+        <View className="flex-row items-center gap-3 px-3" style={{ height: hasImageBackground ? 68 : 64 }}>
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => navigation.goBack()} style={{ backgroundColor: translucentChip }}>
+            <ArrowLeft color={hasImageBackground ? chromeIconColor : colors.text} size={22} />
           </Pressable>
           <Avatar
             name={displayName}
@@ -1119,29 +1566,33 @@ export default function ChatRoomScreen() {
             user={groupMode ? undefined : remoteUser}
           />
           <Pressable className="min-w-0 flex-1" onPress={() => setDetailsOpen(true)}>
-            <Text className="text-[16px] font-semibold" numberOfLines={1} style={{ color: colors.text }}>
+            <Text className="text-[16px] font-semibold" numberOfLines={1} style={[{ color: chromeTextColor }, chromeTextShadow]}>
               {displayName}
             </Text>
-            <Text className={`text-xs ${!groupMode && effectiveRemoteOnline ? 'font-semibold' : ''}`} numberOfLines={1} style={{ color: !groupMode && effectiveRemoteOnline ? colors.online : colors.mutedText }}>
+            <Text
+              className={`text-xs ${!groupMode && effectiveRemoteOnline ? 'font-semibold' : ''}`}
+              numberOfLines={1}
+              style={[{ color: !groupMode && effectiveRemoteOnline ? '#34D399' : chromeMutedColor }, chromeTextShadow]}
+            >
               {presenceText}
             </Text>
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => startCall('audio')} style={{ backgroundColor: colors.surface }}>
-            <Phone color={colors.primary} size={19} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => startCall('audio')} style={{ backgroundColor: translucentChip }}>
+            <Phone color={chromeIconColor} size={20} />
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => startCall('video')} style={{ backgroundColor: colors.surface }}>
-            <Video color={colors.primary} size={19} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => startCall('video')} style={{ backgroundColor: translucentChip }}>
+            <Video color={chromeIconColor} size={20} />
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => setSearchOpen(value => !value)} style={{ backgroundColor: colors.surface }}>
-            <Search color={colors.text} size={19} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => setSearchOpen(value => !value)} style={{ backgroundColor: translucentChip }}>
+            <Search color={hasImageBackground ? chromeIconColor : colors.text} size={20} />
           </Pressable>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => setDetailsOpen(true)} style={{ backgroundColor: colors.surface }}>
-            <MoreVertical color={colors.text} size={20} />
+          <Pressable className="h-10 w-10 items-center justify-center rounded-full" onPress={() => setDetailsOpen(true)} style={{ backgroundColor: translucentChip }}>
+            <Info color={hasImageBackground ? chromeIconColor : colors.text} size={20} />
           </Pressable>
         </View>
         {searchOpen ? (
           <View className="px-3 pb-3">
-            <View className="h-11 flex-row items-center gap-2 rounded-2xl px-3" style={{ backgroundColor: colors.input }}>
+            <View className="h-11 flex-row items-center gap-2 rounded-2xl px-3" style={{ backgroundColor: translucentInput }}>
               <Search color={colors.mutedText} size={17} />
               <TextInput
                 className="flex-1 text-[15px]"
@@ -1162,7 +1613,7 @@ export default function ChatRoomScreen() {
       </View>
 
       {pinnedMessages.length > 0 && !searchOpen ? (
-        <Pressable className="h-11 flex-row items-center gap-2 border-b px-4" onPress={() => setPinnedOpen(true)} style={{ backgroundColor: colors.background, borderColor: colors.border }}>
+        <Pressable className="h-11 flex-row items-center gap-2 border-b px-4" onPress={() => setPinnedOpen(true)} style={{ backgroundColor: translucentPanel, borderColor: hasImageBackground ? 'rgba(255, 255, 255, 0.14)' : colors.border }}>
           <Pin color={colors.primary} size={16} />
           <Text className="flex-1 text-sm font-semibold" numberOfLines={1} style={{ color: colors.text }}>
             {pinnedMessages.length} pinned {pinnedMessages.length === 1 ? 'message' : 'messages'}
@@ -1173,15 +1624,26 @@ export default function ChatRoomScreen() {
 
       <AudioPlayerBanner />
 
+      {queuedSendCount > 0 ? (
+        <View className="px-4 py-2" style={{ backgroundColor: translucentPanel }}>
+          <Text className="text-xs font-semibold" style={{ color: colors.mutedText }}>
+            Sending {queuedSendCount} {queuedSendCount === 1 ? 'message' : 'messages'}...
+          </Text>
+        </View>
+      ) : null}
+
       {loading ? (
-        <View className="flex-1 items-center justify-center" style={background.style}>
+        <View className="flex-1 items-center justify-center" style={threadBackgroundStyle}>
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
-        <View className="flex-1" style={background.style}>
+        <View className="flex-1" style={threadBackgroundStyle}>
           <FlashList
             data={visibleMessages}
+            drawDistance={900}
             keyExtractor={(item, index) => getMessageKey(item as Message, index)}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
             ListHeaderComponent={loadingOlder ? <ActivityIndicator className="my-3" color={colors.primary} /> : null}
             maintainVisibleContentPosition={{
               autoscrollToBottomThreshold: 0.2,
@@ -1192,6 +1654,8 @@ export default function ChatRoomScreen() {
             renderItem={({ item }) => (
               <ChatBubble
                 currentUserId={currentUserId}
+                deliveryLabel={getDeliveryLabel(item)}
+                fallbackSender={groupMode ? null : remoteUser}
                 groupMode={groupMode}
                 highlighted={searchedMessageIds.has(getEntityId(item))}
                 message={item}
@@ -1211,14 +1675,19 @@ export default function ChatRoomScreen() {
       )}
 
       {effectiveRemoteTyping ? (
-        <View className="px-3 pb-2" style={background.style}>
+        <View className="px-3 pb-2" style={threadBackgroundStyle}>
           <TypingIndicator />
         </View>
       ) : null}
 
       <MessageInput
+        borderColor={hasImageBackground ? 'transparent' : colors.border}
+        buttonBackgroundColor={translucentChip}
+        containerBackgroundColor={translucentPanel}
         editingLabel={editingMessage ? getText(editingMessage) : undefined}
-        onAttach={attachAssets}
+        inputBackgroundColor={translucentInput}
+        iconColor={hasImageBackground ? '#FFFFFF' : colors.primary}
+        onAttach={openMediaEditor}
         onChangeText={updateComposer}
         onVoiceSend={sendVoiceMessage}
         onClearEdit={() => {
@@ -1240,6 +1709,14 @@ export default function ChatRoomScreen() {
           mediaViewer.close();
         }}
         visible={mediaViewer.visible}
+      />
+
+      <MediaEditorModal
+        asset={mediaEditorAsset}
+        onCancel={() => setMediaEditorAsset(null)}
+        onSend={sendEditedMedia}
+        sending={sending}
+        visible={Boolean(mediaEditorAsset)}
       />
 
       {callState !== 'idle' ? (
@@ -1279,6 +1756,12 @@ export default function ChatRoomScreen() {
               ))}
             </View>
             <View className="gap-2">
+              {(actionMessage as Message | null)?.clientStatus === 'failed' || (actionMessage as GroupMessage | null)?.clientStatus === 'failed' ? (
+                <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => retryFailedSend(actionMessage)} style={{ backgroundColor: colors.surface }}>
+                  <Send color={colors.primary} size={18} />
+                  <Text className="font-semibold" style={{ color: colors.text }}>Try again</Text>
+                </Pressable>
+              ) : null}
               <Pressable className="h-12 flex-row items-center gap-3 rounded-2xl px-4" onPress={() => {
                 if (actionMessage) setReplyingTo(actionMessage);
                 setEditingMessage(null);
@@ -1442,11 +1925,26 @@ export default function ChatRoomScreen() {
             </View>
             <ScrollView className="px-4" showsVerticalScrollIndicator={false}>
               <View className="items-center pb-4">
-                <Avatar user={groupMode ? undefined : remoteUser} uri={groupMode ? group?.photo : avatar} name={displayName} size={88} />
+                <Avatar
+                  name={displayName}
+                  online={!groupMode && effectiveRemoteOnline}
+                  size={88}
+                  uri={groupMode ? group?.photo : avatar}
+                  user={groupMode ? undefined : remoteUser}
+                />
                 <Text className="mt-3 text-xl font-black" numberOfLines={1} style={{ color: colors.text }}>{displayName}</Text>
-                <Text className="mt-1 text-sm" numberOfLines={1} style={{ color: colors.mutedText }}>
-                  {groupMode ? `${group?.members?.length || 0} members` : chatStreak ? `${chatStreak.currentStreak} day streak` : 'Direct conversation'}
+                <Text
+                  className={`mt-1 text-sm ${!groupMode && effectiveRemoteOnline ? 'font-bold' : ''}`}
+                  numberOfLines={1}
+                  style={{ color: !groupMode && effectiveRemoteOnline ? colors.online : colors.mutedText }}
+                >
+                  {groupMode ? `${group?.members?.length || 0} members` : presenceText}
                 </Text>
+                {!groupMode && chatStreak ? (
+                  <Text className="mt-1 text-xs font-semibold" numberOfLines={1} style={{ color: colors.mutedText }}>
+                    {chatStreak.currentStreak} day streak
+                  </Text>
+                ) : null}
               </View>
 
               <View className="mb-4 flex-row gap-2">
@@ -1515,11 +2013,15 @@ export default function ChatRoomScreen() {
                 <View className="flex-row flex-wrap gap-2">
                   {CHAT_BACKGROUNDS.map(item => (
                     <Pressable
-                      className={`h-11 w-11 rounded-2xl border-2 ${background.id === item.id ? 'border-blue-600' : 'border-white'}`}
+                      className={`h-11 w-11 overflow-hidden rounded-2xl border-2 ${background.id === item.id ? 'border-blue-600' : 'border-white'}`}
                       key={item.id}
                       onPress={() => saveBackground(item.id)}
                       style={{ backgroundColor: item.swatch }}
-                    />
+                    >
+                      {item.image ? (
+                        <ImageBackground resizeMode="cover" source={item.image} style={{ flex: 1 }} />
+                      ) : null}
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -1536,14 +2038,55 @@ export default function ChatRoomScreen() {
               ) : null}
 
               <View className="mb-8 rounded-3xl p-4" style={{ backgroundColor: colors.surface }}>
-                <Text className="mb-2 font-bold" style={{ color: colors.text }}>Files and media</Text>
-                {sharedFiles.length ? sharedFiles.slice(-12).map((file, index) => (
-                  <Text className="mb-2 text-sm" key={`${file.fileUrl}-${index}`} numberOfLines={1} style={{ color: colors.mutedText }}>
-                    {file.fileName || file.fileType || 'Attachment'}
-                  </Text>
-                )) : (
+                <Text className="mb-3 font-bold" style={{ color: colors.text }}>Files and media</Text>
+                {sharedMediaItems.length ? (
+                  <View className="mb-3 flex-row flex-wrap gap-2">
+                    {sharedMediaItems.slice(-12).map((item, index, rows) => {
+                      const mediaIndex = Math.max(0, sharedMediaItems.length - rows.length + index);
+                      return (
+                        <Pressable
+                          className="h-20 w-20 overflow-hidden rounded-2xl"
+                          key={item.id}
+                          onPress={() => {
+                            setDetailsOpen(false);
+                            mediaViewer.open(sharedMediaItems, mediaIndex);
+                          }}
+                          style={{ backgroundColor: colors.input }}
+                        >
+                          <ExpoImage
+                            cachePolicy="memory-disk"
+                            contentFit="cover"
+                            source={{ uri: item.thumbnailUrl || item.url }}
+                            style={{ flex: 1 }}
+                          />
+                          {item.type === 'video' ? (
+                            <View className="absolute bottom-1 right-1 rounded-full bg-black/65 px-2 py-0.5">
+                              <Text className="text-[10px] font-bold text-white">Video</Text>
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                {sharedFileEntries.length ? sharedFileEntries.slice(-8).map((file, index) => (
+                  <Pressable
+                    className="mb-2 rounded-2xl px-3 py-2"
+                    key={`${file.fileUrl}-${index}`}
+                    onPress={() => Linking.openURL(resolveMediaUrl(file.fileUrl)).catch(() => {})}
+                    style={{ backgroundColor: colors.elevated }}
+                  >
+                    <Text className="text-sm font-semibold" numberOfLines={1} style={{ color: colors.text }}>
+                      {file.fileName || file.fileType || 'Attachment'}
+                    </Text>
+                    <Text className="mt-0.5 text-xs" numberOfLines={1} style={{ color: colors.mutedText }}>
+                      {isAudioAttachment(file) ? 'Voice message' : 'Tap to open'}
+                    </Text>
+                  </Pressable>
+                )) : null}
+                {!sharedMediaItems.length && !sharedFileEntries.length ? (
                   <Text className="text-sm" style={{ color: colors.mutedText }}>No shared files yet.</Text>
-                )}
+                ) : null}
               </View>
             </ScrollView>
           </View>
@@ -1633,6 +2176,8 @@ export default function ChatRoomScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+        </View>
+      </KeyboardAvoidingView>
+    </ImageBackground>
   );
 }
