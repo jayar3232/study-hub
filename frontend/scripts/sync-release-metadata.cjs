@@ -10,7 +10,7 @@ const backendUpdateRoutePath = path.join(repoRoot, 'backend', 'routes', 'appUpda
 const backendAssistantRoutePath = path.join(repoRoot, 'backend', 'routes', 'assistant.js');
 const backendHealthRoutePath = path.join(repoRoot, 'backend', 'routes', 'health.js');
 const generatedReleaseDir = path.join(frontendRoot, 'src', 'generated');
-const generatedReleaseInfoPath = path.join(generatedReleaseDir, 'releaseInfo.js');
+const generatedReleaseInfoPath = path.join(generatedReleaseDir, 'releaseInfo.ts');
 
 const readText = (filePath) => fs.readFileSync(filePath, 'utf8');
 const writeText = (filePath, value) => fs.writeFileSync(filePath, value);

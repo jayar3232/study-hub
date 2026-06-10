@@ -31,6 +31,10 @@ declare global {
     };
     __SYNCROVA_MESSENGER_APP__?: boolean;
   }
+
+  interface Navigator {
+    standalone?: boolean;
+  }
 }
 
 export {};

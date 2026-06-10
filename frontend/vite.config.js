@@ -106,9 +106,6 @@ export default defineConfig({
             if (id.includes('date-fns')) return 'vendor-utils';
             return 'vendor';
           }
-          if (id.includes('/src/components/Messages')) return 'page-messages';
-          if (id.includes('/src/components/GroupPage')) return 'page-group';
-          if (id.includes('/src/components/OpsArena')) return 'page-arena';
           return undefined;
         }
       }

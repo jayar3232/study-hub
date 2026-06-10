@@ -49,3 +49,27 @@ export interface StoryGroup {
   stories: Story[];
   [key: string]: unknown;
 }
+
+/** In-app / push notification payload from `/notifications` and socket events. */
+export interface AppNotification {
+  _id?: string;
+  id?: string;
+  type?: string;
+  title?: string;
+  body?: string;
+  href?: string;
+  actorId?: string;
+  fromId?: string;
+  senderId?: string;
+  read?: boolean;
+  createdAt?: string | number | Date;
+  meta?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Resolve Mongo `_id` or normalized `id` from common entity shapes. */
+export const getEntityId = (entity: EntityRef): string => {
+  if (!entity) return '';
+  if (typeof entity === 'string') return entity;
+  return String(entity._id || entity.id || '');
+};

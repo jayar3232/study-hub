@@ -14,8 +14,8 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Interop with existing JS */
-    "allowJs": true,
+    /* TypeScript-only frontend source */
+    "allowJs": false,
     "checkJs": false,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

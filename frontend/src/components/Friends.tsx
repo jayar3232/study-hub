@@ -1,0 +1,695 @@
+// @ts-nocheck
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
+import {
+  Check,
+  Clock,
+  Inbox,
+  Loader2,
+  MessageCircle,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UserCheck,
+  UserPlus,
+  UserX,
+  Users,
+  X
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
+import { getSocket } from '../services/socket';
+import { resolveMediaUrl } from '../utils/media';
+import UserProfileModal from './UserProfileModal';
+import { CAMPUS_OPTIONS } from '../utils/academics';
+import { ListSkeleton } from './SkeletonLoader';
+
+const getEntityId = (entity) => String(entity?._id || entity?.id || entity || '');
+
+const emptySummary = {
+  friends: [],
+  incoming: [],
+  outgoing: [],
+  people: [],
+  counts: { friends: 0, incoming: 0, outgoing: 0, people: 0 }
+};
+
+const statusCopy = {
+  none: { label: 'Not connected', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  friends: { label: 'Friends', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/60' },
+  outgoing: { label: 'Request sent', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/60' },
+  incoming: { label: 'Needs reply', className: 'bg-blue-50 text-[#0b57d0] ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/60' }
+};
+
+const formatSince = (value) => {
+  if (!value) return 'Recently connected';
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const matchesSearch = (person, query) => {
+  const value = query.trim().toLowerCase();
+  if (!value) return true;
+  return [person?.name, person?.email, person?.course, person?.campus]
+    .filter(Boolean)
+    .some(field => field.toLowerCase().includes(value));
+};
+
+const matchesCampus = (person, campus) => !campus || person?.campus === campus;
+
+const announceFriendUpdate = () => {
+  window.dispatchEvent(new CustomEvent('friendsUpdated'));
+};
+
+const uniqueBy = (items = [], getKey) => {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = String(getKey(item) || getEntityId(item) || '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const normalizeSummary = (data = {}) => {
+  const friends = uniqueBy(data.friends || [], item => getEntityId(item.user) || getEntityId(item));
+  const friendUserIds = new Set(friends.map(item => getEntityId(item.user)).filter(Boolean));
+  const pendingUserIds = new Set(friendUserIds);
+  const incoming = uniqueBy(data.incoming || [], item => getEntityId(item.requester) || getEntityId(item))
+    .filter(item => {
+      const userId = getEntityId(item.requester);
+      if (!userId || pendingUserIds.has(userId)) return false;
+      pendingUserIds.add(userId);
+      return true;
+    });
+  const outgoing = uniqueBy(data.outgoing || [], item => getEntityId(item.recipient) || getEntityId(item))
+    .filter(item => {
+      const userId = getEntityId(item.recipient);
+      if (!userId || pendingUserIds.has(userId)) return false;
+      pendingUserIds.add(userId);
+      return true;
+    });
+  const relationByUser = new Map();
+  friends.forEach(item => relationByUser.set(getEntityId(item.user), item.friendship || { status: 'friends', requestId: item._id }));
+  incoming.forEach(item => relationByUser.set(getEntityId(item.requester), item.friendship || { status: 'incoming', requestId: item._id }));
+  outgoing.forEach(item => relationByUser.set(getEntityId(item.recipient), item.friendship || { status: 'outgoing', requestId: item._id }));
+  const people = uniqueBy(data.people || [], getEntityId)
+    .map(person => ({
+      ...person,
+      friendship: relationByUser.get(getEntityId(person)) || person.friendship || { status: 'none' }
+    }));
+
+  return {
+    ...emptySummary,
+    ...data,
+    friends,
+    incoming,
+    outgoing,
+    people,
+    counts: {
+      ...emptySummary.counts,
+      ...(data.counts || {}),
+      friends: friends.length,
+      incoming: incoming.length,
+      outgoing: outgoing.length,
+      people: people.length
+    }
+  };
+};
+
+function Avatar({ person, size = 'md' }) {
+  const avatar = resolveMediaUrl(person?.avatar);
+  const sizeClass = size === 'lg' ? 'h-14 w-14 text-lg' : 'h-11 w-11 text-sm';
+
+  return (
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#0b57d0] to-[#2387a8] font-black text-white shadow-sm ring-1 ring-slate-200 dark:ring-white/10`}>
+      {avatar ? (
+        <img src={avatar} alt={person?.name || 'User'} className="h-full w-full object-cover" />
+      ) : (
+        (person?.name || 'U').charAt(0).toUpperCase()
+      )}
+    </div>
+  );
+}
+
+function RelationshipPill({ status }) {
+  const item = statusCopy[status] || statusCopy.none;
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black ring-1 ring-inset ${item.className}`}>
+      {item.label}
+    </span>
+  );
+}
+
+function EmptyPanel({ icon: Icon, title, message }) {
+  return (
+    <div className="rounded-3xl border border-dashed border-slate-200 bg-white/70 px-5 py-12 text-center dark:border-slate-800 dark:bg-slate-900/60">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0b57d0] dark:bg-blue-950/30 dark:text-sky-200">
+        <Icon size={24} />
+      </div>
+      <h3 className="mt-4 text-lg font-black text-slate-950 dark:text-white">{title}</h3>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">{message}</p>
+    </div>
+  );
+}
+
+export default function Friends() {
+  const [summary, setSummary] = useState(emptySummary);
+  const [activeTab, setActiveTab] = useState('friends');
+  const [query, setQuery] = useState('');
+  const [campusFilter, setCampusFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [actionKey, setActionKey] = useState('');
+  const [profileUser, setProfileUser] = useState(null);
+  const navigate = useNavigate();
+
+  const loadFriends = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    try {
+      const res = await api.get('/friends/summary');
+      setSummary(normalizeSummary(res.data));
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Failed to load friends');
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFriends();
+  }, [loadFriends]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const refresh = () => loadFriends(false);
+    socket.on('friend-request-updated', refresh);
+    return () => socket.off('friend-request-updated', refresh);
+  }, [loadFriends]);
+
+  useEffect(() => {
+    const refresh = () => loadFriends(false);
+    window.addEventListener('syncrova:mobile-refresh', refresh);
+    return () => window.removeEventListener('syncrova:mobile-refresh', refresh);
+  }, [loadFriends]);
+
+  const friends = useMemo(
+    () => (summary.friends || [])
+      .filter(item => matchesSearch(item.user, query))
+      .filter(item => matchesCampus(item.user, campusFilter)),
+    [summary.friends, query, campusFilter]
+  );
+
+  const people = useMemo(
+    () => (summary.people || [])
+      .filter(person => matchesSearch(person, query))
+      .filter(person => matchesCampus(person, campusFilter)),
+    [summary.people, query, campusFilter]
+  );
+
+  const incoming = useMemo(
+    () => (summary.incoming || [])
+      .filter(item => matchesSearch(item.requester, query))
+      .filter(item => matchesCampus(item.requester, campusFilter)),
+    [summary.incoming, query, campusFilter]
+  );
+
+  const outgoing = useMemo(
+    () => (summary.outgoing || [])
+      .filter(item => matchesSearch(item.recipient, query))
+      .filter(item => matchesCampus(item.recipient, campusFilter)),
+    [summary.outgoing, query, campusFilter]
+  );
+
+  const sendRequest = async (person) => {
+    const personId = getEntityId(person);
+    setActionKey(`send-${personId}`);
+    try {
+      const res = await api.post(`/friends/request/${personId}`);
+      toast.success(res.data?.msg || 'Friend request sent');
+      await loadFriends(false);
+      announceFriendUpdate();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Request failed');
+    } finally {
+      setActionKey('');
+    }
+  };
+
+  const acceptRequest = async (requestId) => {
+    setActionKey(`accept-${requestId}`);
+    try {
+      await api.put(`/friends/requests/${requestId}/accept`);
+      toast.success('Friend request accepted');
+      await loadFriends(false);
+      announceFriendUpdate();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Accept failed');
+    } finally {
+      setActionKey('');
+    }
+  };
+
+  const declineRequest = async (requestId) => {
+    setActionKey(`decline-${requestId}`);
+    try {
+      await api.put(`/friends/requests/${requestId}/decline`);
+      toast.success('Friend request declined');
+      await loadFriends(false);
+      announceFriendUpdate();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Decline failed');
+    } finally {
+      setActionKey('');
+    }
+  };
+
+  const cancelRequest = async (requestId) => {
+    setActionKey(`cancel-${requestId}`);
+    try {
+      await api.delete(`/friends/requests/${requestId}`);
+      toast.success('Friend request canceled');
+      await loadFriends(false);
+      announceFriendUpdate();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Cancel failed');
+    } finally {
+      setActionKey('');
+    }
+  };
+
+  const removeFriend = async (friendshipId) => {
+    setActionKey(`remove-${friendshipId}`);
+    try {
+      await api.delete(`/friends/${friendshipId}`);
+      toast.success('Friend removed');
+      await loadFriends(false);
+      announceFriendUpdate();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Remove failed');
+    } finally {
+      setActionKey('');
+    }
+  };
+
+  const openMessages = (person) => {
+    const id = getEntityId(person);
+    navigate(id ? `/messages?user=${id}` : '/messages');
+  };
+
+  const renderPersonAction = (person) => {
+    const relation = person.friendship || { status: 'none' };
+    const requestId = relation.requestId;
+    const personId = getEntityId(person);
+
+    if (relation.status === 'incoming') {
+      return (
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => acceptRequest(requestId)}
+            disabled={actionKey === `accept-${requestId}`}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {actionKey === `accept-${requestId}` ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            Accept
+          </button>
+          <button
+            type="button"
+            onClick={() => declineRequest(requestId)}
+            disabled={actionKey === `decline-${requestId}`}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <X size={14} />
+            Decline
+          </button>
+        </div>
+      );
+    }
+
+    if (relation.status === 'friends') {
+      return (
+        <button
+          type="button"
+          onClick={() => openMessages(person)}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0b57d0] px-3 py-2 text-xs font-black text-white transition hover:bg-[#07036f]"
+        >
+          <MessageCircle size={14} />
+          Message
+        </button>
+      );
+    }
+
+    if (relation.status === 'outgoing') {
+      return (
+        <button
+          type="button"
+          onClick={() => cancelRequest(requestId)}
+          disabled={!requestId || actionKey === `cancel-${requestId}`}
+          className="inline-flex min-w-[8.6rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+        >
+          {actionKey === `cancel-${requestId}` ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+          Cancel request
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => sendRequest(person)}
+        disabled={actionKey === `send-${personId}`}
+        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0b57d0] px-3 py-2 text-xs font-black text-white transition hover:bg-[#07036f] disabled:opacity-50"
+      >
+        {actionKey === `send-${personId}` ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+        Add
+      </button>
+    );
+  };
+
+  const tabs = [
+    { key: 'friends', label: 'All Friends', count: summary.counts?.friends || 0, icon: Users },
+    { key: 'add', label: 'Add Friend', count: summary.counts?.people || people.length, icon: UserPlus },
+    { key: 'requests', label: 'Requests', count: (summary.counts?.incoming || 0) + (summary.counts?.outgoing || 0), icon: UserCheck }
+  ];
+  const statCards = [
+    { label: 'Friends', value: summary.counts?.friends || 0, helper: 'Total Connections', icon: Users, tone: 'blue' },
+    { label: 'Requests', value: summary.counts?.incoming || 0, helper: 'Received Requests', icon: UserCheck, tone: 'green' },
+    { label: 'Pending', value: summary.counts?.outgoing || 0, helper: 'Sent Requests', icon: Clock, tone: 'orange' }
+  ];
+
+  return (
+    <div className="friends-page mobile-page mobile-tab-dock-page mx-auto max-w-6xl space-y-3 sm:space-y-5">
+      <section className="friends-overview-panel friends-pro-hero mobile-hero-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+        <div className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="friends-hero-copy flex min-w-0 items-center gap-4">
+              <div
+                className="friends-hero-mark flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0b57d0] ring-1 ring-blue-100 dark:bg-blue-950/30 dark:text-sky-200 dark:ring-blue-900/40"
+              >
+                <Users size={30} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase text-[#0b57d0] dark:text-sky-300">Syncrova Network</p>
+                <h1 className="mt-1 text-3xl font-black tracking-normal text-slate-950 dark:text-white sm:text-4xl">Friends</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  Manage your trusted teammates, review requests, and start conversations faster.
+                </p>
+              </div>
+            </div>
+
+            <div className="friends-hero-art" aria-hidden="true">
+              <Users size={96} strokeWidth={1.7} />
+            </div>
+
+            <div className="friends-hero-stats grid grid-cols-3 gap-2 sm:min-w-[360px]">
+              {[
+                ['Friends', summary.counts?.friends || 0],
+                ['Requests', summary.counts?.incoming || 0],
+                ['Pending', summary.counts?.outgoing || 0]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-zinc-900">
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</p>
+                  <p className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="friends-tab-panel mobile-control-panel rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+        <div className="friends-tab-grid mobile-fixed-tabbar grid gap-2 overflow-x-auto pb-1 sm:grid-cols-3">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`friends-tab-button ${activeTab === tab.key ? 'is-active' : ''} inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition ${
+                  activeTab === tab.key
+                    ? 'bg-[#0b57d0] text-white shadow-lg shadow-blue-600/15'
+                    : 'bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-[#0b57d0] dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <Icon size={18} />
+                {tab.label}
+                <span className={`rounded-full px-2 py-0.5 text-xs ${activeTab === tab.key ? 'bg-white/15' : 'bg-white dark:bg-slate-900'}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="friends-stat-grid grid gap-2 sm:grid-cols-3">
+        {statCards.map(card => {
+          const Icon = card.icon;
+          return (
+            <div key={card.label} className={`friends-stat-card friends-stat-card--${card.tone} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900`}>
+              <span className="friends-stat-icon">
+                <Icon size={22} />
+              </span>
+              <div>
+                <p className="text-sm font-black text-slate-700 dark:text-slate-200">{card.label}</p>
+                <p className="mt-1 text-2xl font-black text-[#0b57d0]">{card.value}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{card.helper}</p>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="friends-search-panel mobile-control-panel rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+        <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_210px]">
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Search by name, course, or campus..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500"
+            />
+          </div>
+          <select
+            value={campusFilter}
+            onChange={event => setCampusFilter(event.target.value)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-[#0b57d0] focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-blue-500"
+          >
+            <option value="">All campuses</option>
+            {CAMPUS_OPTIONS.map(campus => <option key={campus} value={campus}>{campus}</option>)}
+          </select>
+        </div>
+      </section>
+
+      {loading ? (
+        <ListSkeleton count={6} />
+      ) : (
+        <>
+          {activeTab === 'friends' && (
+            <section className="space-y-4">
+              {summary.incoming?.length > 0 && (
+                <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#0b57d0] shadow-sm dark:bg-slate-900 dark:text-sky-300">
+                        <Inbox size={20} />
+                      </div>
+                      <div>
+                        <h2 className="font-black text-slate-950 dark:text-white">You have friend requests</h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">Review them before they join your friends list.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('requests')}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0b57d0] px-4 py-2 text-sm font-black text-white transition hover:bg-[#07036f]"
+                    >
+                      Review
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {friends.length === 0 ? (
+                <EmptyPanel icon={UserCheck} title="No friends yet" message="Open Add Friend to send requests to existing Syncrova users." />
+              ) : (
+                <div className="mobile-card-list grid gap-3 lg:grid-cols-2">
+                  {friends.map(item => (
+                    <motion.article
+                      key={item._id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/30 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/10"
+                    >
+                      <div className="flex items-start gap-3">
+                        <button type="button" onClick={() => setProfileUser(item.user)} className="shrink-0 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20">
+                          <Avatar person={item.user} size="lg" />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button type="button" onClick={() => setProfileUser(item.user)} className="block max-w-full text-left">
+                            <h3 className="truncate text-lg font-black text-slate-950 dark:text-white">{item.user?.name || 'User'}</h3>
+                            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{item.user?.email}</p>
+                            <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[item.user?.course, item.user?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                          </button>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <RelationshipPill status="friends" />
+                            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Since {formatSince(item.since)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openMessages(item.user)}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0b57d0] px-3 py-2.5 text-sm font-black text-white transition hover:bg-[#07036f]"
+                        >
+                          <MessageCircle size={16} />
+                          Message
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeFriend(item._id)}
+                          disabled={actionKey === `remove-${item._id}`}
+                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:border-slate-700 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/20 dark:hover:text-rose-300"
+                          title="Remove friend"
+                        >
+                          {actionKey === `remove-${item._id}` ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
+                        </button>
+                      </div>
+                    </motion.article>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === 'add' && (
+            <section className="mobile-card-list grid gap-3 lg:grid-cols-2">
+              {people.length === 0 ? (
+                <EmptyPanel icon={Sparkles} title="Everyone is connected" message="No new people to add right now. New users will appear here automatically." />
+              ) : (
+                people.map(person => (
+                  <motion.article
+                    key={getEntityId(person)}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/30 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/10 sm:flex-row sm:items-center"
+                  >
+                    <button type="button" onClick={() => setProfileUser(person)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                      <Avatar person={person} />
+                      <div className="min-w-0">
+                        <h3 className="truncate font-black text-slate-950 dark:text-white">{person.name}</h3>
+                        <p className="truncate text-sm text-slate-500 dark:text-slate-400">{person.email}</p>
+                        <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[person.course, person.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                      </div>
+                    </button>
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <RelationshipPill status={person.friendship?.status || 'none'} />
+                      {renderPersonAction(person)}
+                    </div>
+                  </motion.article>
+                ))
+              )}
+            </section>
+          )}
+
+          {activeTab === 'requests' && (
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={20} className="text-[#0b57d0] dark:text-sky-300" />
+                  <h2 className="text-lg font-black text-slate-950 dark:text-white">Incoming Requests</h2>
+                </div>
+                {incoming.length === 0 ? (
+                  <EmptyPanel icon={Inbox} title="No incoming requests" message="Friend requests from other users will appear here for confirmation." />
+                ) : (
+                  incoming.map(item => (
+                    <article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex items-start gap-3">
+                        <button type="button" onClick={() => setProfileUser(item.requester)} className="shrink-0">
+                          <Avatar person={item.requester} />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button type="button" onClick={() => setProfileUser(item.requester)} className="block max-w-full text-left">
+                            <h3 className="truncate font-black text-slate-950 dark:text-white">{item.requester?.name}</h3>
+                            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{item.requester?.email}</p>
+                            <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[item.requester?.course, item.requester?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                          </button>
+                          <p className="mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500">Requested {formatSince(item.createdAt)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => acceptRequest(item._id)}
+                          disabled={actionKey === `accept-${item._id}`}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          <Check size={16} />
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => declineRequest(item._id)}
+                          disabled={actionKey === `decline-${item._id}`}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          <UserX size={16} />
+                          Decline
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Clock size={20} className="text-amber-500" />
+                  <h2 className="text-lg font-black text-slate-950 dark:text-white">Sent Requests</h2>
+                </div>
+                {outgoing.length === 0 ? (
+                  <EmptyPanel icon={Clock} title="No pending sent requests" message="Requests you send from Add Friend will stay here until accepted or declined." />
+                ) : (
+                  outgoing.map(item => (
+                    <article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => setProfileUser(item.recipient)} className="shrink-0">
+                          <Avatar person={item.recipient} />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button type="button" onClick={() => setProfileUser(item.recipient)} className="block max-w-full text-left">
+                            <h3 className="truncate font-black text-slate-950 dark:text-white">{item.recipient?.name}</h3>
+                            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{item.recipient?.email}</p>
+                            <p className="truncate text-xs font-semibold text-slate-400 dark:text-slate-500">{[item.recipient?.course, item.recipient?.campus].filter(Boolean).join(' - ') || 'Academic details not set'}</p>
+                          </button>
+                          <p className="mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500">Sent {formatSince(item.createdAt)}</p>
+                        </div>
+                        <RelationshipPill status="outgoing" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => cancelRequest(item._id)}
+                        disabled={actionKey === `cancel-${item._id}`}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-black text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+                      >
+                        {actionKey === `cancel-${item._id}` ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
+                        Cancel friend request
+                      </button>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      <UserProfileModal isOpen={Boolean(profileUser)} user={profileUser} onClose={() => setProfileUser(null)} />
+    </div>
+  );
+}
